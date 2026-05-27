@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Histórico | Energia Risk Desk</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell history-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Registros por contraparte</p>
+          <h1>Histórico de Análises</h1>
+        </div>
+        <div class="topbar-actions">
+          <a class="ghost-link" href="index.html">Nova análise</a>
+          <button class="ghost-button" id="clearHistoryButton" type="button">Limpar</button>
+        </div>
+      </header>
+
+      <section class="history-toolbar">
+        <label>
+          Buscar contraparte ou CNPJ
+          <input id="historySearch" type="search" placeholder="Digite para filtrar" />
+        </label>
+      </section>
+
+      <section class="summary-grid history-summary" aria-live="polite">
+        <article class="metric-tile">
+          <span>Análises registradas</span>
+          <strong id="totalAnalyses">0</strong>
+        </article>
+        <article class="metric-tile">
+          <span>Contrapartes</span>
+          <strong id="totalCounterparties">0</strong>
+        </article>
+        <article class="metric-tile">
+          <span>Score médio</span>
+          <strong id="averageScore">0</strong>
+        </article>
+        <article class="metric-tile">
+          <span>Último registro</span>
+          <strong id="latestDate">-</strong>
+        </article>
+      </section>
+
+      <section class="history-layout">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Linha do tempo</p>
+              <h3>Registros salvos</h3>
+            </div>
+          </div>
+          <div class="history-list" id="historyList"></div>
+        </article>
+
+        <article class="panel detail-panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Detalhe</p>
+              <h3 id="detailTitle">Selecione uma análise</h3>
+            </div>
+            <button class="danger-button" id="deleteAnalysisButton" type="button" disabled>Excluir</button>
+          </div>
+          <div id="detailBody" class="detail-body empty-state">
+            Nenhum registro selecionado.
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="historico.js"></script>
+  </body>
+</html>

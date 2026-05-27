@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Calculadora FA CCEE</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Monitoramento prudencial</p>
+        <h1>Calculadora de Fator de Alavancagem</h1>
+      </div>
+      <div class="actions">
+        <button id="sampleButton" type="button" title="Carregar exemplo">Exemplo</button>
+        <button id="exportButton" type="button" title="Exportar cenário">Exportar</button>
+        <button id="importButton" type="button" title="Importar cenário">Importar</button>
+        <button id="printButton" type="button" title="Imprimir relatório">Imprimir</button>
+        <input id="importFile" type="file" accept="application/json" hidden>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero-grid">
+        <article class="result-panel">
+          <div>
+            <span class="label">FA divulgado</span>
+            <strong id="faValue">0,00x</strong>
+            <small id="faNote">Aguardando entradas</small>
+          </div>
+          <div class="gauge" aria-hidden="true">
+            <span id="gaugeNeedle"></span>
+          </div>
+        </article>
+        <article class="metric">
+          <span class="label">FA risco</span>
+          <strong id="faRiskValue">0,00x</strong>
+          <small>RWA / PLA</small>
+        </article>
+        <article class="metric">
+          <span class="label">RWA total</span>
+          <strong id="rwaValue">R$ 0</strong>
+          <small id="rwaDetail">Mercado + crédito + operacional</small>
+        </article>
+        <article class="metric">
+          <span class="label">Rating interno</span>
+          <strong id="ratingValue">-</strong>
+          <small id="ratingDetail">Sem dados suficientes</small>
+        </article>
+      </section>
+
+      <section class="layout">
+        <aside class="side">
+          <nav class="tabs" aria-label="Seções">
+            <button class="tab active" type="button" data-tab="portfolio">Portfólio</button>
+            <button class="tab" type="button" data-tab="financials">DRE / PLA</button>
+            <button class="tab" type="button" data-tab="counterparties">Contrapartes</button>
+            <button class="tab" type="button" data-tab="parameters">Parâmetros</button>
+            <button class="tab" type="button" data-tab="report">Relatório</button>
+          </nav>
+
+          <div class="scorebox">
+            <span class="label">Score</span>
+            <strong id="scoreValue">0</strong>
+            <div class="scorebar"><span id="scoreBar"></span></div>
+          </div>
+        </aside>
+
+        <section class="workspace">
+          <section id="portfolio" class="tab-panel active">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">M+0 a M+6</p>
+                <h2>Portfólio prudencial</h2>
+              </div>
+              <div class="pill" id="portfolioDirection">Net zerado</div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mês</th>
+                    <th>Horas</th>
+                    <th>Exposição MWm</th>
+                    <th>Forward R$/MWh</th>
+                    <th>Vol. %</th>
+                    <th>Recurso MWm</th>
+                    <th>Preço rec.</th>
+                    <th>Requisito MWm</th>
+                    <th>Preço req.</th>
+                    <th>Receita ACR</th>
+                  </tr>
+                </thead>
+                <tbody id="portfolioRows"></tbody>
+              </table>
+            </div>
+            <div class="month-bars" id="monthBars"></div>
+          </section>
+
+          <section id="financials" class="tab-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Balanço e DRE</p>
+                <h2>Patrimônio e capacidade econômica</h2>
+              </div>
+              <div class="pill" id="plaStatus">PLA neutro</div>
+            </div>
+            <div class="form-grid">
+              <label>Patrimônio líquido<input data-path="financial.equity" type="number" step="1000"></label>
+              <label>Goodwill<input data-path="financial.goodwill" type="number" step="1000"></label>
+              <label>Intangíveis<input data-path="financial.intangibles" type="number" step="1000"></label>
+              <label>Participações dedutíveis<input data-path="financial.deductibleInvestments" type="number" step="1000"></label>
+              <label>Créditos tributários<input data-path="financial.taxCredits" type="number" step="1000"></label>
+              <label>Imóveis / FII dedutíveis<input data-path="financial.realEstate" type="number" step="1000"></label>
+              <label>Despesas antecipadas<input data-path="financial.prepaid" type="number" step="1000"></label>
+              <label>Dívidas subordinadas detidas<input data-path="financial.subordinatedDebtAssets" type="number" step="1000"></label>
+              <label>Receita líquida 12m<input data-path="financial.revenue" type="number" step="1000"></label>
+              <label>EBITDA 12m<input data-path="financial.ebitda" type="number" step="1000"></label>
+              <label>Lucro líquido 12m<input data-path="financial.netIncome" type="number" step="1000"></label>
+              <label>Caixa<input data-path="financial.cash" type="number" step="1000"></label>
+              <label>Dívida bruta<input data-path="financial.grossDebt" type="number" step="1000"></label>
+              <label>Ativo circulante<input data-path="financial.currentAssets" type="number" step="1000"></label>
+              <label>Passivo circulante<input data-path="financial.currentLiabilities" type="number" step="1000"></label>
+            </div>
+            <div class="kpi-grid">
+              <div><span class="label">PLA</span><strong id="plaValue">R$ 0</strong></div>
+              <div><span class="label">Liquidez corrente</span><strong id="liquidityValue">0,00x</strong></div>
+              <div><span class="label">Dívida líquida / EBITDA</span><strong id="leverageValue">0,00x</strong></div>
+              <div><span class="label">Margem EBITDA</span><strong id="marginValue">0,0%</strong></div>
+            </div>
+          </section>
+
+          <section id="counterparties" class="tab-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Top 5</p>
+                <h2>Risco de contraparte</h2>
+              </div>
+              <div class="pill" id="counterpartyStatus">Sem concentração</div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Contraparte</th>
+                    <th>Exposição MtM</th>
+                    <th>Mitigador</th>
+                    <th>ARI / rating</th>
+                    <th>Receita %</th>
+                  </tr>
+                </thead>
+                <tbody id="counterpartyRows"></tbody>
+              </table>
+            </div>
+            <div class="kpi-grid">
+              <div><span class="label">EAD líquido</span><strong id="eadValue">R$ 0</strong></div>
+              <div><span class="label">Perda esperada</span><strong id="elValue">R$ 0</strong></div>
+              <div><span class="label">Maior EAD / PLA</span><strong id="topEadValue">0,0%</strong></div>
+              <div><span class="label">Concentração receita</span><strong id="revenueConcentrationValue">0,0%</strong></div>
+            </div>
+          </section>
+
+          <section id="parameters" class="tab-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Motor</p>
+                <h2>Parâmetros de cálculo</h2>
+              </div>
+              <div class="pill">Cenário interno</div>
+            </div>
+            <div class="form-grid">
+              <label>Referência M do FA<input data-path="parameters.faReference" type="number" step="0.1"></label>
+              <label>Confiança %<input data-path="parameters.confidence" type="number" step="0.1"></label>
+              <label>Phi normal<input data-path="parameters.phiZ" type="number" step="0.01"></label>
+              <label>Dias liquidação<input data-path="parameters.liquidationDays" type="number" step="1"></label>
+              <label>Correlação média<input data-path="parameters.correlation" type="number" step="0.05" min="-1" max="1"></label>
+              <label>K anticíclico<input data-path="parameters.k" type="number" step="0.05"></label>
+              <label>Teta adicional<input data-path="parameters.theta" type="number" step="0.05" min="0" max="1"></label>
+              <label>RWA crédito manual<input data-path="parameters.rwaCredit" type="number" step="1000"></label>
+              <label>RWA operacional<input data-path="parameters.rwaOperational" type="number" step="1000"></label>
+              <label>LGD contraparte %<input data-path="parameters.lgd" type="number" step="1"></label>
+              <label>Stress alta preço %<input data-path="parameters.stressUp" type="number" step="1"></label>
+              <label>Stress queda preço %<input data-path="parameters.stressDown" type="number" step="1"></label>
+              <label>PLD mínimo<input data-path="parameters.pldMin" type="number" step="1"></label>
+              <label>PLD máximo estrutural<input data-path="parameters.pldMax" type="number" step="1"></label>
+            </div>
+            <label class="checkline">
+              <input data-path="parameters.includeExpectedLossInRwa" type="checkbox">
+              Somar perda esperada das contrapartes ao RWA de crédito
+            </label>
+            <label class="checkline">
+              <input data-path="parameters.useStressAsAdditional" type="checkbox">
+              Usar stress test como risco adicional
+            </label>
+          </section>
+
+          <section id="report" class="tab-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Síntese</p>
+                <h2>Leitura de risco</h2>
+              </div>
+              <div class="pill" id="decisionPill">Aguardando</div>
+            </div>
+            <div id="reportText" class="report"></div>
+            <div class="formula">
+              <strong>Fórmulas centrais</strong>
+              <p>PLA = PL - deduções. FA_Risco = RWA / PLA. FA = max(0, (RWA - RES_FIN) / PLA). RES_FIN = PnL + FIN_PV + receitas ACR. RWA = RWA_Mercado + RWA_Crédito + RWA_Operacional.</p>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
