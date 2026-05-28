@@ -10,7 +10,7 @@ from pathlib import Path
 import unicodedata
 from urllib.parse import parse_qs, urlparse
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 HOST = "127.0.0.1"
 PORT = 8899
@@ -32,6 +32,18 @@ FIXED_SOURCES = [
 ]
 DERIVATIVE_SOURCES = ["SE/CO", "SUL", "NORDESTE", "NORTE", "CONVENCIONAL"]
 RISK_SOURCES = FIXED_SOURCES[:]
+SOURCE_DISPLAY = {
+    "SE/CO": "SUDESTE/CENTRO-OESTE",
+    "SUL": "SUL",
+    "NORDESTE": "NORDESTE",
+    "NORTE": "NORTE",
+    "CONVENCIONAL": "CONVENCIONAL",
+    "I0": "INCENTIVADA 0%",
+    "I5": "INCENTIVADA 50%",
+    "CQ5": "CQ5",
+    "I8": "INCENTIVADA 80%",
+    "I1": "INCENTIVADA 100%",
+}
 
 SOURCE_FIELDS = {
     "SE/CO": "SECO",
@@ -959,6 +971,8 @@ def render_main_page(state, metrics, flash_msg):
         <div class="upload-inline" style="margin-bottom:10px">
           <input type="file" name="new_sheet_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
           <button type="submit" name="action" value="upload_new_sheet_xlsx">Nova Planilha</button>
+          <a class="btn" href="/download/modelo_portfolio.xlsx">Baixar Modelo Portfolio</a>
+          <a class="btn" href="/download/modelo_forward.xlsx">Baixar Modelo Curva Forward</a>
         </div>
         <div class="upload-inline" style="margin-bottom:10px">
           <input type="file" name="portfolio_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
@@ -1117,9 +1131,132 @@ def save_uploaded_xlsx(file_obj):
     return str(save_path)
 
 
+def workbook_to_bytes(wb):
+    buff = io.BytesIO()
+    wb.save(buff)
+    return buff.getvalue()
+
+
+def build_portfolio_template_bytes():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Declaração Portfólio"
+
+    ws.cell(1, 1, "Declaração Portfólio")
+    ws.cell(3, 1, "Patrimônio Líquido Ajustado")
+    ws.cell(5, 1, "Exposições")
+    ws.cell(5, 2, "Portifólio")
+    ws.cell(5, 3, "Unid.")
+    for i, month in enumerate(MONTHS):
+        ws.cell(5, 4 + i, month)
+
+    section_names = {
+        "fixed": "Preço Fixo, Consumo e Geração",
+        "variable": "Preço Variável",
+        "derivatives": "Derivativos",
+    }
+    for section in SECTION_DEFS:
+        sec_key = section["key"]
+        sec_name = section_names[sec_key]
+        row_start = section["sheet"]["source_start"]
+
+        for offset, source in enumerate(section["sources"]):
+            row = row_start + offset
+            ws.cell(row, 1, SOURCE_DISPLAY[source])
+            ws.cell(row, 2, sec_name)
+            ws.cell(row, 3, "MWm")
+            for i in range(7):
+                ws.cell(row, 4 + i, 0.0)
+
+        labels = [
+            (section["sheet"]["resource"], "RECURSO", "MWm"),
+            (section["sheet"]["pm_resource"], "PREÇO MÉDIO RECURSO", "R$/MWh"),
+            (section["sheet"]["requirement"], "REQUISITO", "MWm"),
+        ]
+        if section["has_pm_requirement"]:
+            labels.append((section["sheet"]["pm_requirement"], "PREÇO MÉDIO REQUISITO", "R$/MWh"))
+        labels.append((section["sheet"]["net"], "NET ENERGÉTICO", "MWm"))
+
+        for row, label, unit in labels:
+            ws.cell(row, 1, label)
+            ws.cell(row, 2, sec_name)
+            ws.cell(row, 3, unit)
+            for i in range(7):
+                ws.cell(row, 4 + i, 0.0)
+
+    ws.cell(48, 1, "EFEITOS FINANCEIROS DO MERCADO REGULADO")
+    ws.cell(48, 2, "Receitas")
+    ws.cell(48, 3, "R$")
+    for i in range(7):
+        ws.cell(48, 4 + i, 0.0)
+
+    return workbook_to_bytes(wb)
+
+
+def build_forward_template_bytes():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Curva Forward"
+
+    ws.cell(1, 1, "Curva Forward - Modelo")
+    ws.cell(2, 1, "Preencha valores no formato da CCEE (base e spreads por vertice).")
+    ws.cell(14, 1, "R$/MWh")
+    for i in range(7):
+        ws.cell(14, 2 + i, f"M{i}")
+
+    rows = [
+        (15, "SECO/CONV"),
+        (16, "S"),
+        (17, "NE"),
+        (18, "N"),
+        (19, "I0"),
+        (20, "I5/CQ5"),
+        (21, "I8"),
+        (22, "I1"),
+    ]
+    for row, label in rows:
+        ws.cell(row, 1, label)
+        for i in range(7):
+            ws.cell(row, 2 + i, 0.0)
+
+    return workbook_to_bytes(wb)
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/download/modelo_portfolio.xlsx":
+            payload = build_portfolio_template_bytes()
+            self.send_response(200)
+            self.send_header(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            self.send_header(
+                "Content-Disposition",
+                'attachment; filename="modelo_portfolio_prudencial.xlsx"',
+            )
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if parsed.path == "/download/modelo_forward.xlsx":
+            payload = build_forward_template_bytes()
+            self.send_response(200)
+            self.send_header(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            self.send_header(
+                "Content-Disposition",
+                'attachment; filename="modelo_curva_forward.xlsx"',
+            )
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         if parsed.path == "/historico":
             content = render_history_page().encode("utf-8")
             self.send_response(200)
