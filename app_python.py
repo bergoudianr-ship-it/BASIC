@@ -406,6 +406,23 @@ def apply_imported_calc_data(base_state, imported_state):
     return merged
 
 
+def apply_imported_portfolio_only(base_state, imported_state):
+    merged = deepcopy(base_state)
+    merged["xlsxPath"] = imported_state["xlsxPath"]
+    if abs(imported_state["pla"]) > EPS:
+        merged["pla"] = imported_state["pla"]
+    merged["portfolio"] = imported_state["portfolio"]
+    merged["vertex"]["hours"] = imported_state["vertex"]["hours"]
+    return merged
+
+
+def apply_imported_forward_only(base_state, imported_state):
+    merged = deepcopy(base_state)
+    merged["xlsxPath"] = imported_state["xlsxPath"]
+    merged["forward"] = imported_state["forward"]
+    return merged
+
+
 def section_checks(section_key, section_data):
     checks = []
     for i, month in enumerate(MONTHS):
@@ -748,48 +765,28 @@ def render_history_page():
 def render_section_table(section, state):
     key = section["key"]
     data = state["portfolio"][key]
-    portfolio_label = {
-        "fixed": "Preco Fixo, Consumo e Geracao",
-        "variable": "Preco Variavel",
-        "derivatives": "Derivativos",
-    }[key]
-    source_rows = []
-    for source in section["sources"]:
-        field = forward_field(source)
-        cells = [f'<td><input name="sec_{key}_{field}_{i}" value="{data["sources"][source][i]}" /></td>' for i in range(7)]
-        source_rows.append(
-            f"<tr><td>{escape(source)}</td><td>{escape(portfolio_label)}</td><td>MWm</td>{''.join(cells)}</tr>"
-        )
+    month_rows = []
+    for i, month in enumerate(MONTHS):
+        source_cells = []
+        for source in section["sources"]:
+            field = forward_field(source)
+            source_cells.append(f'<td><input name="sec_{key}_{field}_{i}" value="{data["sources"][source][i]}" /></td>')
 
-    footer = []
-    footer.append(
-        f"<tr><td><strong>RECURSO</strong></td><td>{escape(portfolio_label)}</td><td>MWm</td>"
-        + "".join(f'<td><input name="sec_{key}_resource_{i}" value="{data["resource"][i]}" /></td>' for i in range(7))
-        + "</tr>"
-    )
-    footer.append(
-        f"<tr><td><strong>PRECO MEDIO RECURSO</strong></td><td>{escape(portfolio_label)}</td><td>R$/MWh</td>"
-        + "".join(f'<td><input name="sec_{key}_pm_resource_{i}" value="{data["pmResource"][i]}" /></td>' for i in range(7))
-        + "</tr>"
-    )
-    footer.append(
-        f"<tr><td><strong>REQUISITO</strong></td><td>{escape(portfolio_label)}</td><td>MWm</td>"
-        + "".join(f'<td><input name="sec_{key}_requirement_{i}" value="{data["requirement"][i]}" /></td>' for i in range(7))
-        + "</tr>"
-    )
+        aggregate_cells = [
+            f'<td><input name="sec_{key}_resource_{i}" value="{data["resource"][i]}" /></td>',
+            f'<td><input name="sec_{key}_pm_resource_{i}" value="{data["pmResource"][i]}" /></td>',
+            f'<td><input name="sec_{key}_requirement_{i}" value="{data["requirement"][i]}" /></td>',
+        ]
+        if section["has_pm_requirement"]:
+            aggregate_cells.append(f'<td><input name="sec_{key}_pm_requirement_{i}" value="{data["pmRequirement"][i]}" /></td>')
+        aggregate_cells.append(f'<td><input name="sec_{key}_net_{i}" value="{data["netLine"][i]}" /></td>')
+        month_rows.append(f"<tr><td>{month}</td>{''.join(source_cells)}{''.join(aggregate_cells)}</tr>")
+
+    header_right = "<th>RECURSO</th><th>PM RECURSO</th><th>REQUISITO</th>"
     if section["has_pm_requirement"]:
-        footer.append(
-            f"<tr><td><strong>PRECO MEDIO REQUISITO</strong></td><td>{escape(portfolio_label)}</td><td>R$/MWh</td>"
-            + "".join(
-                f'<td><input name="sec_{key}_pm_requirement_{i}" value="{data["pmRequirement"][i]}" /></td>' for i in range(7)
-            )
-            + "</tr>"
-        )
-    footer.append(
-        f"<tr><td><strong>NET ENERGETICO</strong></td><td>{escape(portfolio_label)}</td><td>MWm</td>"
-        + "".join(f'<td><input name="sec_{key}_net_{i}" value="{data["netLine"][i]}" /></td>' for i in range(7))
-        + "</tr>"
-    )
+        header_right += "<th>PM REQUISITO</th>"
+    header_right += "<th>NET ENERGETICO</th>"
+    source_headers = "".join(f"<th>{escape(source)}</th>" for source in section["sources"])
 
     return f"""
     <article class="card">
@@ -798,11 +795,10 @@ def render_section_table(section, state):
         <table>
           <thead>
             <tr>
-              <th>Exposicoes</th><th>Portfolio</th><th>Unid.</th>
-              <th>M+0</th><th>M+1</th><th>M+2</th><th>M+3</th><th>M+4</th><th>M+5</th><th>M+6</th>
+              <th>Mes</th>{source_headers}{header_right}
             </tr>
           </thead>
-          <tbody>{''.join(source_rows)}{''.join(footer)}</tbody>
+          <tbody>{''.join(month_rows)}</tbody>
         </table>
       </div>
     </article>
@@ -824,10 +820,13 @@ def render_main_page(state, metrics, flash_msg):
         checks_text = "Checks do template com divergencias: " + " || ".join(checks_lines)
 
     rows_forward = []
-    for source in RISK_SOURCES:
-        field = forward_field(source)
-        cells = [f'<td><input name="forward_{field}_{i}" value="{state["forward"][source][i]}" /></td>' for i in range(7)]
-        rows_forward.append(f"<tr><td>{escape(source)}</td>{''.join(cells)}</tr>")
+    for i, month in enumerate(MONTHS):
+        cells = []
+        for source in RISK_SOURCES:
+            field = forward_field(source)
+            cells.append(f'<td><input name="forward_{field}_{i}" value="{state["forward"][source][i]}" /></td>')
+        rows_forward.append(f"<tr><td>{month}</td>{''.join(cells)}</tr>")
+    forward_headers = "".join(f"<th>{escape(source)}</th>" for source in RISK_SOURCES)
 
     vertex_rows = []
     vertex_rows.append(
@@ -960,8 +959,10 @@ def render_main_page(state, metrics, flash_msg):
       <section class="card" style="margin-bottom:12px">
         <h2>Empresa e importacao</h2>
         <div class="upload-inline" style="margin-bottom:10px">
-          <input type="file" name="xlsx_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-          <button type="submit" name="action" value="upload_xlsx">Carregar portfolio (.xlsx)</button>
+          <input type="file" name="portfolio_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+          <button type="submit" name="action" value="upload_portfolio_xlsx">Subir Portfolio (.xlsx)</button>
+          <input type="file" name="forward_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+          <button type="submit" name="action" value="upload_forward_xlsx">Subir Curva Forward (.xlsx)</button>
         </div>
         <div class="formgrid">
           <div class="field"><label>Empresa</label><input name="company_name" value="{escape(state["company"]["name"])}" /></div>
@@ -1009,7 +1010,7 @@ def render_main_page(state, metrics, flash_msg):
           <p class="muted">Usada na marcacao a mercado e no risco de cada fonte por mes.</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Fonte/Submercado</th><th>M+0</th><th>M+1</th><th>M+2</th><th>M+3</th><th>M+4</th><th>M+5</th><th>M+6</th></tr></thead>
+              <thead><tr><th>Mes</th>{forward_headers}</tr></thead>
               <tbody>{''.join(rows_forward)}</tbody>
             </table>
           </div>
@@ -1152,16 +1153,26 @@ class Handler(BaseHTTPRequestHandler):
         state = get_post_state(params)
         flash_msg = "Campos recalculados."
 
-        if action == "upload_xlsx":
+        if action == "upload_portfolio_xlsx":
             try:
-                file_data = files.get("xlsx_file")
+                file_data = files.get("portfolio_file")
                 uploaded_path = save_uploaded_xlsx(file_data)
                 state["xlsxPath"] = uploaded_path
                 imported = load_calc_state_from_xlsx(uploaded_path)
-                state = apply_imported_calc_data(state, imported)
-                flash_msg = f"Arquivo carregado e importado: {uploaded_path}"
+                state = apply_imported_portfolio_only(state, imported)
+                flash_msg = f"Portfolio carregado e importado: {uploaded_path}"
             except Exception as exc:
-                flash_msg = f"Falha no upload/importacao: {exc}"
+                flash_msg = f"Falha no upload/importacao do portfolio: {exc}"
+        elif action == "upload_forward_xlsx":
+            try:
+                file_data = files.get("forward_file")
+                uploaded_path = save_uploaded_xlsx(file_data)
+                state["xlsxPath"] = uploaded_path
+                imported = load_calc_state_from_xlsx(uploaded_path)
+                state = apply_imported_forward_only(state, imported)
+                flash_msg = f"Curva forward carregada e importada: {uploaded_path}"
+            except Exception as exc:
+                flash_msg = f"Falha no upload/importacao da curva forward: {exc}"
         elif action == "import_xlsx":
             try:
                 imported = load_calc_state_from_xlsx(state["xlsxPath"])
