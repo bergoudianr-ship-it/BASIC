@@ -1,7 +1,9 @@
+import cgi
 from copy import deepcopy
 from datetime import datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import io
 import json
 from math import erf, exp, isfinite, pi, sqrt
 from pathlib import Path
@@ -90,6 +92,7 @@ SECTION_DEFS = [
 ]
 
 HISTORY_PATH = Path(__file__).with_name("historico_analises.json")
+UPLOADS_DIR = Path(__file__).with_name("uploads_portfolio")
 DEFAULT_XLSX_PATH = (
     r"C:\Users\rafac\Documents\Codex\2026-05-27\files-mentioned-by-the-user-manual\simulacao_semanal.xlsx"
 )
@@ -745,38 +748,45 @@ def render_history_page():
 def render_section_table(section, state):
     key = section["key"]
     data = state["portfolio"][key]
+    portfolio_label = {
+        "fixed": "Preco Fixo, Consumo e Geracao",
+        "variable": "Preco Variavel",
+        "derivatives": "Derivativos",
+    }[key]
     source_rows = []
     for source in section["sources"]:
         field = forward_field(source)
         cells = [f'<td><input name="sec_{key}_{field}_{i}" value="{data["sources"][source][i]}" /></td>' for i in range(7)]
-        source_rows.append(f"<tr><td>{escape(source)}</td>{''.join(cells)}</tr>")
+        source_rows.append(
+            f"<tr><td>{escape(source)}</td><td>{escape(portfolio_label)}</td><td>MWm</td>{''.join(cells)}</tr>"
+        )
 
     footer = []
     footer.append(
-        "<tr><td><strong>RECURSO</strong></td>"
+        f"<tr><td><strong>RECURSO</strong></td><td>{escape(portfolio_label)}</td><td>MWm</td>"
         + "".join(f'<td><input name="sec_{key}_resource_{i}" value="{data["resource"][i]}" /></td>' for i in range(7))
         + "</tr>"
     )
     footer.append(
-        "<tr><td><strong>PRECO MEDIO RECURSO</strong></td>"
+        f"<tr><td><strong>PRECO MEDIO RECURSO</strong></td><td>{escape(portfolio_label)}</td><td>R$/MWh</td>"
         + "".join(f'<td><input name="sec_{key}_pm_resource_{i}" value="{data["pmResource"][i]}" /></td>' for i in range(7))
         + "</tr>"
     )
     footer.append(
-        "<tr><td><strong>REQUISITO</strong></td>"
+        f"<tr><td><strong>REQUISITO</strong></td><td>{escape(portfolio_label)}</td><td>MWm</td>"
         + "".join(f'<td><input name="sec_{key}_requirement_{i}" value="{data["requirement"][i]}" /></td>' for i in range(7))
         + "</tr>"
     )
     if section["has_pm_requirement"]:
         footer.append(
-            "<tr><td><strong>PRECO MEDIO REQUISITO</strong></td>"
+            f"<tr><td><strong>PRECO MEDIO REQUISITO</strong></td><td>{escape(portfolio_label)}</td><td>R$/MWh</td>"
             + "".join(
                 f'<td><input name="sec_{key}_pm_requirement_{i}" value="{data["pmRequirement"][i]}" /></td>' for i in range(7)
             )
             + "</tr>"
         )
     footer.append(
-        "<tr><td><strong>NET ENERGETICO (linha template)</strong></td>"
+        f"<tr><td><strong>NET ENERGETICO</strong></td><td>{escape(portfolio_label)}</td><td>MWm</td>"
         + "".join(f'<td><input name="sec_{key}_net_{i}" value="{data["netLine"][i]}" /></td>' for i in range(7))
         + "</tr>"
     )
@@ -786,7 +796,12 @@ def render_section_table(section, state):
       <h2>{escape(section["title"])}</h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Fonte/Submercado</th><th>M+0</th><th>M+1</th><th>M+2</th><th>M+3</th><th>M+4</th><th>M+5</th><th>M+6</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Exposicoes</th><th>Portfolio</th><th>Unid.</th>
+              <th>M+0</th><th>M+1</th><th>M+2</th><th>M+3</th><th>M+4</th><th>M+5</th><th>M+6</th>
+            </tr>
+          </thead>
           <tbody>{''.join(source_rows)}{''.join(footer)}</tbody>
         </table>
       </div>
@@ -903,8 +918,10 @@ def render_main_page(state, metrics, flash_msg):
     .top{{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}}
     h1{{margin:0;font-size:2rem}} h2{{margin:0 0 8px 0;font-size:1.18rem}}
     .muted{{color:var(--muted)}}
-    .btns{{display:flex;gap:8px;flex-wrap:wrap}}
+    .btns{{display:flex;gap:8px;flex-wrap:wrap;align-items:center}}
     button,a.btn{{background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:7px;padding:9px 12px;cursor:pointer;text-decoration:none;display:inline-block}}
+    .upload-inline{{display:flex;gap:8px;align-items:center;flex-wrap:wrap}}
+    .upload-inline input[type=file]{{max-width:320px;padding:6px}}
     .card{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}}
     .grid5{{display:grid;grid-template-columns:repeat(5,minmax(170px,1fr));gap:10px}}
     .big{{font-size:1.85rem;font-weight:700;margin-top:6px}}
@@ -924,12 +941,12 @@ def render_main_page(state, metrics, flash_msg):
 </head>
 <body>
   <div class="wrap">
-    <form method="post">
+    <form method="post" enctype="multipart/form-data">
       <div class="top">
         <div>
           <p class="muted" style="margin:0">Monitoramento prudencial CCEE</p>
           <h1>Calculadora de Alavancagem</h1>
-          <p class="muted" style="margin:6px 0 0 0">Modelo estruturado conforme portfolio semanal (fixo, variavel, derivativos) e curva forward.</p>
+          <p class="muted" style="margin:6px 0 0 0">Modelo e formatacao aderentes a declaracao de portfolio semanal.</p>
         </div>
         <div class="btns">
           <button type="submit" name="action" value="calculate">Recalcular</button>
@@ -942,12 +959,16 @@ def render_main_page(state, metrics, flash_msg):
 
       <section class="card" style="margin-bottom:12px">
         <h2>Empresa e importacao</h2>
+        <div class="upload-inline" style="margin-bottom:10px">
+          <input type="file" name="xlsx_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+          <button type="submit" name="action" value="upload_xlsx">Carregar portfolio (.xlsx)</button>
+        </div>
         <div class="formgrid">
           <div class="field"><label>Empresa</label><input name="company_name" value="{escape(state["company"]["name"])}" /></div>
           <div class="field"><label>CNPJ</label><input name="company_cnpj" value="{escape(state["company"]["cnpj"])}" /></div>
           <div class="field"><label>Analista</label><input name="company_analyst" value="{escape(state["company"]["analyst"])}" /></div>
           <div class="field"><label>PLA ajustado (R$)</label><input name="pla" value="{state["pla"]}" /></div>
-          <div class="field" style="grid-column:1 / -1"><label>Caminho planilha semanal</label><input name="xlsx_path" value="{escape(state["xlsxPath"])}" /></div>
+          <div class="field" style="grid-column:1 / -1"><label>Caminho planilha (opcional)</label><input name="xlsx_path" value="{escape(state["xlsxPath"])}" /></div>
           <div class="field" style="grid-column:1 / -1"><label>Nota da analise</label><textarea name="company_note" rows="2">{escape(state["company"]["note"])}</textarea></div>
         </div>
       </section>
@@ -1049,6 +1070,50 @@ def render_main_page(state, metrics, flash_msg):
 </html>"""
 
 
+def parse_form_payload(handler):
+    content_type = handler.headers.get("Content-Type", "")
+    length = int(handler.headers.get("Content-Length", "0"))
+    raw = handler.rfile.read(length)
+
+    if "multipart/form-data" not in content_type.lower():
+        body = raw.decode("utf-8", errors="replace")
+        return parse_qs(body, keep_blank_values=True), {}
+
+    environ = {"REQUEST_METHOD": "POST", "CONTENT_TYPE": content_type}
+    form = cgi.FieldStorage(fp=io.BytesIO(raw), headers=handler.headers, environ=environ, keep_blank_values=True)
+    params = {}
+    files = {}
+    if not form.list:
+        return params, files
+
+    for item in form.list:
+        if item.filename:
+            files[item.name] = {
+                "filename": Path(item.filename).name,
+                "content": item.file.read(),
+            }
+        else:
+            params.setdefault(item.name, []).append(item.value)
+    return params, files
+
+
+def save_uploaded_xlsx(file_obj):
+    if not file_obj:
+        raise ValueError("Nenhum arquivo recebido.")
+    filename = file_obj["filename"]
+    if not filename.lower().endswith(".xlsx"):
+        raise ValueError("Arquivo invalido. Envie um .xlsx no formato da declaracao.")
+    content = file_obj["content"]
+    if not content:
+        raise ValueError("Arquivo vazio.")
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = f"portfolio_{stamp}_{filename}"
+    save_path = UPLOADS_DIR / safe_name
+    save_path.write_bytes(content)
+    return str(save_path)
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -1081,15 +1146,23 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(length).decode("utf-8", errors="replace")
-        params = parse_qs(body, keep_blank_values=True)
+        params, files = parse_form_payload(self)
         action = params.get("action", ["calculate"])[0]
 
         state = get_post_state(params)
         flash_msg = "Campos recalculados."
 
-        if action == "import_xlsx":
+        if action == "upload_xlsx":
+            try:
+                file_data = files.get("xlsx_file")
+                uploaded_path = save_uploaded_xlsx(file_data)
+                state["xlsxPath"] = uploaded_path
+                imported = load_calc_state_from_xlsx(uploaded_path)
+                state = apply_imported_calc_data(state, imported)
+                flash_msg = f"Arquivo carregado e importado: {uploaded_path}"
+            except Exception as exc:
+                flash_msg = f"Falha no upload/importacao: {exc}"
+        elif action == "import_xlsx":
             try:
                 imported = load_calc_state_from_xlsx(state["xlsxPath"])
                 state = apply_imported_calc_data(state, imported)
