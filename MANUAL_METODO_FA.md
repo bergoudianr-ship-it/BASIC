@@ -1,120 +1,99 @@
-# Manual Pratico - Metodo de Alavancagem (FA) (Versao Planilha Semanal)
+# Manual Pratico - Calculadora FA (Padrao Planilha Semanal CCEE)
 
-Este manual descreve o metodo implementado no app Python para avaliar se a empresa esta alavancada, usando:
+Este manual descreve a versao Python em `app_python.py`, alinhada ao modelo semanal da CCEE:
 
-- `Manual Monitoramento Prudencial v2` (logica de FA, FA risco, RWA e PLA)
-- `Arquivo de apoio para simulacao (declaracao semanal).xlsx`
+- Portfolio - Preco Fixo, Consumo e Geracao
+- Portfolio - Preco Variavel
+- Portfolio - Derivativos
+- Curva Forward por fonte/submercado
+- Efeitos Financeiros do Mercado Regulado
 
-## 1) Objetivo de negocio
+Sem modulo de 5 contrapartes.
 
-Responder de forma objetiva:
+## 1) Objetivo
 
-- A empresa esta `Saudavel`, `Atencao`, `Alavancada` ou `Critica`?
-- Qual fator esta pressionando: risco de mercado, resultado financeiro, PLA ou concentracao em contraparte?
+Avaliar alavancagem prudencial da empresa com foco em risco de mercado de energia:
 
-## 2) Formulas nucleares (base manual prudencial)
+- `FA` (fator divulgado)
+- `FA_Risco`
+- Parecer: `Saudavel`, `Atencao`, `Alavancada` ou `Critica`
+- Detalhamento de risco por mes e por fonte
 
-- `PLA = PL - Deducoes`
+## 2) Formulas base
+
 - `FA_Risco = RWA / PLA`
 - `FA = max(0, (RWA - RES_FIN) / PLA)`
-- `RWA = RWA_Mercado + RWA_Credito + RWA_Operacional`
-- `RES_FIN = PnL + FIN_PV + Receita_ACR`
+- `RWA = VaR_total + theta * Stress_total`
+- `RES_FIN = soma(resultado contratos) + soma(receita regulada)`
 
 No motor:
 
-- `VaR_mensal = |MtM| * phi * sigma * sqrt(D)`
-- `VaR_total` agregado pela matriz de correlacao entre vertices M+0...M+6
-- `Stress_mensal = |exposicao| * horas * |preco_forward - preco_stress|`
-- `RWA_Mercado = max(K*VaR_total, VaR_total) + theta * max(K*Risco_Adicional, Risco_Adicional)`
+- `MtM_fonte = Exposicao_fonte * Forward_fonte * Horas`
+- `VaR_fonte = |MtM_fonte| * phi * sigma * sqrt(D)`
+- `Stress_fonte = |Exposicao_fonte| * Horas * |Forward_fonte - PrecoStress|`
 
-## 3) Metodo de classificacao de alavancagem
+## 3) Estrutura de entrada (igual ao template)
 
-Parecer final no app:
+A tela contem os mesmos blocos logicos da declaracao:
+
+1. `Portfolio - Preco Fixo, Consumo e Geracao`
+2. `Portfolio - Preco Variavel`
+3. `Portfolio - Derivativos`
+4. `Efeitos Financeiros do Mercado Regulado`
+5. `Curva Forward (ACL) por fonte/submercado`
+6. `Premissas por vertice (M+0 ... M+6)`:
+   - Horas
+   - Volatilidade
+   - Preco stress long/short
+
+## 4) Importacao da planilha
+
+Botao: `Importar da planilha`.
+
+Leituras automaticas:
+
+- `Premissas`: confianca, dias liquidacao, volatilidade, stress, PLD min/max, correlacao media.
+- `Consolidado`: horas por vertice.
+- `Curva Forward`: base `SECO/CONV` + spreads para formar forward por fonte/submercado.
+- `Declaracao Portfolio`: blocos fixo/variavel/derivativos e receitas reguladas.
+- `Patrimonio Liquido Ajustado`: PLA (quando preenchido).
+
+Importacao altera apenas dados de calculo, preservando dados cadastrais da empresa.
+
+## 5) Checks de consistencia do template
+
+A calculadora valida automaticamente por mes:
+
+- `netLine` vs `resource - requirement`
+- `netLine` vs soma das fontes do bloco
+- Para derivativos: `netLine` vs soma de `SE/CO + SUL + NORDESTE + NORTE`
+
+Se houver divergencia, o parecer destaca no texto metodologico.
+
+## 6) Curva Forward e impacto no FA
+
+A curva forward entra diretamente em:
+
+- Marcacao a mercado (MtM)
+- VaR por fonte
+- Stress por fonte
+
+Como a curva muda semanalmente no ACL, o risco e o FA mudam mesmo com o mesmo volume em MWm.
+
+## 7) Saidas para gestao de portfolio
+
+Toda analise mostra:
+
+- KPI: `FA`, `FA_Risco`, `RWA`, `Score/Rating`, `Parecer`
+- `Resumo de risco por mes (detalhado)` com top fontes que explicam risco
+- `Resumo de risco por fonte (horizonte total)` para concentracao
+- Historico salvo por empresa em `/historico`
+
+## 8) Logica de parecer
 
 - `Critica`: `PLA <= 0`
-- `Alavancada`: `FA > M` (referencia regulatoria configurada no parametro `faReference`) ou concentracao muito alta
-- `Atencao`: `FA > 75% de M` ou sinais de risco relevantes
-- `Saudavel`: sem gatilhos criticos no estado atual
+- `Alavancada`: `FA > M` ou `FA_Risco` muito acima do limite
+- `Atencao`: proximidade de limite, stress alto ou concentracao relevante
+- `Saudavel`: sem gatilhos criticos nos parametros atuais
 
-Gatilhos usados no texto explicativo:
-
-- `FA` acima da referencia `M`
-- `FA_risco` alto para o capital
-- concentracao de contraparte (`Maior EAD / PLA`)
-- `RES_FIN` negativo (agrava alavancagem)
-
-## 4) Integracao com a planilha semanal
-
-Botao no app: `Importar da planilha`.
-
-Campos lidos automaticamente:
-
-1. `Premissas`
-- Confianca
-- Dias para liquidacao
-- Volatilidades M0..M6
-- Precos de stress long/short M0..M6
-- PLD min/max
-
-2. `Curva Forward`
-- Curva `SECO/CONV` M0..M6 para marcar exposicao
-
-3. `Consolidado`
-- Horas por mes M0..M6
-
-4. `Declaracao Portfolio`
-- `NET ENERGETICO` (vira exposicao)
-- `RECURSO`, `PRECO MEDIO RECURSO`
-- `REQUISITO`, `PRECO MEDIO REQUISITO`
-- `PLA` declarado na planilha (quando preenchido)
-
-5. `Patrimonio Liquido Ajustado`
-- Valor de PLA ajustado da planilha (quando preenchido)
-
-6. `Declaracao Contrapartes`
-- Top 5 exposicoes por contraparte
-
-## 5) Campos e parametros (aderentes ao modelo semanal)
-
-Nesta versao, o app evita campos de DRE completo e privilegia somente dados coerentes com o processo de monitoramento prudencial:
-
-- `PLA ajustado`
-- dados de portifolio prudencial (`NET`, `Recurso`, `Requisito`, `Preco medio`, `Forward`, `Volatilidade`, `Stress`)
-- premissas prudenciais (`M`, confianca, phi, dias para liquidacao, correlacao, theta, PLD min/max)
-- curva forward por fonte/submercado (ACL), com atualizacao semanal
-
-A importacao da planilha altera apenas os dados de calculo prudencial.
-
-## 6) Leitura gerencial para decisao
-
-Sequencia recomendada para comite de risco:
-
-1. Ver `FA` e `FA_Risco`.
-2. Confirmar `PLA` (qualidade e atualizacao do balanço).
-3. Checar contribuicao de `VaR` e `Stress` no `RWA_Mercado`.
-4. Verificar `RES_FIN`: se negativo, reduz capacidade de absorver risco.
-5. Avaliar concentracao (`Maior EAD / PLA`) e perda esperada.
-
-## 7) Como interpretar rapidamente
-
-- `FA baixo` + `PLA positivo` + `RES_FIN neutro/positivo` + `concentracao baixa` -> estrutura confortavel.
-- `FA subindo` com `VaR/Stress` alto -> revisar exposicao direcional, hedge e limites.
-- `FA baixo` mas `PLA fraco` -> risco de degradacao rapida em choque adverso.
-- `Concentracao alta` mesmo com `FA controlado` -> risco de evento de contraparte.
-
-## 8) Resumo detalhado automatico
-
-Toda analise agora traz, obrigatoriamente:
-
-- `Resumo de risco por mes (detalhado)`: risco agregado do mes e principais fontes/submercados que explicam o risco.
-- `Resumo de risco por fonte (horizonte total)`: ranking consolidado de contribuicao de risco por fonte/submercado.
-
-Nesta versao, o painel de contrapartes foi removido para concentrar a analise no risco de mercado e na curva forward semanal do ACL.
-
-Isso permite atuar com foco tatico no portifolio de energia.
-
-## 9) Observacoes importantes
-
-- O resultado depende da qualidade da declaracao da planilha.
-- Mitigadores de contraparte podem ser refinados no app para calibrar EAD.
-- Parametros (`M`, `theta`, `K`, correlacao) podem ser ajustados para analise de sensibilidade.
+`M` e parametros prudenciais sao editaveis no painel de parametros.
