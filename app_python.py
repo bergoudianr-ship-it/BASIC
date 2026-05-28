@@ -959,6 +959,10 @@ def render_main_page(state, metrics, flash_msg):
       <section class="card" style="margin-bottom:12px">
         <h2>Empresa e importacao</h2>
         <div class="upload-inline" style="margin-bottom:10px">
+          <input type="file" name="new_sheet_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+          <button type="submit" name="action" value="upload_new_sheet_xlsx">Nova Planilha</button>
+        </div>
+        <div class="upload-inline" style="margin-bottom:10px">
           <input type="file" name="portfolio_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
           <button type="submit" name="action" value="upload_portfolio_xlsx">Subir Portfolio (.xlsx)</button>
           <input type="file" name="forward_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
@@ -1153,7 +1157,17 @@ class Handler(BaseHTTPRequestHandler):
         state = get_post_state(params)
         flash_msg = "Campos recalculados."
 
-        if action == "upload_portfolio_xlsx":
+        if action == "upload_new_sheet_xlsx":
+            try:
+                file_data = files.get("new_sheet_file")
+                uploaded_path = save_uploaded_xlsx(file_data)
+                state["xlsxPath"] = uploaded_path
+                imported = load_calc_state_from_xlsx(uploaded_path)
+                state = apply_imported_calc_data(state, imported)
+                flash_msg = f"Nova planilha importada com carga completa: {uploaded_path}"
+            except Exception as exc:
+                flash_msg = f"Falha no upload/importacao da nova planilha: {exc}"
+        elif action == "upload_portfolio_xlsx":
             try:
                 file_data = files.get("portfolio_file")
                 uploaded_path = save_uploaded_xlsx(file_data)
