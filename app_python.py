@@ -398,7 +398,6 @@ def load_calc_state_from_xlsx(path_text):
 def apply_imported_calc_data(base_state, imported_state):
     merged = deepcopy(base_state)
     merged["xlsxPath"] = imported_state["xlsxPath"]
-    merged["pla"] = imported_state["pla"]
     merged["parameters"] = imported_state["parameters"]
     merged["vertex"] = imported_state["vertex"]
     merged["portfolio"] = imported_state["portfolio"]
@@ -409,8 +408,6 @@ def apply_imported_calc_data(base_state, imported_state):
 def apply_imported_portfolio_only(base_state, imported_state):
     merged = deepcopy(base_state)
     merged["xlsxPath"] = imported_state["xlsxPath"]
-    if abs(imported_state["pla"]) > EPS:
-        merged["pla"] = imported_state["pla"]
     merged["portfolio"] = imported_state["portfolio"]
     merged["vertex"]["hours"] = imported_state["vertex"]["hours"]
     return merged
@@ -807,6 +804,7 @@ def render_section_table(section, state):
 
 def render_main_page(state, metrics, flash_msg):
     p = state["parameters"]
+    pla_input = "" if abs(state["pla"]) <= EPS else str(state["pla"])
 
     checks_lines = []
     for section in SECTION_DEFS:
@@ -972,7 +970,7 @@ def render_main_page(state, metrics, flash_msg):
           <div class="field"><label>Empresa</label><input name="company_name" value="{escape(state["company"]["name"])}" /></div>
           <div class="field"><label>CNPJ</label><input name="company_cnpj" value="{escape(state["company"]["cnpj"])}" /></div>
           <div class="field"><label>Analista</label><input name="company_analyst" value="{escape(state["company"]["analyst"])}" /></div>
-          <div class="field"><label>PLA ajustado (R$)</label><input name="pla" value="{state["pla"]}" /></div>
+          <div class="field"><label>PLA ajustado (R$)</label><input name="pla" value="{pla_input}" /></div>
           <div class="field" style="grid-column:1 / -1"><label>Caminho planilha (opcional)</label><input name="xlsx_path" value="{escape(state["xlsxPath"])}" /></div>
           <div class="field" style="grid-column:1 / -1"><label>Nota da analise</label><textarea name="company_note" rows="2">{escape(state["company"]["note"])}</textarea></div>
         </div>
