@@ -9,6 +9,7 @@ const ratings = {
   CCC: 0.25,
   "Sem rating": 0.08,
 };
+const HISTORY_KEY = "faCcee.history";
 
 const defaultState = {
   company: {
@@ -440,6 +441,44 @@ function renderReport(m, decision) {
     .join("");
 }
 
+function saveAnalysis() {
+  const metrics = calculate();
+  const decision = riskText(metrics.fa, state.parameters.faReference, metrics.rating, metrics.pla);
+  const history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+  const record = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    timestamp: new Date().toISOString(),
+    companyName: state.company.name || "Empresa sem nome",
+    cnpj: state.company.cnpj || "",
+    analyst: state.company.analyst || "",
+    note: state.company.note || "",
+    decision,
+    rating: metrics.rating,
+    score: metrics.score,
+    fa: metrics.fa,
+    faRisk: metrics.faRisk,
+    rwa: metrics.rwa,
+    pla: metrics.pla,
+    varTotal: metrics.varTotal,
+    stressTotal: metrics.stressTotal,
+    reportItems: Array.from(document.querySelectorAll(".report-item")).map((item) => item.textContent.trim()),
+    state: clone(state),
+  };
+  history.unshift(record);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 500)));
+  const button = document.querySelector("#saveAnalysisButton");
+  button.textContent = "Salvo";
+  window.setTimeout(() => {
+    button.textContent = "Salvar analise";
+  }, 1200);
+}
+
+function resetData() {
+  if (!window.confirm("Deseja zerar os dados preenchidos da simulacao?")) return;
+  state = clone(defaultState);
+  renderAll();
+}
+
 function bindEvents() {
   document.addEventListener("input", (event) => {
     const input = event.target.closest("[data-path]");
@@ -457,40 +496,8 @@ function bindEvents() {
     });
   });
 
-  document.querySelector("#sampleButton").addEventListener("click", () => {
-    state = clone(defaultState);
-    renderAll();
-  });
-
-  document.querySelector("#exportButton").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "cenario-fa-ccee.json";
-    link.click();
-    URL.revokeObjectURL(url);
-  });
-
-  document.querySelector("#importButton").addEventListener("click", () => {
-    document.querySelector("#importFile").click();
-  });
-
-  document.querySelector("#importFile").addEventListener("change", async (event) => {
-    const [file] = event.target.files;
-    if (!file) return;
-    try {
-      const imported = JSON.parse(await file.text());
-      state = mergeState(clone(defaultState), imported);
-      renderAll();
-    } catch {
-      alert("Arquivo JSON invalido.");
-    } finally {
-      event.target.value = "";
-    }
-  });
-
-  document.querySelector("#printButton").addEventListener("click", () => window.print());
+  document.querySelector("#saveAnalysisButton").addEventListener("click", saveAnalysis);
+  document.querySelector("#resetDataButton").addEventListener("click", resetData);
 
   document.querySelector("#copyReportButton").addEventListener("click", async () => {
     const text = Array.from(document.querySelectorAll(".report-item"))

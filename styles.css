@@ -99,6 +99,19 @@ button.ghost:hover {
   justify-content: flex-end;
 }
 
+.actions a {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 800;
+  padding: 8px 13px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
 h1,
 h2,
 p {
