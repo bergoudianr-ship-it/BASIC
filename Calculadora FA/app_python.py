@@ -1073,24 +1073,32 @@ def render_section_table(section, state):
     data = state["portfolio"][key]
     month_headers = "".join(f"<th>{month}</th>" for month in MONTHS)
 
-    def input_cells(name_prefix, values, locked=False):
+    def input_cells(name_prefix, values, row_id, locked=False):
         if locked:
             return "".join(
                 f'<td><input class="locked-input" value="{values[i]}" readonly tabindex="-1" title="Calculado automaticamente: RECURSO - REQUISITO" /></td>'
                 for i in range(7)
             )
-        return "".join(f'<td><input name="{name_prefix}_{i}" value="{values[i]}" /></td>' for i in range(7))
+        return "".join(
+            f'<td><input class="grid-input" type="number" step="any" name="{name_prefix}_{i}" value="{values[i]}" data-row="{row_id}" data-col="{i}" /></td>'
+            for i in range(7)
+        )
 
     sheet_rows = []
     for source in section["sources"]:
         field = forward_field(source)
+        row_id = f"{key}_{field}"
         sheet_rows.append(
             f"""
-            <tr>
+            <tr data-row-id="{row_id}">
               <td>{escape(SOURCE_DISPLAY[source])}</td>
               <td>{escape(section["title"])}</td>
               <td>MWm</td>
-              {input_cells(f"sec_{key}_{field}", data["sources"][source])}
+              {input_cells(f"sec_{key}_{field}", data["sources"][source], row_id)}
+              <td class="action-cell">
+                <button class="mini-btn" type="button" data-action="fill-m0" data-row="{row_id}">M+0 -> todos</button>
+                <button class="mini-btn ghost" type="button" data-action="clear-row" data-row="{row_id}">Limpar</button>
+              </td>
             </tr>
             """
         )
@@ -1105,13 +1113,19 @@ def render_section_table(section, state):
     aggregate_specs.append(("NET ENERGÉTICO", "MWm", "net", data["netLine"]))
 
     for label, unit, field, values in aggregate_specs:
+        row_id = f"{key}_{field}"
+        disabled_attr = "disabled" if field == "net" else ""
         sheet_rows.append(
             f"""
-            <tr>
+            <tr data-row-id="{row_id}">
               <td>{label}</td>
               <td>{escape(section["title"])}</td>
               <td>{unit}</td>
-              {input_cells(f"sec_{key}_{field}", values, field == "net")}
+              {input_cells(f"sec_{key}_{field}", values, row_id, field == "net")}
+              <td class="action-cell">
+                <button class="mini-btn" type="button" data-action="fill-m0" data-row="{row_id}" {disabled_attr}>M+0 -> todos</button>
+                <button class="mini-btn ghost" type="button" data-action="clear-row" data-row="{row_id}" {disabled_attr}>Limpar</button>
+              </td>
             </tr>
             """
         )
@@ -1123,7 +1137,7 @@ def render_section_table(section, state):
         <table>
           <thead>
             <tr>
-              <th>Exposições</th><th>Portifólio</th><th>Unid.</th>{month_headers}
+              <th>Exposições</th><th>Portifólio</th><th>Unid.</th>{month_headers}<th>Acoes</th>
             </tr>
           </thead>
           <tbody>{''.join(sheet_rows)}</tbody>
@@ -1380,9 +1394,18 @@ def render_main_page(state, metrics, flash_msg):
     .table-wrap{{overflow:auto;border:1px solid var(--line);border-radius:8px}}
     table{{width:100%;border-collapse:collapse;min-width:1100px}}
     th,td{{padding:8px;border-bottom:1px solid var(--line);text-align:left;font-size:.9rem}}
-    th{{font-size:.72rem;color:var(--muted);text-transform:uppercase}}
+    th{{font-size:.72rem;color:var(--muted);text-transform:uppercase;background:#f5f8f6;position:sticky;top:0;z-index:2}}
     input,textarea{{width:100%;padding:7px;border:1px solid #c8cfca;border-radius:6px;background:#fff}}
+    input.grid-input:focus{{outline:2px solid #7fa694;border-color:#5f8e79}}
     input.locked-input{{background:#eef2ef;color:#48524d;border-color:#d4ddd7;font-weight:700;cursor:not-allowed}}
+    .table-wrap td:first-child,.table-wrap th:first-child{{position:sticky;left:0;background:#fff;z-index:1}}
+    .table-wrap th:first-child{{z-index:3;background:#f5f8f6}}
+    .action-cell{{white-space:nowrap;min-width:170px}}
+    .mini-btn{{padding:4px 7px;font-size:.75rem;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}}
+    .mini-btn.ghost{{background:#fff;color:var(--accent)}}
+    .mini-btn[disabled]{{opacity:.45;cursor:not-allowed}}
+    .helper-bar{{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px}}
+    .helper-bar .hint{{font-size:.82rem;color:var(--muted)}}
     .formgrid{{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px}}
     .field label{{display:block;font-size:.75rem;color:var(--muted);text-transform:uppercase;margin-bottom:4px}}
     .kpis{{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px;margin-top:10px}}
@@ -1408,6 +1431,10 @@ def render_main_page(state, metrics, flash_msg):
         </div>
       </div>
       <div class="card" style="margin-bottom:12px"><p class="muted" style="margin:0">{escape(flash_msg)}</p></div>
+      <div class="helper-bar">
+        <span class="hint">Atalho: Enter move para a proxima coluna. Use "M+0 -> todos" para preencher linha rapidamente.</span>
+        <span class="hint">NET ENERGETICO permanece travado e calculado automatico.</span>
+      </div>
 
       <section class="card" style="margin-bottom:12px">
         <h2>Empresa, importacao e modelos</h2>
@@ -1533,6 +1560,39 @@ def render_main_page(state, metrics, flash_msg):
       </section>
     </form>
   </div>
+  <script>
+    (function () {{
+      function rowInputs(rowId) {{
+        return Array.from(document.querySelectorAll('input.grid-input[data-row="' + rowId + '"]'));
+      }}
+
+      document.addEventListener("click", function (ev) {{
+        var btn = ev.target.closest("button[data-action]");
+        if (!btn || btn.disabled) return;
+        var action = btn.getAttribute("data-action");
+        var row = btn.getAttribute("data-row");
+        var inputs = rowInputs(row);
+        if (!inputs.length) return;
+        if (action === "fill-m0") {{
+          var val = inputs[0].value;
+          inputs.forEach(function (i) {{ i.value = val; }});
+        }} else if (action === "clear-row") {{
+          inputs.forEach(function (i) {{ i.value = ""; }});
+        }}
+      }});
+
+      document.addEventListener("keydown", function (ev) {{
+        if (ev.key !== "Enter") return;
+        var target = ev.target;
+        if (!target.classList || !target.classList.contains("grid-input")) return;
+        ev.preventDefault();
+        var row = target.getAttribute("data-row");
+        var col = Number(target.getAttribute("data-col") || "0");
+        var next = document.querySelector('input.grid-input[data-row="' + row + '"][data-col="' + (col + 1) + '"]');
+        if (next) next.focus();
+      }});
+    }})();
+  </script>
 </body>
 </html>"""
 
