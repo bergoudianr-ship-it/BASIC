@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Simulador FA CCEE</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0d1b2a;--surf:#162032;--surf2:#1e2d42;--surf3:#243347;
+  --border:#2a3f5a;--acc:#2979ff;--amb:#ffb300;
+  --text:#e8edf3;--muted:#7a90a8;
+  --green:#00c853;--yellow:#ffb300;--red:#f44336;
+  --r:6px;--font:'Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;}
+
+/* ---- HEADER ---- */
+header{background:var(--surf);border-bottom:1px solid var(--border);padding:10px 20px;
+  display:flex;align-items:center;gap:12px;}
+header h1{font-size:16px;color:var(--acc);font-weight:700;white-space:nowrap;}
+#hdr-info{color:var(--muted);font-size:11px;}
+#hdr-badges{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.hbadge{padding:6px 14px;border-radius:4px;font-weight:700;font-size:13px;border:1px solid;}
+.hb-gray{background:rgba(122,144,168,.1);color:var(--muted);border-color:var(--border);}
+.hb-green{background:rgba(0,200,83,.1);color:var(--green);border-color:var(--green);}
+.hb-yellow{background:rgba(255,179,0,.1);color:var(--yellow);border-color:var(--yellow);}
+.hb-red{background:rgba(244,67,54,.1);color:var(--red);border-color:var(--red);}
+
+/* ---- NAV ---- */
+nav{background:var(--surf);border-bottom:2px solid var(--border);display:flex;}
+nav button{background:none;border:none;color:var(--muted);padding:9px 18px;cursor:pointer;
+  font-size:13px;border-bottom:2px solid transparent;margin-bottom:-2px;transition:.15s;}
+nav button.active{color:var(--acc);border-bottom-color:var(--acc);}
+nav button:hover:not(.active){color:var(--text);}
+
+main{padding:20px;max-width:1500px;margin:0 auto;}
+.tab{display:none;}.tab.active{display:block;}
+
+/* ---- CARDS ---- */
+.card{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);
+  padding:16px;margin-bottom:14px;}
+.card-title{font-size:13px;font-weight:700;color:var(--acc);margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;}
+.section-label{background:var(--surf2);color:var(--amb);padding:3px 10px;
+  border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.5px;}
+
+/* ---- GRID ---- */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.g6{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;}
+
+/* ---- FORM ---- */
+label{display:block;color:var(--muted);font-size:11px;margin-bottom:3px;}
+input[type=number],input[type=text],input[type=date]{
+  width:100%;background:var(--surf2);border:1px solid var(--border);
+  color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;}
+input:focus{outline:none;border-color:var(--acc);}
+
+/* ---- BUTTONS ---- */
+.btn{background:var(--acc);color:#fff;border:none;padding:7px 16px;
+  border-radius:4px;cursor:pointer;font-size:12px;}
+.btn:hover{opacity:.85;}
+.btn-out{background:none;color:var(--acc);border:1px solid var(--acc);
+  padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px;}
+.btn-out:hover{background:rgba(41,121,255,.1);}
+.btn-amb{background:var(--amb);color:#000;border:none;padding:7px 16px;
+  border-radius:4px;cursor:pointer;font-size:12px;}
+.btn-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+
+/* ---- TABLES ---- */
+.tbl-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead tr{background:var(--surf2);}
+th{padding:6px 10px;text-align:right;font-weight:600;color:var(--muted);
+  border:1px solid var(--border);white-space:nowrap;}
+th:first-child,th:nth-child(2){text-align:left;}
+td{padding:4px 8px;border:1px solid rgba(42,63,90,.4);text-align:right;vertical-align:middle;}
+td:first-child,td:nth-child(2){text-align:left;color:var(--muted);}
+tr:hover td{background:rgba(41,121,255,.04);}
+td input{width:90px;background:var(--surf3);border:1px solid var(--border);
+  color:var(--text);padding:3px 5px;border-radius:3px;font-size:11px;text-align:right;}
+td input:focus{border-color:var(--acc);outline:none;}
+.row-section td{background:var(--surf2)!important;color:var(--amb)!important;
+  font-weight:700;font-size:11px;letter-spacing:.5px;text-align:left!important;}
+.row-total td{background:rgba(41,121,255,.08)!important;font-weight:700;}
+.row-check td{background:rgba(0,200,83,.08)!important;color:var(--green)!important;}
+.row-pmedio td{background:rgba(255,179,0,.05)!important;}
+.col-v{min-width:100px;}
+
+/* ---- METRICS ---- */
+.metric{background:var(--surf2);border-radius:var(--r);padding:12px;text-align:center;}
+.metric .val{font-size:18px;font-weight:700;}
+.metric .lbl{font-size:10px;color:var(--muted);margin-top:3px;}
+
+/* ---- FA BADGE ---- */
+.fa-big{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:16px 24px;border-radius:var(--r);border:1px solid;min-width:160px;}
+.fa-big .num{font-size:28px;font-weight:900;}
+.fa-big .sub{font-size:11px;font-weight:400;opacity:.8;margin-top:2px;}
+.fa-gray{background:rgba(122,144,168,.1);color:var(--muted);border-color:var(--border);}
+.fa-green{background:rgba(0,200,83,.1);color:var(--green);border-color:var(--green);}
+.fa-yellow{background:rgba(255,179,0,.1);color:var(--yellow);border-color:var(--yellow);}
+.fa-red{background:rgba(244,67,54,.1);color:var(--red);border-color:var(--red);}
+
+/* ---- MESSAGES ---- */
+.msg{padding:8px 12px;border-radius:4px;margin:6px 0;font-size:12px;}
+.msg-ok{background:rgba(0,200,83,.1);color:var(--green);border:1px solid var(--green);}
+.msg-err{background:rgba(244,67,54,.1);color:var(--red);border:1px solid var(--red);}
+.msg-info{background:rgba(41,121,255,.1);color:var(--acc);border:1px solid var(--acc);}
+
+/* ---- UPLOAD BOX ---- */
+.upload-drop{border:2px dashed var(--border);border-radius:var(--r);padding:16px;
+  text-align:center;cursor:pointer;transition:.2s;}
+.upload-drop:hover{border-color:var(--acc);}
+.upload-drop input{display:none;}
+
+/* ---- CHART ---- */
+.chart-h{position:relative;height:230px;}
+
+/* ---- SEMAFORO ---- */
+.sema{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:4px;}
+.s-green{background:var(--green);}.s-yellow{background:var(--yellow);}.s-red{background:var(--red);}
+
+footer{text-align:center;padding:16px;color:var(--muted);font-size:10px;
+  border-top:1px solid var(--border);margin-top:24px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Simulador FA CCEE</h1>
+  <span id="hdr-info">—</span>
+  <div id="hdr-badges">
+    <span id="hb-ris" class="hbadge hb-gray">FA Risco —</span>
+    <span id="hb-div" class="hbadge hb-gray">FA Divulgado —</span>
+    <span id="hb-rwa" class="hbadge hb-gray">RWA —</span>
+    <span id="hb-pla" class="hbadge hb-gray">PLA —</span>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showTab('premissas')">Premissas</button>
+  <button onclick="showTab('pla')">Patrimônio Líquido Ajustado</button>
+  <button onclick="showTab('portfolio')">Declaração Portfólio</button>
+  <button onclick="showTab('calculo')">Cálculo VaR / Consolidado</button>
+  <button onclick="showTab('historico')">Histórico</button>
+</nav>
+
+<main>
+
+<!-- ===================== PREMISSAS ===================== -->
+<div id="tab-premissas" class="tab active">
+  <div class="g2">
+    <div class="card">
+      <div class="card-title">📊 Atualização Semanal — Planilha CCEE/DCIDE</div>
+      <div class="upload-drop" onclick="document.getElementById('up-ccee').click()">
+        <input type="file" id="up-ccee" accept=".xlsx" onchange="uploadCCEE(this)">
+        <div style="font-size:28px;margin-bottom:6px;">⬆</div>
+        <div style="font-weight:600;">Carregar planilha semanal CCEE (.xlsx)</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:4px;">
+          Atualiza Forward, Volatilidades, Stress, Horas e PLD automaticamente
+        </div>
+      </div>
+      <div id="msg-ccee"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚙ Parâmetros</div>
+      <div class="g2">
+        <div><label>Data de Referência</label><input type="date" id="p-data" onchange="premChanged()"></div>
+        <div><label>Intervalo de Confiança (φ)</label><input type="number" id="p-phi" step="0.0001" onchange="premChanged()"></div>
+        <div><label>Dias para Liquidação (D)</label><input type="number" id="p-d" step="1" min="1" onchange="premChanged()"></div>
+        <div><label>PLD Mínimo (R$/MWh)</label><input type="number" id="p-pldmin" step="0.01" onchange="premChanged()"></div>
+        <div><label>PLD Máximo (R$/MWh)</label><input type="number" id="p-pldmax" step="0.01" onchange="premChanged()"></div>
+        <div><label>Correlação (ρ)</label><input type="number" id="p-rho" step="0.01" value="1" onchange="premChanged()"></div>
+      </div>
+      <div class="btn-row"><button class="btn" onclick="salvarPremissas()">Salvar Premissas</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📈 Curva Forward DCIDE (R$/MWh)</div>
+    <div class="tbl-wrap" id="tbl-forward"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📉 Volatilidades, Preços de Estresse e Horas</div>
+    <div class="tbl-wrap" id="tbl-vsh"></div>
+  </div>
+</div>
+
+<!-- ===================== PLA ===================== -->
+<div id="tab-pla" class="tab">
+  <div class="card">
+    <div class="card-title">🏦 Patrimônio Líquido Ajustado — Anexo I Manual CCEE v2023.2.0
+      <a href="https://www2.aneel.gov.br/cedoc/aren20231072_2.pdf" target="_blank"
+         style="font-size:10px;color:var(--acc);margin-left:8px;">Ver Manual ↗</a>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:50px;">Item</th>
+        <th style="width:40%;">Descrição</th>
+        <th style="width:200px;">Valor (R$)</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td style="font-weight:700;">PL Bruto</td>
+          <td style="color:var(--text);">Patrimônio Líquido Bruto</td>
+          <td><input type="number" id="pla-bruto" step="1000" oninput="plaChanged()" placeholder="0"></td>
+        </tr>
+        <tr class="row-section"><td colspan="3">DEDUÇÕES — Anexo I do Manual de Monitoramento Prudencial</td></tr>
+        <tr id="ded-row-0"><td>I</td><td><input type="text" id="ded-desc-0" placeholder="Descrição (opcional)" style="width:100%;"></td><td><input type="number" id="ded-val-0" step="1000" oninput="plaChanged()" placeholder="0"></td></tr>
+        <tr id="ded-row-1"><td>II</td><td><input type="text" id="ded-desc-1" placeholder="Descrição (opcional)" style="width:100%;"></td><td><input type="number" id="ded-val-1" step="1000" oninput="plaChanged()" placeholder="0"></td></tr>
+        <tr id="ded-row-2"><td>III</td><td><input type="text" id="ded-desc-2" placeholder="Descrição (opcional)" style="width:100%;"></td><td><input type="number" id="ded-val-2" step="1000" oninput="plaChanged()" placeholder="0"></td></tr>
+        <tr id="ded-row-3"><td>IV</td><td><input type="text" id="ded-desc-3" placeholder="Descrição (opcional)" style="width:100%;"></td><td><input type="number" id="ded-val-3" step="1000" oninput="plaChanged()" placeholder="0"></td></tr>
+        <tr id="ded-row-4"><td>V</td><td><input type="text" id="ded-desc-4" placeholder="Descrição (opcional)" style="width:100%;"></td><td><input type="number" id="ded-val-4" step="1000" oninput="plaChanged()" placeholder="0"></td></tr>
+        <tr id="ded-row-5"><td>VI</td><td><input type="text" id="ded-desc-5" placeholder="Descrição (opcional)" style="width:100%;"></td><td><input type="number" id="ded-val-5" step="1000" oninput="plaChanged()" placeholder="0"></td></tr>
+        <tr id="ded-row-6"><td>VII</td><td><input type="text" id="ded-desc-6" placeholder="Descrição (opcional)" style="width:100%;"></td><td><input type="number" id="ded-val-6" step="1000" oninput="plaChanged()" placeholder="0"></td></tr>
+        <tr id="ded-row-7"><td>VIII</td><td><input type="text" id="ded-desc-7" placeholder="Descrição (opcional)" style="width:100%;"></td><td><input type="number" id="ded-val-7" step="1000" oninput="plaChanged()" placeholder="0"></td></tr>
+        <tr class="row-total">
+          <td colspan="2" style="text-align:right;font-weight:700;color:var(--text);">PLA = PL Bruto − Σ Deduções</td>
+          <td style="text-align:right;font-size:16px;font-weight:900;" id="pla-result">R$ 0</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="btn-row"><button class="btn" onclick="salvarEmpresa()">Salvar PLA</button></div>
+  </div>
+</div>
+
+<!-- ===================== PORTFÓLIO ===================== -->
+<div id="tab-portfolio" class="tab">
+  <div class="card" style="margin-bottom:10px;">
+    <div class="card-title">📋 Declaração Portfólio</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button class="btn-out" onclick="downloadModelo()">⬇ Baixar Modelo .xlsx</button>
+      <div class="upload-drop" style="padding:8px 14px;display:inline-block;" onclick="document.getElementById('up-port').click()">
+        <input type="file" id="up-port" accept=".xlsx" onchange="uploadPortfolio(this)">
+        ⬆ Carregar Portfólio Preenchido
+      </div>
+      <div id="msg-port"></div>
+      <button class="btn" style="margin-left:auto;" onclick="salvarEmpresa()">Salvar & Recalcular</button>
+      <button class="btn-amb" onclick="salvarHistorico()">Registrar no Histórico</button>
+    </div>
+    <div id="msg-emp"></div>
+  </div>
+
+  <!-- SEÇÃO 1: PREÇO FIXO -->
+  <div class="card">
+    <div class="card-title"><span class="section-label">SEÇÃO 1</span> Preço Fixo, Consumo e Geração</div>
+    <p style="color:var(--muted);font-size:11px;margin-bottom:8px;">
+      Exposições vendidas são negativas. Recurso físico: marcar ao PM dos contratos de venda. Requisito físico: marcar ao PM dos contratos de compra.
+    </p>
+    <div class="tbl-wrap" id="tbl-pf"></div>
+  </div>
+
+  <!-- SEÇÃO 2: PREÇO VARIÁVEL -->
+  <div class="card">
+    <div class="card-title"><span class="section-label">SEÇÃO 2</span> Preço Variável (PLD)</div>
+    <p style="color:var(--muted);font-size:11px;margin-bottom:8px;">
+      Contratos atrelados ao PLD. PM deve ser apenas o spread ponderado pelo volume. Apenas o resultado financeiro é utilizado no FA.
+    </p>
+    <div class="tbl-wrap" id="tbl-pv"></div>
+  </div>
+
+  <!-- SEÇÃO 3: DERIVATIVOS -->
+  <div class="card">
+    <div class="card-title"><span class="section-label">SEÇÃO 3</span> Derivativos de Energia</div>
+    <p style="color:var(--muted);font-size:11px;margin-bottom:8px;">
+      Apenas derivativos de energia devem ser declarados nesta seção.
+    </p>
+    <div class="tbl-wrap" id="tbl-der"></div>
+  </div>
+
+  <!-- SEÇÃO 4: EFM REGULADO -->
+  <div class="card">
+    <div class="card-title"><span class="section-label">SEÇÃO 4</span> Efeitos Financeiros do Mercado Regulado</div>
+    <p style="color:var(--muted);font-size:11px;margin-bottom:8px;">
+      Receitas de ACR e outros efeitos financeiros do mercado regulado (R$). Não incluir CCEAR-Q.
+    </p>
+    <div class="tbl-wrap" id="tbl-efm"></div>
+  </div>
+</div>
+
+<!-- ===================== CÁLCULO ===================== -->
+<div id="tab-calculo" class="tab">
+  <!-- FA Result -->
+  <div class="card">
+    <div class="card-title">🏆 Fator de Alavancagem — Resultado</div>
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
+      <div id="fa-ris-badge" class="fa-big fa-gray"><div class="num">—</div><div class="sub">FA Risco (RWA / PLA)</div></div>
+      <div id="fa-div-badge" class="fa-big fa-gray"><div class="num">—</div><div class="sub">FA Divulgado</div></div>
+      <div style="flex:1;min-width:300px;">
+        <div class="g4">
+          <div class="metric"><div class="val" id="r-rwa">—</div><div class="lbl">RWA (R$)</div></div>
+          <div class="metric"><div class="val" id="r-resfin">—</div><div class="lbl">Resultado Financeiro (R$)</div></div>
+          <div class="metric"><div class="val" id="r-pla">—</div><div class="lbl">PLA (R$)</div></div>
+          <div class="metric"><div class="val" id="r-var">—</div><div class="lbl">VaR Total (R$)</div></div>
+        </div>
+        <div class="g4" style="margin-top:8px;">
+          <div class="metric"><div class="val" id="r-mtm">—</div><div class="lbl">MtM (R$)</div></div>
+          <div class="metric"><div class="val" id="r-rescontr">—</div><div class="lbl">Res. Contratual (R$)</div></div>
+          <div class="metric"><div class="val" id="r-finpv">—</div><div class="lbl">Fin. PLD+ (R$)</div></div>
+          <div class="metric"><div class="val" id="r-efm">—</div><div class="lbl">EFM Regulado (R$)</div></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--muted);">
+      <span class="sema s-green"></span>FA &lt; 1 — Normal &nbsp;|&nbsp;
+      <span class="sema s-yellow"></span>1 ≤ FA ≤ 3 — Atenção &nbsp;|&nbsp;
+      <span class="sema s-red"></span>FA &gt; 3 — Crítico &nbsp;|&nbsp;
+      K=0 e θ=0 (período sombra) &nbsp;|&nbsp; Manual CCEE v2023.2.0
+    </div>
+  </div>
+
+  <!-- Cálculo VaR por vértice -->
+  <div class="card">
+    <div class="card-title">📊 Cálculo VaR e Teste de Estresse — por Vértice</div>
+    <div class="tbl-wrap" id="tbl-var"></div>
+  </div>
+
+  <!-- Consolidado -->
+  <div class="card">
+    <div class="card-title">📋 Consolidado — Exposições e Resultados por Vértice</div>
+    <div class="tbl-wrap" id="tbl-consolidado"></div>
+  </div>
+
+  <!-- Gráficos -->
+  <div class="g2" style="margin-top:14px;">
+    <div class="card"><div class="card-title">Exposição NET por Vértice (MWm)</div><div class="chart-h"><canvas id="ch-exp"></canvas></div></div>
+    <div class="card"><div class="card-title">MtM por Vértice (R$)</div><div class="chart-h"><canvas id="ch-mtm"></canvas></div></div>
+    <div class="card"><div class="card-title">VaR por Vértice (R$)</div><div class="chart-h"><canvas id="ch-var"></canvas></div></div>
+    <div class="card"><div class="card-title">Stress Test por Vértice (R$)</div><div class="chart-h"><canvas id="ch-stest"></canvas></div></div>
+  </div>
+</div>
+
+<!-- ===================== HISTÓRICO ===================== -->
+<div id="tab-historico" class="tab">
+  <div class="card">
+    <div class="card-title">📅 Série Temporal Semanal</div>
+    <div class="btn-row" style="margin-bottom:12px;">
+      <button class="btn-out" onclick="exportCSV()">⬇ Exportar CSV</button>
+    </div>
+    <div class="tbl-wrap" id="tbl-hist"></div>
+  </div>
+  <div class="g2">
+    <div class="card"><div class="card-title">FA Risco e FA Divulgado</div><div class="chart-h"><canvas id="ch-hfa"></canvas></div></div>
+    <div class="card"><div class="card-title">RWA × PLA (R$)</div><div class="chart-h"><canvas id="ch-hrwa"></canvas></div></div>
+  </div>
+</div>
+
+</main>
+
+<footer>Simulação baseada no Manual CCEE v2023.2.0 — K=0 e θ=0 (período sombra) — Curva Forward DCIDE/CCEE — Uso interno — Valores oficiais apurados pela CCEE</footer>
+
+<script>
+// ============================================================
+// CONSTANTS
+// ============================================================
+const VX = ["M+0","M+1","M+2","M+3","M+4","M+5","M+6"];
+const SUBMS = ["SE/CO","SUL","NE","N"];
+const SUBM_LABELS = {"SE/CO":"SUDESTE/CENTRO-OESTE","SUL":"SUL","NE":"NORDESTE","N":"NORTE"};
+const DED_ITENS = ["I","II","III","IV","V","VI","VII","VIII"];
+
+// ============================================================
+// STATE
+// ============================================================
+let premissas = {}, emp = {}, lastEmp = null;
+let charts = {};
+
+// ============================================================
+// HELPERS
+// ============================================================
+const fmtN = (v,d=2) => v==null||v===undefined ? '—' : Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtR = (v,d=0) => v==null ? '—' : 'R$ '+fmtN(v,d);
+const fmtM = v => v==null ? '—' : fmtR(v/1e6,2)+' mi';
+const faClass = v => v==null ? 'fa-gray' : v<1 ? 'fa-green' : v<=3 ? 'fa-yellow' : 'fa-red';
+const hbClass = v => v==null ? 'hb-gray' : v<1 ? 'hb-green' : v<=3 ? 'hb-yellow' : 'hb-red';
+function showMsg(id, txt, type='ok'){
+  const el=document.getElementById(id); if(!el) return;
+  el.innerHTML=`<div class="msg msg-${type}">${txt}</div>`;
+  if(type==='ok') setTimeout(()=>el.innerHTML='',5000);
+}
+function inp(id, def=0){ const e=document.getElementById(id); return e ? (parseFloat(e.value)||def) : def; }
+
+// ============================================================
+// TABS
+// ============================================================
+const TABS = ['premissas','pla','portfolio','calculo','historico'];
+function showTab(name){
+  document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.querySelectorAll('nav button')[TABS.indexOf(name)].classList.add('active');
+  if(name==='calculo') renderCalculo();
+  if(name==='historico') loadHistorico();
+}
+// ============================================================
+// INIT
+// ============================================================
+async function init(){
+  premissas = await fetch('/api/premissas').then(r=>r.json());
+  emp = await fetch('/api/empresa').then(r=>r.json());
+  renderPremissas();
+  loadEmpresaForm();
+  renderPortfolioTables('emp', emp, triggerCalcEmp);
+  await calcularEmp();
+}
+
+// ============================================================
+// PREMISSAS
+// ============================================================
+function renderPremissas(){
+  const p = premissas;
+  document.getElementById('p-data').value = p.data_referencia||'';
+  document.getElementById('p-phi').value = p.phi_norm||'-1.6449';
+  document.getElementById('p-d').value = p.dias_liquidacao||1;
+  document.getElementById('p-pldmin').value = p.pld_min||57.31;
+  document.getElementById('p-pldmax').value = p.pld_max||785.27;
+  document.getElementById('hdr-info').textContent = `Premissas: ${p.data_referencia||'—'} | φ=${p.phi_norm||''} | D=${p.dias_liquidacao||''} | PLD [${p.pld_min||''}–${p.pld_max||''}]`;
+
+  // Forward table
+  const fwd = p.forward||{};
+  const keys = ['SECO','SUL','NE','N','I0','I5','I8','I1'];
+  const labels = ['SECO/CONV (R$/MWh)','SUL – spread (R$/MWh)','NORDESTE – spread (R$/MWh)','NORTE – spread (R$/MWh)','INCENTIVADA 0% (R$/MWh)','INCENTIVADA 50%/CQ5 (R$/MWh)','INCENTIVADA 80% (R$/MWh)','INCENTIVADA 100% (R$/MWh)'];
+  let h = `<table><thead><tr><th>Curva Forward DCIDE</th>`+VX.map(v=>`<th class="col-v">${v}</th>`).join('')+`</tr></thead><tbody>`;
+  keys.forEach((k,i)=>{ h+=`<tr><td>${labels[i]}</td>`+VX.map(v=>`<td>${fmtN(fwd[v]?.[k])}</td>`).join('')+`</tr>`; });
+  h+=`</tbody></table>`;
+  document.getElementById('tbl-forward').innerHTML=h;
+
+  // Vol/Stress/Horas table
+  const vol=p.volatilidades||{}, sl=p.stress_long||{}, ss=p.stress_short||{}, hr=p.horas||{};
+  let h2=`<table><thead><tr><th>Parâmetro / Vértice</th>`+VX.map(v=>`<th>${v}</th>`).join('')+`</tr></thead><tbody>`;
+  h2+=`<tr><td>Volatilidade σ (%)</td>`+VX.map(v=>`<td>${fmtN((vol[v]||0)*100,3)}</td>`).join('')+`</tr>`;
+  h2+=`<tr><td>Preço de Estresse Long (R$/MWh)</td>`+VX.map(v=>`<td>${fmtN(sl[v])}</td>`).join('')+`</tr>`;
+  h2+=`<tr><td>Preço de Estresse Short (R$/MWh)</td>`+VX.map(v=>`<td>${fmtN(ss[v])}</td>`).join('')+`</tr>`;
+  h2+=`<tr><td>Horas / Mês</td>`+VX.map(v=>`<td>${hr[v]||0}</td>`).join('')+`</tr>`;
+  h2+=`</tbody></table>`;
+  document.getElementById('tbl-vsh').innerHTML=h2;
+}
+
+function premChanged(){
+  premissas.data_referencia = document.getElementById('p-data').value;
+  premissas.phi_norm = parseFloat(document.getElementById('p-phi').value)||0;
+  premissas.dias_liquidacao = parseInt(document.getElementById('p-d').value)||1;
+  premissas.pld_min = parseFloat(document.getElementById('p-pldmin').value)||0;
+  premissas.pld_max = parseFloat(document.getElementById('p-pldmax').value)||0;
+}
+
+async function salvarPremissas(){
+  premChanged();
+  await fetch('/api/premissas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(premissas)});
+  showMsg('msg-ccee','Premissas salvas.');
+  renderPremissas();
+  await calcularEmp();
+}
+
+async function uploadCCEE(input){
+  const file=input.files[0]; if(!file) return;
+  const fd=new FormData(); fd.append('file',file);
+  const res=await fetch('/api/upload/premissas',{method:'POST',body:fd}).then(r=>r.json());
+  if(res.ok){
+    premissas=await fetch('/api/premissas').then(r=>r.json());
+    renderPremissas();
+    showMsg('msg-ccee',`✔ Planilha CCEE importada — Referência: ${res.data.data_referencia||'?'} | φ=${res.data.phi_norm||''}`,'ok');
+    await calcularEmp();
+  } else {
+    showMsg('msg-ccee','Erro na importação: '+res.errors.join('; '),'err');
+  }
+  input.value='';
+}
+
+// ============================================================
+// PLA FORM
+// ============================================================
+function loadEmpresaForm(){
+  const p=emp.pla||{};
+  document.getElementById('pla-bruto').value = p.pl_bruto||0;
+  (p.deducoes||[]).forEach((d,i)=>{
+    const di=document.getElementById(`ded-desc-${i}`); if(di) di.value=d.descricao||'';
+    const vi=document.getElementById(`ded-val-${i}`); if(vi) vi.value=d.valor||0;
+  });
+  plaChanged();
+}
+
+function plaChanged(){
+  const pl = inp('pla-bruto');
+  const ded = DED_ITENS.reduce((s,_,i)=>s+inp(`ded-val-${i}`),0);
+  const pla = pl-ded;
+  document.getElementById('pla-result').textContent = fmtR(pla);
+  document.getElementById('pla-result').style.color = pla>0 ? 'var(--green)' : pla<0 ? 'var(--red)' : 'var(--muted)';
+  // update emp object
+  emp.pla = { pl_bruto:pl, deducoes: DED_ITENS.map((_,i)=>({item:DED_ITENS[i],valor:inp(`ded-val-${i}`),descricao:document.getElementById(`ded-desc-${i}`).value})) };
+  triggerCalcEmp();
+}
+
+// ============================================================
+// PORTFOLIO TABLES — reusuable for emp and sim
+// ============================================================
+function renderPortfolioTables(ctx, data, onChange){
+  renderSection(ctx, 'pf', data.preco_fixo, 'tbl-pf', onChange);
+  renderSection(ctx, 'pv', data.preco_variavel, 'tbl-pv', onChange);
+  renderDerSection(ctx, data.derivativos, 'tbl-der', onChange);
+  renderEFM(ctx, data.efm_regulado, 'tbl-efm', onChange);
+}
+
+function renderSection(ctx, sec, secData, containerId, onChange){
+  const el=document.getElementById(containerId); if(!el) return;
+  const hdr=`<table><thead><tr>
+    <th style="min-width:220px;">Exposições</th>
+    <th style="width:80px;">Unid.</th>
+    ${VX.map(v=>`<th class="col-v">${v}</th>`).join('')}
+  </tr></thead><tbody>`;
+
+  let rows='';
+  // Submercado NET rows
+  rows+=`<tr class="row-section"><td colspan="${2+VX.length}">EXPOSIÇÃO LÍQUIDA POR SUBMERCADO (MWm) — posição vendida = negativa</td></tr>`;
+  SUBMS.forEach(s=>{
+    rows+=`<tr><td>${SUBM_LABELS[s]}</td><td>MWm</td>`;
+    VX.forEach(v=>{
+      const val=(secData?.subm?.[s]?.[v])||0;
+      rows+=`<td><input type="number" step="0.1" value="${val}" data-ctx="${ctx}" data-sec="${sec}" data-field="subm" data-sub="${s}" data-v="${v}" onchange="pfChange(this)"></td>`;
+    });
+    rows+=`</tr>`;
+  });
+
+  // PM Recurso / Requisito
+  rows+=`<tr class="row-section"><td colspan="${2+VX.length}">RECURSO E REQUISITO — totais consolidados</td></tr>`;
+  const fields=[
+    {key:'recurso',      label:'RECURSO',            unit:'MWm',     cls:''},
+    {key:'pm_recurso',   label:'PREÇO MÉDIO RECURSO', unit:'R$/MWh',  cls:'row-pmedio'},
+    {key:'requisito',    label:'REQUISITO',           unit:'MWm',     cls:''},
+    {key:'pm_requisito', label:'PREÇO MÉDIO REQUISITO',unit:'R$/MWh', cls:'row-pmedio'},
+  ];
+  fields.forEach(f=>{
+    rows+=`<tr class="${f.cls}"><td>${f.label}</td><td>${f.unit}</td>`;
+    VX.forEach(v=>{
+      const val=(secData?.[f.key]?.[v])||0;
+      rows+=`<td><input type="number" step="${f.unit==='R$/MWh'?'0.01':'0.1'}" value="${val}" data-ctx="${ctx}" data-sec="${sec}" data-field="${f.key}" data-v="${v}" onchange="pfChange(this)"></td>`;
+    });
+    rows+=`</tr>`;
+  });
+
+  // NET (computed)
+  rows+=`<tr class="row-total" id="${ctx}-${sec}-net"><td>NET ENERGÉTICO</td><td>MWm</td>`+VX.map(v=>`<td id="${ctx}-${sec}-net-${v}">0,00</td>`).join('')+`</tr>`;
+  // CHECK
+  rows+=`<tr class="row-check" id="${ctx}-${sec}-chk"><td>CHECK</td><td></td>`+VX.map(v=>`<td id="${ctx}-${sec}-chk-${v}">—</td>`).join('')+`</tr>`;
+
+  el.innerHTML=hdr+rows+`</tbody></table>`;
+  updateNET(ctx, sec, secData);
+}
+
+function renderDerSection(ctx, derData, containerId, onChange){
+  const el=document.getElementById(containerId); if(!el) return;
+  const hdr=`<table><thead><tr>
+    <th style="min-width:220px;">Exposições</th>
+    <th style="width:80px;">Unid.</th>
+    ${VX.map(v=>`<th class="col-v">${v}</th>`).join('')}
+  </tr></thead><tbody>`;
+
+  let rows='';
+  rows+=`<tr class="row-section"><td colspan="${2+VX.length}">EXPOSIÇÃO LÍQUIDA POR SUBMERCADO (MWm)</td></tr>`;
+  SUBMS.forEach(s=>{
+    rows+=`<tr><td>${SUBM_LABELS[s]}</td><td>MWm</td>`;
+    VX.forEach(v=>{
+      const val=(derData?.subm?.[s]?.[v])||0;
+      rows+=`<td><input type="number" step="0.1" value="${val}" data-ctx="${ctx}" data-sec="der" data-field="subm" data-sub="${s}" data-v="${v}" onchange="pfChange(this)"></td>`;
+    });
+    rows+=`</tr>`;
+  });
+  rows+=`<tr class="row-section"><td colspan="${2+VX.length}">RECURSO E REQUISITO</td></tr>`;
+  [{key:'recurso',label:'RECURSO',unit:'MWm'},{key:'pm_recurso',label:'PREÇO MÉDIO RECURSO',unit:'R$/MWh',cls:'row-pmedio'},
+   {key:'requisito',label:'REQUISITO',unit:'MWm'},{key:'pm_requisito',label:'PREÇO MÉDIO REQUISITO',unit:'R$/MWh',cls:'row-pmedio'}
+  ].forEach(f=>{
+    rows+=`<tr class="${f.cls||''}"><td>${f.label}</td><td>${f.unit}</td>`;
+    VX.forEach(v=>{
+      const val=(derData?.[f.key]?.[v])||0;
+      rows+=`<td><input type="number" step="${f.unit==='R$/MWh'?'0.01':'0.1'}" value="${val}" data-ctx="${ctx}" data-sec="der" data-field="${f.key}" data-v="${v}" onchange="pfChange(this)"></td>`;
+    });
+    rows+=`</tr>`;
+  });
+  el.innerHTML=hdr+rows+`</tbody></table>`;
+}
+
+function renderEFM(ctx, efmData, containerId, onChange){
+  const el=document.getElementById(containerId); if(!el) return;
+  const fn = onChange.name||'triggerCalcEmp';
+  let h=`<table><thead><tr><th style="min-width:220px;">Efeitos Financeiros</th><th>Unid.</th>${VX.map(v=>`<th class="col-v">${v}</th>`).join('')}</tr></thead><tbody>`;
+  h+=`<tr><td>Efeitos Financeiros do Mercado Regulado (ACR, etc.)</td><td>R$</td>`;
+  VX.forEach(v=>{
+    h+=`<td><input type="number" step="1000" value="${(efmData?.[v])||0}" data-ctx="${ctx}" data-field="efm" data-v="${v}" onchange="efmChange(this)"></td>`;
+  });
+  h+=`</tr></tbody></table>`;
+  el.innerHTML=h;
+}
+
+// ============================================================
+// INPUT CHANGE HANDLERS
+// ============================================================
+function pfChange(inp){
+  const {sec,field,sub,v} = inp.dataset;
+  const val = parseFloat(inp.value)||0;
+  if(sec==='der'){
+    if(field==='subm') emp.derivativos.subm[sub][v]=val;
+    else emp.derivativos[field][v]=val;
+  } else {
+    const s = sec==='pf' ? 'preco_fixo' : 'preco_variavel';
+    if(field==='subm') emp[s].subm[sub][v]=val;
+    else emp[s][field][v]=val;
+  }
+  if(sec!=='der') updateNET('emp', sec, sec==='pf'?emp.preco_fixo:emp.preco_variavel);
+  triggerCalcEmp();
+}
+
+function efmChange(inp){
+  const {v} = inp.dataset;
+  emp.efm_regulado[v] = parseFloat(inp.value)||0;
+  triggerCalcEmp();
+}
+
+function updateNET(ctx, sec, secData){
+  const netId = `${ctx}-${sec}-net`;
+  if(!document.getElementById(netId)) return;
+  VX.forEach(v=>{
+    const net = (secData?.recurso?.[v]||0) - (secData?.requisito?.[v]||0);
+    const netEl = document.getElementById(`${ctx}-${sec}-net-${v}`);
+    if(netEl) netEl.textContent = fmtN(net,2);
+
+    // CHECK: sum subm == net
+    const sumSubm = SUBMS.reduce((s,sm)=>s+(secData?.subm?.[sm]?.[v]||0),0);
+    const diff = Math.abs(sumSubm - net);
+    const chkEl = document.getElementById(`${ctx}-${sec}-chk-${v}`);
+    if(chkEl){
+      if(net===0 && sumSubm===0){ chkEl.textContent='OK'; chkEl.style.color='var(--green)'; }
+      else if(diff<0.01){ chkEl.textContent='OK'; chkEl.style.color='var(--green)'; }
+      else { chkEl.textContent=`Δ${fmtN(diff,2)}`; chkEl.style.color='var(--red)'; }
+    }
+  });
+}
+
+// ============================================================
+// CALCULATE EMPRESA
+// ============================================================
+let calcTimer=null;
+function triggerCalcEmp(){ clearTimeout(calcTimer); calcTimer=setTimeout(calcularEmp,300); }
+
+async function calcularEmp(){
+  lastEmp = await fetch('/api/calcular').then(r=>r.json());
+  updateHeader(lastEmp);
+  renderResultados(lastEmp, 'emp');
+  if(document.getElementById('tab-calculo').classList.contains('active')) renderCalculo();
+}
+
+async function salvarEmpresa(){
+  emp.pla = { pl_bruto:inp('pla-bruto'), deducoes: DED_ITENS.map((_,i)=>({item:DED_ITENS[i],valor:inp(`ded-val-${i}`),descricao:document.getElementById(`ded-desc-${i}`).value})) };
+  lastEmp = await fetch('/api/empresa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(emp)}).then(r=>r.json());
+  showMsg('msg-emp','Portfólio salvo e recalculado.');
+  updateHeader(lastEmp);
+  renderResultados(lastEmp,'emp');
+  renderCalculo();
+}
+
+async function salvarHistorico(){
+  const res=await fetch('/api/historico/salvar',{method:'POST'}).then(r=>r.json());
+  showMsg('msg-emp',`Salvo no histórico: ${res.entry?.data||'?'} — FA_RIS=${fmtN(res.entry?.fa_ris,4)}`);
+}
+
+
+// ============================================================
+// UPLOAD PORTFOLIO
+// ============================================================
+async function uploadPortfolio(input){
+  const file=input.files[0]; if(!file) return;
+  const fd=new FormData(); fd.append('file',file);
+  const res=await fetch('/api/upload/portfolio',{method:'POST',body:fd}).then(r=>r.json());
+  if(res.ok){
+    emp=Object.assign(emp, res.data);
+    loadEmpresaForm();
+    renderPortfolioTables('emp',emp,triggerCalcEmp);
+    showMsg('msg-port','✔ Portfólio importado com sucesso.');
+    await calcularEmp();
+  } else { showMsg('msg-port','Erro: '+res.errors.join('; '),'err'); }
+  input.value='';
+}
+
+
+function downloadModelo(){ window.open('/api/download/modelo','_blank'); }
+
+// ============================================================
+// RENDER RESULTADOS
+// ============================================================
+function updateHeader(res){
+  const t=res.totais;
+  const ri=t.fa_ris, di=t.fa_divulgado, neg=t.pla_negativo;
+  const rs=neg?'PLA≤0':(ri!=null?fmtN(ri,4):'—');
+  const ds=neg?'PLA≤0':(di!=null?fmtN(di,4):'—');
+  document.getElementById('hb-ris').textContent='FA Risco '+rs;
+  document.getElementById('hb-ris').className='hbadge '+(neg?'hb-gray':hbClass(ri));
+  document.getElementById('hb-div').textContent='FA Divulgado '+ds;
+  document.getElementById('hb-div').className='hbadge '+(neg?'hb-gray':hbClass(di));
+  document.getElementById('hb-rwa').textContent='RWA '+fmtM(t.rwa);
+  document.getElementById('hb-pla').textContent='PLA '+fmtM(t.pla);
+}
+
+function renderResultados(res, ctx){
+  const t=res.totais;
+  if(ctx==='emp'){
+    const neg=t.pla_negativo;
+    const ri=t.fa_ris, di=t.fa_divulgado;
+    const rs=neg?'PLA ≤ 0':(ri!=null?fmtN(ri,4):'—');
+    const ds=neg?'PLA ≤ 0':(di!=null?fmtN(di,4):'—');
+    setBadge('fa-ris-badge',rs,neg?'fa-gray':faClass(ri),'FA Risco');
+    setBadge('fa-div-badge',ds,neg?'fa-gray':faClass(di),'FA Divulgado');
+    document.getElementById('r-rwa').textContent=fmtM(t.rwa);
+    document.getElementById('r-resfin').textContent=fmtM(t.res_fin);
+    document.getElementById('r-pla').textContent=fmtM(t.pla);
+    document.getElementById('r-var').textContent=fmtM(t.var_tot);
+    document.getElementById('r-mtm').textContent=fmtM(t.mtm);
+    document.getElementById('r-rescontr').textContent=fmtM(t.res_contr);
+    document.getElementById('r-finpv').textContent=fmtM(t.fin_pv);
+    document.getElementById('r-efm').textContent=fmtM(t.efm);
+  }
+}
+
+function setBadge(id, val, cls, sub){
+  const el=document.getElementById(id); if(!el) return;
+  el.className='fa-big '+cls;
+  el.innerHTML=`<div class="num">${val}</div><div class="sub">${sub}</div>`;
+}
+
+// ============================================================
+// CALCULO TAB
+// ============================================================
+function renderCalculo(){
+  if(!lastEmp) return;
+  const pv = lastEmp.por_vertice;
+  const t = lastEmp.totais;
+  const p = premissas;
+
+  // VaR table
+  let h=`<table><thead><tr>
+    <th>Mês</th><th>Horas</th><th>NET Total (MWm)</th>
+    <th>Forward SE/CO (R$/MWh)</th><th>Exposição (R$)</th>
+    <th>Percentil</th><th>φ (Dist. Normal)</th>
+    <th>Volatilidade (%)</th><th>Dias Liq.</th>
+    <th>VaR Paramétrico (R$)</th>
+  </tr></thead><tbody>`;
+  VX.forEach(v=>{
+    const d=pv[v]||{};
+    const hr=(p.horas||{})[v]||0;
+    const fwd=(p.forward||{})[v]?.SECO||0;
+    const exp=d.net_total*fwd*hr;
+    const sig=((p.volatilidades||{})[v]||0)*100;
+    h+=`<tr>
+      <td style="text-align:left;">${v}</td>
+      <td>${hr}</td>
+      <td>${fmtN(d.net_total,3)}</td>
+      <td>${fmtN(fwd)}</td>
+      <td>${fmtN(exp,0)}</td>
+      <td>${fmtN((1+Math.abs(p.phi_norm||1.6449))/2*100,2)}%</td>
+      <td>${fmtN(Math.abs(p.phi_norm||1.6449),4)}</td>
+      <td>${fmtN(sig,3)}%</td>
+      <td>${p.dias_liquidacao||1}</td>
+      <td style="font-weight:700;">${fmtN(d.var,0)}</td>
+    </tr>`;
+  });
+  h+=`<tr class="row-total"><td colspan="9" style="text-align:right;">VaR Total (ρ=1)</td><td>${fmtN(t.var_tot,0)}</td></tr>`;
+  h+=`</tbody></table>`;
+  document.getElementById('tbl-var').innerHTML=h;
+
+  // Consolidado
+  let h2=`<table><thead><tr>
+    <th style="min-width:220px;">Item</th><th>Unid.</th>
+    ${VX.map(v=>`<th>${v}</th>`).join('')}<th>Total</th>
+  </tr></thead><tbody>`;
+
+  const grp=(label,unit,rows,total,bold)=>{
+    let s=`<tr class="row-section"><td colspan="${3+VX.length}">${label}</td></tr>`;
+    rows.forEach(r=>{ s+=`<tr${bold?' class="row-total"':''}><td>${r.label}</td><td>${unit}</td>`+VX.map(v=>`<td>${fmtN(r.vals[v],r.dec)}</td>`).join('')+`<td>${total!=null?fmtN(total,r.dec):'—'}</td></tr>`; });
+    return s;
+  };
+
+  // Exposições por submercado
+  h2+=`<tr class="row-section"><td colspan="${3+VX.length}">EXPOSIÇÕES LÍQUIDAS — MWm</td></tr>`;
+  [{s:'net_seco',l:'SE/CO'},{s:'net_sul',l:'SUL'},{s:'net_ne',l:'NORDESTE'},{s:'net_n',l:'NORTE'}].forEach(r=>{
+    h2+=`<tr><td>${r.l}</td><td>MWm</td>`+VX.map(v=>`<td>${fmtN(pv[v][r.s],3)}</td>`).join('')+`<td>—</td></tr>`;
+  });
+  h2+=`<tr class="row-total"><td>NET ENERGÉTICO TOTAL</td><td>MWm</td>`+VX.map(v=>`<td>${fmtN(pv[v].net_total,3)}</td>`).join('')+`<td>—</td></tr>`;
+
+  // Acréscimos
+  h2+=`<tr class="row-section"><td colspan="${3+VX.length}">ACRÉSCIMOS FINANCEIROS (R$)</td></tr>`;
+  [
+    {l:'Resultado Contratual (PF+DER)',k:'res_contr',dec:0},
+    {l:'Financeiro PLD+',k:'fin_pv',dec:0},
+    {l:'EFM Regulado',k:'efm',dec:0},
+    {l:'MtM',k:'mtm',dec:0},
+  ].forEach(r=>{
+    h2+=`<tr><td>${r.l}</td><td>R$</td>`+VX.map(v=>`<td>${fmtN(pv[v][r.k],r.dec)}</td>`).join('')+`<td>—</td></tr>`;
+  });
+  h2+=`<tr class="row-total"><td>Resultado Financeiro Total (Fin)</td><td>R$</td>`+VX.map(()=>`<td>—</td>`).join('')+`<td style="font-weight:900;">${fmtN(t.res_fin,0)}</td></tr>`;
+
+  // VaR/Stress/RWA
+  h2+=`<tr class="row-section"><td colspan="${3+VX.length}">RISCO</td></tr>`;
+  [{l:'VaR Paramétrico',k:'var',dec:0},{l:'Teste de Estresse',k:'stest',dec:0}].forEach(r=>{
+    h2+=`<tr><td>${r.l}</td><td>R$</td>`+VX.map(v=>`<td>${fmtN(pv[v][r.k],r.dec)}</td>`).join('')+`<td>—</td></tr>`;
+  });
+  h2+=`<tr class="row-total"><td>RWA</td><td>R$</td>`+VX.map(()=>`<td>—</td>`).join('')+`<td>${fmtN(t.rwa,0)}</td></tr>`;
+
+  // FA
+  h2+=`<tr class="row-section"><td colspan="${3+VX.length}">FATOR DE ALAVANCAGEM</td></tr>`;
+  h2+=`<tr class="row-total"><td>PLA</td><td>R$</td>`+VX.map(()=>`<td>—</td>`).join('')+`<td>${fmtN(t.pla,0)}</td></tr>`;
+  const risStr=t.pla_negativo?'PLA ≤ 0':(t.fa_ris!=null?fmtN(t.fa_ris,4):'—');
+  const divStr=t.pla_negativo?'PLA ≤ 0':(t.fa_divulgado!=null?fmtN(t.fa_divulgado,4):'—');
+  h2+=`<tr class="row-total"><td style="font-size:14px;">FA Risco (RWA/PLA)</td><td></td>`+VX.map(()=>`<td>—</td>`).join('')+`<td style="font-size:16px;font-weight:900;color:${faColorCSS(t.fa_ris,t.pla_negativo)}">${risStr}</td></tr>`;
+  h2+=`<tr class="row-total"><td style="font-size:14px;">FA Divulgado</td><td></td>`+VX.map(()=>`<td>—</td>`).join('')+`<td style="font-size:16px;font-weight:900;color:${faColorCSS(t.fa_divulgado,t.pla_negativo)}">${divStr}</td></tr>`;
+  h2+=`</tbody></table>`;
+  document.getElementById('tbl-consolidado').innerHTML=h2;
+
+  // Charts
+  mkChart('ch-exp','bar',VX,
+    SUBMS.map((s,i)=>({label:s,data:VX.map(v=>pv[v][['net_seco','net_sul','net_ne','net_n'][i]]||0),backgroundColor:`hsl(${210+i*30},70%,50%)`})));
+  mkChart('ch-mtm','bar',VX,[{label:'MtM R$',data:VX.map(v=>pv[v].mtm||0),backgroundColor:'rgba(255,179,0,.7)'}]);
+  mkChart('ch-var','bar',VX,[{label:'VaR R$',data:VX.map(v=>pv[v].var||0),backgroundColor:'rgba(0,200,83,.7)'}]);
+  mkChart('ch-stest','bar',VX,[{label:'Stress R$',data:VX.map(v=>pv[v].stest||0),backgroundColor:'rgba(244,67,54,.7)'}]);
+}
+
+function faColorCSS(v, neg){ return neg?'var(--muted)':v==null?'var(--muted)':v<1?'var(--green)':v<=3?'var(--yellow)':'var(--red)'; }
+
+
+// ============================================================
+// HISTORICO
+// ============================================================
+async function loadHistorico(){
+  const hist=await fetch('/api/historico').then(r=>r.json())||[];
+  if(!hist.length){ document.getElementById('tbl-hist').innerHTML='<p style="color:var(--muted);padding:10px;">Nenhum registro ainda. Use "Registrar no Histórico" na aba Portfólio.</p>'; return; }
+  let h=`<table><thead><tr><th>Data</th><th>Semana</th><th>FA Risco</th><th>FA Divulgado</th><th>RWA (R$)</th><th>PnL (R$)</th><th>Res.Fin. (R$)</th><th>PLA (R$)</th><th>VaR (R$)</th><th>Stress (R$)</th></tr></thead><tbody>`;
+  [...hist].reverse().forEach(h2=>{
+    h+=`<tr><td style="text-align:left;">${h2.data}</td><td>${h2.semana}</td>
+    <td>${h2.fa_ris!=null?fmtN(h2.fa_ris,4):'—'}</td>
+    <td>${h2.fa_divulgado!=null?fmtN(h2.fa_divulgado,4):'—'}</td>
+    <td>${fmtN(h2.rwa,0)}</td><td>${fmtN(h2.pnl,0)}</td><td>${fmtN(h2.res_fin,0)}</td>
+    <td>${fmtN(h2.pla,0)}</td><td>${fmtN(h2.var_tot,0)}</td><td>${fmtN(h2.stest_tot,0)}</td></tr>`;
+  });
+  document.getElementById('tbl-hist').innerHTML=h+`</tbody></table>`;
+  const labels=hist.map(h=>h.data);
+  mkChart('ch-hfa','line',labels,[
+    {label:'FA Risco',data:hist.map(h=>h.fa_ris),borderColor:'#2979ff',tension:.3,fill:false,pointRadius:4},
+    {label:'FA Divulgado',data:hist.map(h=>h.fa_divulgado),borderColor:'#ffb300',tension:.3,fill:false,pointRadius:4},
+  ]);
+  mkChart('ch-hrwa','line',labels,[
+    {label:'RWA',data:hist.map(h=>h.rwa),borderColor:'#f44336',tension:.3,fill:false,pointRadius:4},
+    {label:'PLA',data:hist.map(h=>h.pla),borderColor:'#00c853',tension:.3,fill:false,pointRadius:4},
+  ]);
+}
+function exportCSV(){ window.open('/api/download/historico_csv','_blank'); }
+
+// ============================================================
+// CHARTS
+// ============================================================
+function mkChart(id,type,labels,datasets){
+  const canvas=document.getElementById(id); if(!canvas) return;
+  if(charts[id]) charts[id].destroy();
+  charts[id]=new Chart(canvas,{type,data:{labels,datasets},options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:'#e8edf3',font:{size:11}}}},
+    scales:{x:{ticks:{color:'#7a90a8'},grid:{color:'rgba(42,63,90,.3)'}},
+            y:{ticks:{color:'#7a90a8'},grid:{color:'rgba(42,63,90,.3)'}}}
+  }});
+}
+
+init();
+</script>
+</body>
+</html>
