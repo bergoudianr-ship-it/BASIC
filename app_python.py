@@ -105,9 +105,11 @@ SECTION_DEFS = [
 
 HISTORY_PATH = Path(__file__).with_name("historico_analises.json")
 UPLOADS_DIR = Path(__file__).with_name("uploads_portfolio")
-DEFAULT_XLSX_PATH = (
-    r"C:\Users\rafac\Documents\Codex\2026-05-27\files-mentioned-by-the-user-manual\simulacao_semanal.xlsx"
-)
+DEFAULT_XLSX_CANDIDATES = [
+    Path.home() / "Downloads" / "2026.05.27 - Arquivo de apoio para simulação (declaração semanal).xlsx",
+    Path(__file__).with_name("simulacao_semanal.xlsx"),
+]
+DEFAULT_XLSX_PATH = str(next((path for path in DEFAULT_XLSX_CANDIDATES if path.exists()), DEFAULT_XLSX_CANDIDATES[-1]))
 
 
 def make_section_state(source_labels, has_pm_requirement):
@@ -137,9 +139,12 @@ def new_default_state():
             "phiZ": 1.6448536269,
             "liquidationDays": 1.0,
             "correlation": 1.0,
+            "correlationMatrix": [[1.0 for _ in range(7)] for _ in range(7)],
             "theta": 0.0,
             "pldMin": 57.31,
             "pldMax": 785.27,
+            "pldMinCurve": [57.31] * 7,
+            "pldMaxCurve": [785.27] * 7,
         },
         "vertex": {
             "hours": DEFAULT_HOURS[:],
@@ -248,7 +253,32 @@ def get_post_state(params):
     state["company"]["note"] = params.get("company_note", [""])[0].strip()
 
     for key, value in state["parameters"].items():
+        if isinstance(value, list):
+            continue
         state["parameters"][key] = parse_number(params.get(f"parameters_{key}", [value])[0], value)
+
+    for i in range(7):
+        state["parameters"]["pldMinCurve"][i] = parse_number(
+            params.get(f"parameters_pldMin_{i}", [state["parameters"]["pldMinCurve"][i]])[0],
+            state["parameters"]["pldMinCurve"][i],
+        )
+        state["parameters"]["pldMaxCurve"][i] = parse_number(
+            params.get(f"parameters_pldMax_{i}", [state["parameters"]["pldMaxCurve"][i]])[0],
+            state["parameters"]["pldMaxCurve"][i],
+        )
+        for j in range(7):
+            state["parameters"]["correlationMatrix"][i][j] = parse_number(
+                params.get(
+                    f"parameters_corr_{i}_{j}",
+                    [state["parameters"]["correlationMatrix"][i][j]],
+                )[0],
+                state["parameters"]["correlationMatrix"][i][j],
+            )
+
+    state["parameters"]["pldMin"] = state["parameters"]["pldMinCurve"][0]
+    state["parameters"]["pldMax"] = state["parameters"]["pldMaxCurve"][0]
+    corr_vals = [state["parameters"]["correlationMatrix"][i][j] for i in range(7) for j in range(7)]
+    state["parameters"]["correlation"] = sum(corr_vals) / len(corr_vals) if corr_vals else state["parameters"]["correlation"]
 
     for i in range(7):
         state["vertex"]["hours"][i] = parse_number(
@@ -288,7 +318,6 @@ def get_post_state(params):
                 data["pmRequirement"][i] = parse_number(
                     params.get(f"sec_{key}_pm_requirement_{i}", [data["pmRequirement"][i]])[0], 0.0
                 )
-            data["netLine"][i] = parse_number(params.get(f"sec_{key}_net_{i}", [data["netLine"][i]])[0], 0.0)
 
     for i in range(7):
         state["portfolio"]["regulatedRevenue"][i] = parse_number(
@@ -308,6 +337,14 @@ def get_post_state(params):
 
 def read_row_values(ws, row):
     return [parse_number(ws.cell(row, 4 + i).value, 0.0) for i in range(7)]
+
+
+def recompute_net_lines(state):
+    for section in SECTION_DEFS:
+        data = state["portfolio"][section["key"]]
+        for i in range(7):
+            data["netLine"][i] = data["resource"][i] - data["requirement"][i]
+    return state
 
 
 def load_calc_state_from_xlsx(path_text):
@@ -332,8 +369,14 @@ def load_calc_state_from_xlsx(path_text):
         imported["parameters"]["liquidationDays"] = parse_number(
             ws_premissas.cell(5, 2).value, imported["parameters"]["liquidationDays"]
         )
-        imported["parameters"]["pldMin"] = parse_number(ws_premissas.cell(13, 2).value, imported["parameters"]["pldMin"])
-        imported["parameters"]["pldMax"] = parse_number(ws_premissas.cell(14, 2).value, imported["parameters"]["pldMax"])
+        imported["parameters"]["pldMinCurve"] = [
+            parse_number(ws_premissas.cell(13, 2 + i).value, imported["parameters"]["pldMinCurve"][i]) for i in range(7)
+        ]
+        imported["parameters"]["pldMaxCurve"] = [
+            parse_number(ws_premissas.cell(14, 2 + i).value, imported["parameters"]["pldMaxCurve"][i]) for i in range(7)
+        ]
+        imported["parameters"]["pldMin"] = imported["parameters"]["pldMinCurve"][0]
+        imported["parameters"]["pldMax"] = imported["parameters"]["pldMaxCurve"][0]
 
         for i in range(7):
             col = 2 + i
@@ -345,7 +388,9 @@ def load_calc_state_from_xlsx(path_text):
         corr_vals = []
         for r in range(17, 24):
             for c in range(2, 9):
-                corr_vals.append(parse_number(ws_premissas.cell(r, c).value, 1.0))
+                value = parse_number(ws_premissas.cell(r, c).value, 1.0)
+                imported["parameters"]["correlationMatrix"][r - 17][c - 2] = value
+                corr_vals.append(value)
         if corr_vals:
             imported["parameters"]["correlation"] = sum(corr_vals) / len(corr_vals)
 
@@ -404,7 +449,7 @@ def load_calc_state_from_xlsx(path_text):
         if abs(pla_sheet) > EPS:
             imported["pla"] = pla_sheet
 
-    return imported
+    return recompute_net_lines(imported)
 
 
 def apply_imported_calc_data(base_state, imported_state):
@@ -467,6 +512,8 @@ def source_exposure_by_month(state, source, i):
 def build_source_month_summary(state, month_results, params):
     summaries = []
     for i, m in enumerate(month_results):
+        pld_min_i = params.get("pldMinCurve", [params["pldMin"]] * 7)[i]
+        pld_max_i = params.get("pldMaxCurve", [params["pldMax"]] * 7)[i]
         entries = []
         for source in RISK_SOURCES:
             exposure = source_exposure_by_month(state, source, i)
@@ -477,9 +524,9 @@ def build_source_month_summary(state, month_results, params):
             mtm = exposure * forward * m["hours"]
             var_value = abs(mtm) * params["phiZ"] * sigma * sqrt(max(0, params["liquidationDays"]))
             if exposure >= 0:
-                stress_price = m["stressLongPrice"] or max(params["pldMin"], forward * (1 - 0.24))
+                stress_price = m["stressLongPrice"] or max(pld_min_i, forward * (1 - 0.24))
             else:
-                stress_price = m["stressShortPrice"] or min(params["pldMax"], forward * (1 + 0.32))
+                stress_price = m["stressShortPrice"] or min(pld_max_i, forward * (1 + 0.32))
             stress = abs(exposure) * m["hours"] * abs(forward - stress_price)
             risk = var_value + params["theta"] * stress
             entries.append(
@@ -522,6 +569,7 @@ def build_source_totals(source_month_summary):
 
 
 def calculate(state):
+    recompute_net_lines(state)
     p = state["parameters"]
     pla = state["pla"]
     sqrt_d = sqrt(max(0, p["liquidationDays"]))
@@ -687,6 +735,7 @@ def append_history_record(state, metrics):
         "company_cnpj": state["company"]["cnpj"],
         "analyst": state["company"]["analyst"],
         "note": state["company"]["note"],
+        "xlsx_path": state.get("xlsxPath", ""),
         "verdict": metrics["verdict"],
         "fa": metrics["fa"],
         "faRisk": metrics["faRisk"],
@@ -695,9 +744,21 @@ def append_history_record(state, metrics):
         "varTotal": metrics["varTotal"],
         "stressTotal": metrics["stressTotal"],
         "resFin": metrics["resFin"],
+        "pnl": metrics["pnl"],
+        "acrRevenue": metrics["acrRevenue"],
+        "stressRatio": metrics["stressRatio"],
+        "topSourceRatio": metrics["topSourceRatio"],
         "score": metrics["score"],
         "rating": metrics["rating"],
         "notes": metrics["notes"],
+        "parameters": {
+            "confidence": state["parameters"]["confidence"],
+            "liquidationDays": state["parameters"]["liquidationDays"],
+            "phiZ": state["parameters"]["phiZ"],
+            "correlation": state["parameters"]["correlation"],
+            "theta": state["parameters"]["theta"],
+            "faReference": state["parameters"]["faReference"],
+        },
     }
     records.append(record)
     records = records[-500:]
@@ -705,27 +766,100 @@ def append_history_record(state, metrics):
     return record
 
 
+def initial_state():
+    state = new_default_state()
+    try:
+        imported = load_calc_state_from_xlsx(state["xlsxPath"])
+        return apply_imported_calc_data(state, imported)
+    except Exception:
+        return state
+
+
+APP_STATE = initial_state()
+
+
 def render_history_page():
-    records = load_history()
-    rows = []
-    for rec in reversed(records):
-        rows.append(
+    records = list(reversed(load_history()))
+    total_analyses = len(records)
+    unique_companies = len({(rec.get("company_name", "").strip().lower(), rec.get("company_cnpj", "").strip()) for rec in records})
+    avg_score = br_number(
+        sum(parse_number(rec.get("score"), 0.0) for rec in records) / total_analyses if total_analyses else 0.0,
+        1,
+    )
+    last_timestamp = records[0].get("timestamp", "-") if records else "-"
+
+    grouped = {}
+    for rec in records:
+        name = rec.get("company_name", "").strip() or "Empresa sem nome"
+        cnpj = rec.get("company_cnpj", "").strip() or "CNPJ nao informado"
+        key = f"{name}|||{cnpj}"
+        if key not in grouped:
+            grouped[key] = {"name": name, "cnpj": cnpj, "records": []}
+        grouped[key]["records"].append(rec)
+
+    company_blocks = []
+    for group in grouped.values():
+        rows = []
+        for rec in group["records"]:
+            params = rec.get("parameters", {})
+            notes_text = " | ".join(rec.get("notes", []))
+            params_text = (
+                f"Conf {br_number(parse_number(params.get('confidence'), 0.0), 1)}% | "
+                f"Dias {br_number(parse_number(params.get('liquidationDays'), 0.0), 2)} | "
+                f"Theta {br_number(parse_number(params.get('theta'), 0.0), 4)} | "
+                f"Corr {br_number(parse_number(params.get('correlation'), 0.0), 3)}"
+            )
+            rows.append(
+                f"""
+                <tr>
+                  <td>{escape(rec.get("timestamp", ""))}</td>
+                  <td>{escape(rec.get("verdict", ""))}</td>
+                  <td>{escape(rec.get("rating", ""))} ({br_number(parse_number(rec.get("score"), 0.0), 1)})</td>
+                  <td>{ratio(parse_number(rec.get("fa"), 0.0))}</td>
+                  <td>{ratio(parse_number(rec.get("faRisk"), 0.0))}</td>
+                  <td>{br_money(parse_number(rec.get("rwa"), 0.0))}</td>
+                  <td>{br_money(parse_number(rec.get("pla"), 0.0))}</td>
+                  <td>{br_money(parse_number(rec.get("varTotal"), 0.0))}</td>
+                  <td>{br_money(parse_number(rec.get("stressTotal"), 0.0))}</td>
+                  <td>{pct(parse_number(rec.get("stressRatio"), 0.0))}</td>
+                  <td>{pct(parse_number(rec.get("topSourceRatio"), 0.0))}</td>
+                  <td>{escape(rec.get("analyst", ""))}</td>
+                  <td>{escape(rec.get("note", ""))}</td>
+                  <td>{escape(params_text)}</td>
+                  <td>{escape(notes_text)}</td>
+                </tr>
+                """
+            )
+
+        company_blocks.append(
             f"""
-            <tr>
-              <td>{escape(rec.get("timestamp", ""))}</td>
-              <td>{escape(rec.get("company_name", ""))}</td>
-              <td>{escape(rec.get("company_cnpj", ""))}</td>
-              <td>{escape(rec.get("verdict", ""))}</td>
-              <td>{ratio(parse_number(rec.get("fa"), 0))}</td>
-              <td>{ratio(parse_number(rec.get("faRisk"), 0))}</td>
-              <td>{br_money(parse_number(rec.get("pla"), 0))}</td>
-              <td>{br_money(parse_number(rec.get("rwa"), 0))}</td>
-              <td>{escape(rec.get("rating", ""))} ({br_number(parse_number(rec.get("score"), 0), 1)})</td>
-            </tr>
+            <details class="company-card" open>
+              <summary>
+                <div>
+                  <strong>{escape(group["name"])}</strong>
+                  <small>{escape(group["cnpj"])}</small>
+                </div>
+                <span>{len(group["records"])} analise(s)</span>
+              </summary>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data/Hora</th><th>Parecer</th><th>Rating</th><th>FA</th><th>FA Risco</th>
+                      <th>RWA</th><th>PLA</th><th>VaR</th><th>Stress</th><th>Stress/PLA</th>
+                      <th>Maior Fonte/PLA</th><th>Analista</th><th>Observacao</th><th>Parametros</th><th>Notas</th>
+                    </tr>
+                  </thead>
+                  <tbody>{''.join(rows)}</tbody>
+                </table>
+              </div>
+            </details>
             """
         )
-    if not rows:
-        rows.append('<tr><td colspan="9">Sem historico salvo ate o momento.</td></tr>')
+
+    if not company_blocks:
+        company_blocks.append('<div class="card empty">Sem historico salvo ate o momento.</div>')
+
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -734,38 +868,47 @@ def render_history_page():
   <title>Historico de Analises</title>
   <style>
     body{{margin:0;background:#f6f6f2;font-family:Segoe UI,Arial,sans-serif;color:#1c221f}}
-    .wrap{{max-width:1240px;margin:0 auto;padding:18px}}
+    .wrap{{max-width:1440px;margin:0 auto;padding:18px}}
     .top{{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}}
     .card{{background:#fff;border:1px solid #d9ddd8;border-radius:8px;padding:14px}}
+    .empty{{margin-top:12px;color:#67706b}}
     a.btn{{display:inline-block;padding:8px 12px;background:#12231e;color:#fff;border-radius:7px;text-decoration:none}}
-    .table-wrap{{overflow:auto;border:1px solid #d9ddd8;border-radius:8px;margin-top:12px}}
-    table{{width:100%;border-collapse:collapse;min-width:980px}}
-    th,td{{padding:8px;border-bottom:1px solid #d9ddd8;text-align:left;font-size:.9rem}}
-    th{{font-size:.72rem;color:#67706b;text-transform:uppercase}}
+    .summary-grid{{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:10px;margin-top:12px}}
+    .summary-grid .card span{{display:block;color:#67706b;font-size:.76rem;text-transform:uppercase}}
+    .summary-grid .card strong{{display:block;margin-top:6px;font-size:1.35rem}}
+    .company-list{{display:grid;gap:12px;margin-top:12px}}
+    details.company-card{{background:#fff;border:1px solid #d9ddd8;border-radius:8px;padding:10px}}
+    details.company-card summary{{list-style:none;display:flex;justify-content:space-between;align-items:center;cursor:pointer;gap:10px}}
+    details.company-card summary::-webkit-details-marker{{display:none}}
+    details.company-card summary strong{{display:block;font-size:1rem}}
+    details.company-card summary small{{display:block;color:#67706b;margin-top:3px}}
+    details.company-card summary span{{font-size:.82rem;color:#43524a;background:#eaf1ed;border-radius:999px;padding:6px 8px}}
+    .table-wrap{{overflow:auto;border:1px solid #d9ddd8;border-radius:8px;margin-top:10px}}
+    table{{width:100%;border-collapse:collapse;min-width:1640px}}
+    th,td{{padding:8px;border-bottom:1px solid #d9ddd8;text-align:left;font-size:.86rem;vertical-align:top}}
+    th{{font-size:.72rem;color:#67706b;text-transform:uppercase;background:#f9faf8;position:sticky;top:0}}
+    @media(max-width:1080px){{.summary-grid{{grid-template-columns:1fr 1fr}}}}
+    @media(max-width:680px){{.summary-grid{{grid-template-columns:1fr}}}}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="top">
       <div>
-        <h1 style="margin:0">Historico de Analises Salvas</h1>
-        <p style="margin:6px 0 0 0;color:#67706b">Registros por empresa para trilha de decisao de risco.</p>
+        <h1 style="margin:0">Historico de Analises</h1>
+        <p style="margin:6px 0 0 0;color:#67706b">Todas as analises salvas, agrupadas por empresa.</p>
       </div>
       <a class="btn" href="/">Voltar para calculadora</a>
     </div>
-    <div class="card" style="margin-top:12px">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Data/Hora</th><th>Empresa</th><th>CNPJ</th><th>Parecer</th>
-              <th>FA</th><th>FA Risco</th><th>PLA</th><th>RWA</th><th>Rating</th>
-            </tr>
-          </thead>
-          <tbody>{''.join(rows)}</tbody>
-        </table>
-      </div>
-    </div>
+
+    <section class="summary-grid">
+      <article class="card"><span>Total de analises</span><strong>{total_analyses}</strong></article>
+      <article class="card"><span>Empresas unicas</span><strong>{unique_companies}</strong></article>
+      <article class="card"><span>Score medio</span><strong>{avg_score}</strong></article>
+      <article class="card"><span>Ultima analise</span><strong>{escape(last_timestamp)}</strong></article>
+    </section>
+
+    <section class="company-list">{''.join(company_blocks)}</section>
   </div>
 </body>
 </html>"""
@@ -774,28 +917,50 @@ def render_history_page():
 def render_section_table(section, state):
     key = section["key"]
     data = state["portfolio"][key]
-    month_rows = []
-    for i, month in enumerate(MONTHS):
-        source_cells = []
-        for source in section["sources"]:
-            field = forward_field(source)
-            source_cells.append(f'<td><input name="sec_{key}_{field}_{i}" value="{data["sources"][source][i]}" /></td>')
+    month_headers = "".join(f"<th>{month}</th>" for month in MONTHS)
 
-        aggregate_cells = [
-            f'<td><input name="sec_{key}_resource_{i}" value="{data["resource"][i]}" /></td>',
-            f'<td><input name="sec_{key}_pm_resource_{i}" value="{data["pmResource"][i]}" /></td>',
-            f'<td><input name="sec_{key}_requirement_{i}" value="{data["requirement"][i]}" /></td>',
-        ]
-        if section["has_pm_requirement"]:
-            aggregate_cells.append(f'<td><input name="sec_{key}_pm_requirement_{i}" value="{data["pmRequirement"][i]}" /></td>')
-        aggregate_cells.append(f'<td><input name="sec_{key}_net_{i}" value="{data["netLine"][i]}" /></td>')
-        month_rows.append(f"<tr><td>{month}</td>{''.join(source_cells)}{''.join(aggregate_cells)}</tr>")
+    def input_cells(name_prefix, values, locked=False):
+        if locked:
+            return "".join(
+                f'<td><input class="locked-input" value="{values[i]}" readonly tabindex="-1" title="Calculado automaticamente: RECURSO - REQUISITO" /></td>'
+                for i in range(7)
+            )
+        return "".join(f'<td><input name="{name_prefix}_{i}" value="{values[i]}" /></td>' for i in range(7))
 
-    header_right = "<th>RECURSO</th><th>PM RECURSO</th><th>REQUISITO</th>"
+    sheet_rows = []
+    for source in section["sources"]:
+        field = forward_field(source)
+        sheet_rows.append(
+            f"""
+            <tr>
+              <td>{escape(SOURCE_DISPLAY[source])}</td>
+              <td>{escape(section["title"])}</td>
+              <td>MWm</td>
+              {input_cells(f"sec_{key}_{field}", data["sources"][source])}
+            </tr>
+            """
+        )
+
+    aggregate_specs = [
+        ("RECURSO", "MWm", "resource", data["resource"]),
+        ("PREÇO MÉDIO RECURSO", "R$/MWh", "pm_resource", data["pmResource"]),
+        ("REQUISITO", "MWm", "requirement", data["requirement"]),
+    ]
     if section["has_pm_requirement"]:
-        header_right += "<th>PM REQUISITO</th>"
-    header_right += "<th>NET ENERGETICO</th>"
-    source_headers = "".join(f"<th>{escape(source)}</th>" for source in section["sources"])
+        aggregate_specs.append(("PREÇO MÉDIO REQUISITO", "R$/MWh", "pm_requirement", data["pmRequirement"]))
+    aggregate_specs.append(("NET ENERGÉTICO", "MWm", "net", data["netLine"]))
+
+    for label, unit, field, values in aggregate_specs:
+        sheet_rows.append(
+            f"""
+            <tr>
+              <td>{label}</td>
+              <td>{escape(section["title"])}</td>
+              <td>{unit}</td>
+              {input_cells(f"sec_{key}_{field}", values, field == "net")}
+            </tr>
+            """
+        )
 
     return f"""
     <article class="card">
@@ -804,10 +969,10 @@ def render_section_table(section, state):
         <table>
           <thead>
             <tr>
-              <th>Mes</th>{source_headers}{header_right}
+              <th>Exposições</th><th>Portifólio</th><th>Unid.</th>{month_headers}
             </tr>
           </thead>
-          <tbody>{''.join(month_rows)}</tbody>
+          <tbody>{''.join(sheet_rows)}</tbody>
         </table>
       </div>
     </article>
@@ -817,6 +982,13 @@ def render_section_table(section, state):
 def render_main_page(state, metrics, flash_msg):
     p = state["parameters"]
     pla_input = "" if abs(state["pla"]) <= EPS else str(state["pla"])
+    corr_month_headers = "".join(f"<th>M{i}</th>" for i in range(7))
+    corr_rows = []
+    for i in range(7):
+        corr_cells = "".join(
+            f'<td><input name="parameters_corr_{i}_{j}" value="{p["correlationMatrix"][i][j]}" /></td>' for j in range(7)
+        )
+        corr_rows.append(f"<tr><td>M{i}</td>{corr_cells}</tr>")
 
     checks_lines = []
     for section in SECTION_DEFS:
@@ -830,13 +1002,13 @@ def render_main_page(state, metrics, flash_msg):
         checks_text = "Checks do template com divergencias: " + " || ".join(checks_lines)
 
     rows_forward = []
-    for i, month in enumerate(MONTHS):
-        cells = []
-        for source in RISK_SOURCES:
-            field = forward_field(source)
-            cells.append(f'<td><input name="forward_{field}_{i}" value="{state["forward"][source][i]}" /></td>')
-        rows_forward.append(f"<tr><td>{month}</td>{''.join(cells)}</tr>")
-    forward_headers = "".join(f"<th>{escape(source)}</th>" for source in RISK_SOURCES)
+    for source in RISK_SOURCES:
+        field = forward_field(source)
+        cells = "".join(
+            f'<td><input name="forward_{field}_{i}" value="{state["forward"][source][i]}" /></td>' for i in range(7)
+        )
+        rows_forward.append(f"<tr><td>{escape(source)}</td>{cells}</tr>")
+    forward_headers = "".join(f"<th>{month}</th>" for month in MONTHS)
 
     vertex_rows = []
     vertex_rows.append(
@@ -862,6 +1034,20 @@ def render_main_page(state, metrics, flash_msg):
         "<tr><td>Preco Stress Short</td>"
         + "".join(
             f'<td><input name="vertex_stress_short_{i}" value="{state["vertex"]["stressShortPrice"][i]}" /></td>' for i in range(7)
+        )
+        + "</tr>"
+    )
+    vertex_rows.append(
+        "<tr><td>PLD Min</td>"
+        + "".join(
+            f'<td><input name="parameters_pldMin_{i}" value="{state["parameters"]["pldMinCurve"][i]}" /></td>' for i in range(7)
+        )
+        + "</tr>"
+    )
+    vertex_rows.append(
+        "<tr><td>PLD Max</td>"
+        + "".join(
+            f'<td><input name="parameters_pldMax_{i}" value="{state["parameters"]["pldMaxCurve"][i]}" /></td>' for i in range(7)
         )
         + "</tr>"
     )
@@ -931,6 +1117,7 @@ def render_main_page(state, metrics, flash_msg):
     button,a.btn{{background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:7px;padding:9px 12px;cursor:pointer;text-decoration:none;display:inline-block}}
     .upload-inline{{display:flex;gap:8px;align-items:center;flex-wrap:wrap}}
     .upload-inline input[type=file]{{max-width:320px;padding:6px}}
+    .upload-inline button,.upload-inline a.btn{{white-space:nowrap}}
     .card{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}}
     .grid5{{display:grid;grid-template-columns:repeat(5,minmax(170px,1fr));gap:10px}}
     .big{{font-size:1.85rem;font-weight:700;margin-top:6px}}
@@ -940,6 +1127,7 @@ def render_main_page(state, metrics, flash_msg):
     th,td{{padding:8px;border-bottom:1px solid var(--line);text-align:left;font-size:.9rem}}
     th{{font-size:.72rem;color:var(--muted);text-transform:uppercase}}
     input,textarea{{width:100%;padding:7px;border:1px solid #c8cfca;border-radius:6px;background:#fff}}
+    input.locked-input{{background:#eef2ef;color:#48524d;border-color:#d4ddd7;font-weight:700;cursor:not-allowed}}
     .formgrid{{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px}}
     .field label{{display:block;font-size:.75rem;color:var(--muted);text-transform:uppercase;margin-bottom:4px}}
     .kpis{{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px;margin-top:10px}}
@@ -955,7 +1143,7 @@ def render_main_page(state, metrics, flash_msg):
         <div>
           <p class="muted" style="margin:0">Monitoramento prudencial CCEE</p>
           <h1>Calculadora de Alavancagem</h1>
-          <p class="muted" style="margin:6px 0 0 0">Modelo e formatacao aderentes a declaracao de portfolio semanal.</p>
+          <p class="muted" style="margin:6px 0 0 0">Plataforma Python espelhada na planilha semanal: portfolio, curva forward, premissas, PLA, RWA, FA e parecer.</p>
         </div>
         <div class="btns">
           <button type="submit" name="action" value="calculate">Recalcular</button>
@@ -967,10 +1155,10 @@ def render_main_page(state, metrics, flash_msg):
       <div class="card" style="margin-bottom:12px"><p class="muted" style="margin:0">{escape(flash_msg)}</p></div>
 
       <section class="card" style="margin-bottom:12px">
-        <h2>Empresa e importacao</h2>
+        <h2>Empresa, importacao e modelos</h2>
         <div class="upload-inline" style="margin-bottom:10px">
           <input type="file" name="new_sheet_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-          <button type="submit" name="action" value="upload_new_sheet_xlsx">Nova Planilha</button>
+          <button type="submit" name="action" value="upload_new_sheet_xlsx">Subir Nova Planilha Semanal</button>
           <a class="btn" href="/download/modelo_portfolio.xlsx">Baixar Modelo Portfolio</a>
           <a class="btn" href="/download/modelo_forward.xlsx">Baixar Modelo Curva Forward</a>
         </div>
@@ -1026,7 +1214,7 @@ def render_main_page(state, metrics, flash_msg):
           <p class="muted">Usada na marcacao a mercado e no risco de cada fonte por mes.</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Mes</th>{forward_headers}</tr></thead>
+              <thead><tr><th>R$/MWh</th>{forward_headers}</tr></thead>
               <tbody>{''.join(rows_forward)}</tbody>
             </table>
           </div>
@@ -1039,16 +1227,23 @@ def render_main_page(state, metrics, flash_msg):
         </article>
 
         <article class="card">
-          <h2>Parametros de risco</h2>
+          <h2>Parametros Gerais (modelo planilha auxiliar)</h2>
           <div class="formgrid">
-            <div class="field"><label>Referencia M</label><input name="parameters_faReference" value="{p["faReference"]}" /></div>
-            <div class="field"><label>Confianca %</label><input name="parameters_confidence" value="{p["confidence"]}" /></div>
-            <div class="field"><label>Phi normal</label><input name="parameters_phiZ" value="{p["phiZ"]}" /></div>
-            <div class="field"><label>Dias liquidacao</label><input name="parameters_liquidationDays" value="{p["liquidationDays"]}" /></div>
-            <div class="field"><label>Correlacao media</label><input name="parameters_correlation" value="{p["correlation"]}" /></div>
-            <div class="field"><label>Theta</label><input name="parameters_theta" value="{p["theta"]}" /></div>
-            <div class="field"><label>PLD minimo</label><input name="parameters_pldMin" value="{p["pldMin"]}" /></div>
-            <div class="field"><label>PLD maximo</label><input name="parameters_pldMax" value="{p["pldMax"]}" /></div>
+            <div class="field"><label>Intervalo de Confianca (%)</label><input name="parameters_confidence" value="{p["confidence"]}" /></div>
+            <div class="field"><label>Dias para liquidacao</label><input name="parameters_liquidationDays" value="{p["liquidationDays"]}" /></div>
+            <div class="field"><label>Peso Theta (adicional de stress)</label><input name="parameters_theta" value="{p["theta"]}" /></div>
+            <div class="field"><label>Phi normal (z)</label><input name="parameters_phiZ" value="{p["phiZ"]}" /></div>
+            <div class="field"><label>Correlacao media (da matriz)</label><input name="parameters_correlation" value="{p["correlation"]}" readonly /></div>
+            <div class="field"><label>Referencia M (criterio interno)</label><input name="parameters_faReference" value="{p["faReference"]}" /></div>
+          </div>
+          <div style="margin-top:12px">
+            <h3 style="margin:0 0 8px 0;font-size:1rem">Matriz de Correlacao (aba Premissas)</h3>
+            <div class="table-wrap">
+              <table style="min-width:760px">
+                <thead><tr><th>Correlacao</th>{corr_month_headers}</tr></thead>
+                <tbody>{''.join(corr_rows)}</tbody>
+              </table>
+            </div>
           </div>
         </article>
 
@@ -1202,7 +1397,7 @@ def build_forward_template_bytes():
     ws.cell(2, 1, "Preencha valores no formato da CCEE (base e spreads por vertice).")
     ws.cell(14, 1, "R$/MWh")
     for i in range(7):
-        ws.cell(14, 2 + i, f"M{i}")
+        ws.cell(14, 2 + i, MONTHS[i])
 
     rows = [
         (15, "SECO/CONV"),
@@ -1224,6 +1419,7 @@ def build_forward_template_bytes():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        global APP_STATE
         parsed = urlparse(self.path)
         if parsed.path == "/download/modelo_portfolio.xlsx":
             payload = build_portfolio_template_bytes()
@@ -1266,12 +1462,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(content)
             return
 
-        state = new_default_state()
+        state = APP_STATE
         metrics = calculate(state)
         content = render_main_page(
             state,
             metrics,
-            "Importe a planilha semanal para preencher os campos de calculo e manter o padrao do template CCEE.",
+            f"Planilha semanal carregada: {state['xlsxPath']}",
         ).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1280,6 +1476,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def do_POST(self):
+        global APP_STATE
         parsed = urlparse(self.path)
         if parsed.path == "/historico":
             self.send_response(405)
@@ -1335,6 +1532,7 @@ class Handler(BaseHTTPRequestHandler):
             flash_msg = "Analise salva no historico para " + (rec["company_name"] or "empresa sem nome") + "."
 
         metrics = calculate(state)
+        APP_STATE = state
         content = render_main_page(state, metrics, flash_msg).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")

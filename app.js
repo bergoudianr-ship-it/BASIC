@@ -5,12 +5,18 @@ const ratings = {
   A: 0.006,
   BBB: 0.015,
   BB: 0.04,
-  B: 0.10,
+  B: 0.1,
   CCC: 0.25,
-  "Sem rating": 0.08
+  "Sem rating": 0.08,
 };
 
 const defaultState = {
+  company: {
+    name: "",
+    cnpj: "",
+    analyst: "",
+    note: "",
+  },
   financial: {
     equity: 50000000,
     goodwill: 0,
@@ -26,7 +32,7 @@ const defaultState = {
     cash: 18000000,
     grossDebt: 26000000,
     currentAssets: 64000000,
-    currentLiabilities: 42000000
+    currentLiabilities: 42000000,
   },
   parameters: {
     faReference: 1.5,
@@ -44,7 +50,7 @@ const defaultState = {
     pldMin: 61,
     pldMax: 752,
     includeExpectedLossInRwa: false,
-    useStressAsAdditional: true
+    useStressAsAdditional: true,
   },
   portfolio: months.map((month, index) => ({
     month,
@@ -60,15 +66,15 @@ const defaultState = {
     spreadReqPv: 0,
     recPv: 0,
     spreadRecPv: 0,
-    acrRevenue: [0, 0, 0, 0, 0, 0, 0][index]
+    acrRevenue: 0,
   })),
   counterparties: [
     { name: "Contraparte A", exposure: 6200000, mitigator: 2500000, rating: "A", revenueShare: 18 },
     { name: "Contraparte B", exposure: 3800000, mitigator: 500000, rating: "BBB", revenueShare: 11 },
     { name: "Contraparte C", exposure: 2100000, mitigator: 0, rating: "BB", revenueShare: 6 },
     { name: "", exposure: 0, mitigator: 0, rating: "Sem rating", revenueShare: 0 },
-    { name: "", exposure: 0, mitigator: 0, rating: "Sem rating", revenueShare: 0 }
-  ]
+    { name: "", exposure: 0, mitigator: 0, rating: "Sem rating", revenueShare: 0 },
+  ],
 };
 
 let state = clone(defaultState);
@@ -76,13 +82,23 @@ let state = clone(defaultState);
 const money = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
-  maximumFractionDigits: 0
+  maximumFractionDigits: 0,
 });
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const percent = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 });
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function mergeState(base, imported) {
+  if (Array.isArray(base)) return Array.isArray(imported) ? imported : base;
+  if (base && typeof base === "object") {
+    return Object.fromEntries(
+      Object.entries(base).map(([key, value]) => [key, mergeState(value, imported?.[key])]),
+    );
+  }
+  return imported ?? base;
 }
 
 function getPath(path) {
@@ -121,42 +137,55 @@ function formatPct(value) {
   return percent.format(value);
 }
 
+function riskText(fa, reference, rating, pla) {
+  if (pla <= 0) return "Critica";
+  if (!Number.isFinite(fa) || fa > reference || rating === "CCC") return "Risco alto";
+  if (fa > reference * 0.75 || ["BB", "B"].includes(rating)) return "Atencao";
+  return "Operavel";
+}
+
 function renderPortfolioRows() {
   const body = document.querySelector("#portfolioRows");
   body.innerHTML = state.portfolio
-    .map((row, index) => `
-      <tr>
-        <td><strong>${row.month}</strong></td>
-        <td><input data-path="portfolio.${index}.hours" type="number" step="1"></td>
-        <td><input data-path="portfolio.${index}.exposure" type="number" step="0.1"></td>
-        <td><input data-path="portfolio.${index}.forward" type="number" step="0.01"></td>
-        <td><input data-path="portfolio.${index}.volatility" type="number" step="0.1"></td>
-        <td><input data-path="portfolio.${index}.rec" type="number" step="0.1"></td>
-        <td><input data-path="portfolio.${index}.pmRec" type="number" step="0.01"></td>
-        <td><input data-path="portfolio.${index}.req" type="number" step="0.1"></td>
-        <td><input data-path="portfolio.${index}.pmReq" type="number" step="0.01"></td>
-        <td><input data-path="portfolio.${index}.acrRevenue" type="number" step="1000"></td>
-      </tr>
-    `)
+    .map(
+      (row, index) => `
+        <tr>
+          <td><strong>${row.month}</strong></td>
+          <td><input data-path="portfolio.${index}.hours" type="number" step="1"></td>
+          <td><input data-path="portfolio.${index}.exposure" type="number" step="0.1"></td>
+          <td><input data-path="portfolio.${index}.forward" type="number" step="0.01"></td>
+          <td><input data-path="portfolio.${index}.volatility" type="number" step="0.1"></td>
+          <td><input data-path="portfolio.${index}.rec" type="number" step="0.1"></td>
+          <td><input data-path="portfolio.${index}.pmRec" type="number" step="0.01"></td>
+          <td><input data-path="portfolio.${index}.req" type="number" step="0.1"></td>
+          <td><input data-path="portfolio.${index}.pmReq" type="number" step="0.01"></td>
+          <td><input data-path="portfolio.${index}.acrRevenue" type="number" step="1000"></td>
+          <td class="row-risk" id="rowRisk${index}">R$ 0</td>
+        </tr>
+      `,
+    )
     .join("");
 }
 
 function renderCounterpartyRows() {
   const body = document.querySelector("#counterpartyRows");
   body.innerHTML = state.counterparties
-    .map((row, index) => `
-      <tr>
-        <td><input data-path="counterparties.${index}.name" type="text" placeholder="Nome"></td>
-        <td><input data-path="counterparties.${index}.exposure" type="number" step="1000"></td>
-        <td><input data-path="counterparties.${index}.mitigator" type="number" step="1000"></td>
-        <td>
-          <select data-path="counterparties.${index}.rating">
-            ${Object.keys(ratings).map((rating) => `<option value="${rating}">${rating}</option>`).join("")}
-          </select>
-        </td>
-        <td><input data-path="counterparties.${index}.revenueShare" type="number" step="0.1"></td>
-      </tr>
-    `)
+    .map(
+      (row, index) => `
+        <tr>
+          <td><input data-path="counterparties.${index}.name" type="text" placeholder="Nome"></td>
+          <td><input data-path="counterparties.${index}.exposure" type="number" step="1000"></td>
+          <td><input data-path="counterparties.${index}.mitigator" type="number" step="1000"></td>
+          <td>
+            <select data-path="counterparties.${index}.rating">
+              ${Object.keys(ratings).map((rating) => `<option value="${rating}">${rating}</option>`).join("")}
+            </select>
+          </td>
+          <td><input data-path="counterparties.${index}.revenueShare" type="number" step="0.1"></td>
+          <td class="row-risk" id="counterpartyEad${index}">R$ 0</td>
+        </tr>
+      `,
+    )
     .join("");
 }
 
@@ -165,9 +194,9 @@ function syncInputs() {
     const value = getPath(input.dataset.path);
     if (input.type === "checkbox") {
       input.checked = Boolean(value);
-    } else {
-      input.value = value ?? "";
+      return;
     }
+    input.value = value ?? "";
   });
 }
 
@@ -194,11 +223,13 @@ function calculate() {
     const finPv = (row.reqPv * row.spreadReqPv - row.recPv * row.spreadRecPv) * row.hours;
     const varValue = Math.abs(mtm) * p.phiZ * sigma * sqrtD;
     const cvar = Math.abs(mtm) * sigma * sqrtD * (normalPdf(p.phiZ) / Math.max(0.001, 1 - confidence));
-    const stressPrice = row.exposure >= 0
-      ? Math.max(p.pldMin, row.forward * (1 - p.stressDown / 100))
-      : Math.min(p.pldMax, row.forward * (1 + p.stressUp / 100));
+    const stressPrice =
+      row.exposure >= 0
+        ? Math.max(p.pldMin, row.forward * (1 - p.stressDown / 100))
+        : Math.min(p.pldMax, row.forward * (1 + p.stressUp / 100));
     const stressLoss = Math.abs(row.exposure) * row.hours * Math.abs(row.forward - stressPrice);
-    return { ...row, mtm, resContr, finPv, varValue, cvar, stressLoss };
+    const risk = varValue + (p.useStressAsAdditional ? stressLoss * p.theta : cvar * p.theta);
+    return { ...row, mtm, resContr, finPv, varValue, cvar, stressLoss, risk };
   });
 
   const varVector = monthResults.map((row) => row.varValue);
@@ -209,6 +240,7 @@ function calculate() {
       varQuadratic += varVector[i] * (i === j ? 1 : rho) * varVector[j];
     }
   }
+
   const varTotal = Math.sqrt(Math.max(0, varQuadratic));
   const stressTotal = monthResults.reduce((sum, row) => sum + row.stressLoss, 0);
   const cvarTotal = monthResults.reduce((sum, row) => sum + row.cvar, 0);
@@ -229,8 +261,7 @@ function calculate() {
   const rwaCredit = p.rwaCredit + (p.includeExpectedLossInRwa ? expectedLoss : 0);
   const rwa = rwaMarket + rwaCredit + p.rwaOperational;
 
-  const pnl = monthResults.reduce((sum, row) => sum + row.mtm, 0) +
-    monthResults.reduce((sum, row) => sum + row.resContr, 0);
+  const pnl = monthResults.reduce((sum, row) => sum + row.mtm, 0) + monthResults.reduce((sum, row) => sum + row.resContr, 0);
   const finPv = monthResults.reduce((sum, row) => sum + row.finPv, 0);
   const acrRevenue = monthResults.reduce((sum, row) => sum + row.acrRevenue, 0);
   const resFin = pnl + finPv + acrRevenue;
@@ -262,9 +293,10 @@ function calculate() {
       revenueConcentration * 10 -
       (netMargin < 0 ? 8 : 0),
     0,
-    100
+    100,
   );
-  const rating = score >= 90 ? "AAA" : score >= 80 ? "AA" : score >= 70 ? "A" : score >= 60 ? "BBB" : score >= 50 ? "BB" : score >= 40 ? "B" : "CCC";
+  const rating =
+    score >= 90 ? "AAA" : score >= 80 ? "AA" : score >= 70 ? "A" : score >= 60 ? "BBB" : score >= 50 ? "BB" : score >= 40 ? "B" : "CCC";
 
   return {
     deductions,
@@ -295,7 +327,7 @@ function calculate() {
     revenueConcentration,
     exposureNet,
     score,
-    rating
+    rating,
   };
 }
 
@@ -305,84 +337,102 @@ function riskClass(value, warning, bad) {
   return "risk-good";
 }
 
+function updateText(selector, value) {
+  document.querySelector(selector).textContent = value;
+}
+
 function updateUI() {
   const m = calculate();
   const p = state.parameters;
-  const faText = Number.isFinite(m.fa) ? formatRatio(m.fa) : "n.a.";
-  const faRiskText = Number.isFinite(m.faRisk) ? formatRatio(m.faRisk) : "n.a.";
   const faClass = riskClass(m.fa, p.faReference * 0.75, p.faReference);
   const topRatio = m.pla > 0 ? m.topEad / m.pla : Infinity;
+  const decision = riskText(m.fa, p.faReference, m.rating, m.pla);
 
-  document.querySelector("#faValue").textContent = faText;
+  updateText("#faValue", Number.isFinite(m.fa) ? formatRatio(m.fa) : "n.a.");
   document.querySelector("#faValue").className = faClass;
-  document.querySelector("#faRiskValue").textContent = faRiskText;
-  document.querySelector("#rwaValue").textContent = money.format(m.rwa);
-  document.querySelector("#rwaDetail").textContent = `${money.format(m.rwaMarket)} mercado`;
-  document.querySelector("#ratingValue").textContent = m.rating;
-  document.querySelector("#ratingDetail").textContent = `${number.format(m.score)} pontos`;
-  document.querySelector("#scoreValue").textContent = number.format(m.score);
-  document.querySelector("#scoreBar").style.width = `${m.score}%`;
-  document.querySelector("#plaValue").textContent = money.format(m.pla);
-  document.querySelector("#liquidityValue").textContent = formatRatio(m.liquidity);
-  document.querySelector("#leverageValue").textContent = formatRatio(m.netDebtEbitda);
-  document.querySelector("#marginValue").textContent = formatPct(m.ebitdaMargin);
-  document.querySelector("#eadValue").textContent = money.format(m.eadTotal);
-  document.querySelector("#elValue").textContent = money.format(m.expectedLoss);
-  document.querySelector("#topEadValue").textContent = formatPct(topRatio);
-  document.querySelector("#revenueConcentrationValue").textContent = formatPct(m.revenueConcentration);
+  updateText("#faRiskValue", Number.isFinite(m.faRisk) ? formatRatio(m.faRisk) : "n.a.");
+  updateText("#rwaValue", money.format(m.rwa));
+  updateText("#rwaDetail", `${money.format(m.rwaMarket)} mercado`);
+  updateText("#plaValue", money.format(m.pla));
+  updateText("#deductionsValue", money.format(m.deductions));
+  updateText("#ratingValue", m.rating);
+  updateText("#ratingDetail", `${number.format(m.score)} pontos`);
+  updateText("#scoreValue", Math.round(m.score));
+  updateText("#decisionPill", decision);
+  updateText("#portfolioDirection", m.exposureNet > 0.5 ? "Net long" : m.exposureNet < -0.5 ? "Net short" : "Net zerado");
+  updateText("#portfolioStatus", `${money.format(m.varTotal)} VaR`);
+  updateText("#financialStatus", `${money.format(m.deductions)} em deducoes`);
+  updateText("#plaStatus", m.pla > 0 ? "PLA positivo" : "PLA negativo ou zerado");
+  updateText("#liquidityValue", formatRatio(m.liquidity));
+  updateText("#leverageValue", formatRatio(m.netDebtEbitda));
+  updateText("#marginValue", formatPct(m.ebitdaMargin));
+  updateText("#eadValue", money.format(m.eadTotal));
+  updateText("#elValue", money.format(m.expectedLoss));
+  updateText("#topEadValue", formatPct(topRatio));
+  updateText("#revenueConcentrationValue", formatPct(m.revenueConcentration));
+  updateText("#rwaCreditValue", money.format(m.rwaCredit));
+  updateText("#lgdDisplayValue", formatPct(clamp(p.lgd / 100, 0, 1)));
+  updateText(
+    "#counterpartyStatus",
+    topRatio > 0.25 ? "Concentracao alta" : topRatio > 0.1 ? "Acompanhar concentracao" : "Concentracao baixa",
+  );
+  updateText(
+    "#faNote",
+    m.pla <= 0 ? "PLA negativo ou zerado" : m.fa > p.faReference ? "Acima da referencia" : "Dentro da referencia",
+  );
 
   const maxNeedle = Math.max(0.01, p.faReference * 1.5);
   const needle = clamp((Number.isFinite(m.fa) ? m.fa : maxNeedle) / maxNeedle, 0, 1);
   document.querySelector("#gaugeNeedle").style.transform = `rotate(${-180 + needle * 180}deg)`;
+  document.querySelector("#scoreRing").style.setProperty("--score-angle", `${m.score * 3.6}deg`);
 
-  document.querySelector("#faNote").textContent = m.pla <= 0
-    ? "PLA negativo ou zerado"
-    : m.fa > p.faReference
-      ? "Acima da referência"
-      : "Dentro da referência";
-  document.querySelector("#portfolioDirection").textContent = m.exposureNet > 0.5 ? "Net long" : m.exposureNet < -0.5 ? "Net short" : "Net zerado";
-  document.querySelector("#plaStatus").textContent = m.pla > 0 ? "PLA positivo" : "PLA negativo";
-  document.querySelector("#counterpartyStatus").textContent = topRatio > 0.25 ? "Concentração alta" : topRatio > 0.1 ? "Acompanhar" : "Concentração baixa";
-  document.querySelector("#decisionPill").textContent = m.fa > p.faReference || m.rating === "CCC" ? "Risco alto" : m.rating === "BB" || m.rating === "B" ? "Atenção" : "Operável";
+  m.monthResults.forEach((row, index) => {
+    updateText(`#rowRisk${index}`, money.format(row.risk));
+  });
+  m.counterparties.forEach((row, index) => {
+    updateText(`#counterpartyEad${index}`, money.format(row.ead));
+  });
 
   renderMonthBars(m);
-  renderReport(m);
+  renderReport(m, decision);
 }
 
 function renderMonthBars(metrics) {
-  const max = Math.max(1, ...metrics.monthResults.map((row) => row.varValue + row.stressLoss * state.parameters.theta));
+  const max = Math.max(1, ...metrics.monthResults.map((row) => row.risk));
   document.querySelector("#monthBars").innerHTML = metrics.monthResults
-    .map((row) => {
-      const risk = row.varValue + row.stressLoss * state.parameters.theta;
-      return `
+    .map(
+      (row) => `
         <div class="bar-row">
           <strong>${row.month}</strong>
-          <div class="bar-track"><span style="width:${clamp((risk / max) * 100, 1, 100)}%"></span></div>
-          <small>${money.format(risk)}</small>
+          <div class="bar-track"><span style="width:${clamp((row.risk / max) * 100, 1, 100)}%"></span></div>
+          <small>${money.format(row.risk)}</small>
         </div>
-      `;
-    })
+      `,
+    )
     .join("");
 }
 
-function renderReport(m) {
+function renderReport(m, decision) {
   const p = state.parameters;
+  const company = state.company.name || "Empresa analisada";
   const flags = [];
-  if (m.pla <= 0) flags.push(["PLA", "Patrimônio líquido ajustado negativo ou zerado. O FA fica sem leitura econômica robusta e a publicação regulatória tende a exigir mensagem específica."]);
-  if (m.fa > p.faReference) flags.push(["FA", `FA de ${formatRatio(m.fa)} acima da referência de ${formatRatio(p.faReference)}. A carteira consome capital econômico demais para o PLA informado.`]);
-  if (m.resFin < 0) flags.push(["Resultado", `RES_FIN negativo em ${money.format(m.resFin)}. O resultado financeiro agrava o fator total em vez de mitigar o RWA.`]);
-  if (m.exposureNet > 0.5) flags.push(["Energia", `Portfólio líquido long em ${number.format(m.exposureNet)} MWm. Choque de queda nos preços pesa mais no stress.`]);
-  if (m.exposureNet < -0.5) flags.push(["Energia", `Portfólio líquido short em ${number.format(Math.abs(m.exposureNet))} MWm. Choque de alta nos preços pesa mais no stress.`]);
-  if (m.liquidity < 1) flags.push(["Liquidez", `Liquidez corrente de ${formatRatio(m.liquidity)}. Pode haver tensão de caixa antes da liquidação econômica da posição.`]);
-  if (m.netDebtEbitda > 3.5) flags.push(["Dívida", `Dívida líquida / EBITDA de ${formatRatio(m.netDebtEbitda)}. A contraparte tem menos folga para absorver MtM adverso.`]);
-  if (m.expectedLoss > m.pla * 0.03 && m.pla > 0) flags.push(["Contraparte", `Perda esperada equivale a ${formatPct(m.expectedLoss / m.pla)} do PLA. Revise mitigadores e concentração.`]);
-  if (!flags.length) flags.push(["Leitura", "Cenário sem gatilho crítico nos parâmetros atuais. O ponto sensível passa a ser qualidade dos dados de preço, PLA e concentração."]);
+
+  if (m.pla <= 0) flags.push(["PLA", "Patrimonio liquido ajustado negativo ou zerado. O FA fica sem leitura economica robusta."]);
+  if (m.fa > p.faReference) flags.push(["FA", `FA de ${formatRatio(m.fa)} acima da referencia de ${formatRatio(p.faReference)}. A carteira consome capital economico demais para o PLA informado.`]);
+  if (m.resFin < 0) flags.push(["Resultado prudencial", `RES_FIN negativo em ${money.format(m.resFin)}. O resultado financeiro agrava o fator total em vez de mitigar o RWA.`]);
+  if (m.exposureNet > 0.5) flags.push(["Energia", `Portfolio liquido long em ${number.format(m.exposureNet)} MWm. Choque de queda nos precos pesa mais no stress.`]);
+  if (m.exposureNet < -0.5) flags.push(["Energia", `Portfolio liquido short em ${number.format(Math.abs(m.exposureNet))} MWm. Choque de alta nos precos pesa mais no stress.`]);
+  if (m.liquidity < 1) flags.push(["Liquidez", `Liquidez corrente de ${formatRatio(m.liquidity)}. Pode haver tensao de caixa antes da liquidacao economica da posicao.`]);
+  if (m.netDebtEbitda > 3.5) flags.push(["Divida", `Divida liquida / EBITDA de ${formatRatio(m.netDebtEbitda)}. A contraparte tem menos folga para absorver MtM adverso.`]);
+  if (m.expectedLoss > m.pla * 0.03 && m.pla > 0) flags.push(["Contraparte", `Perda esperada equivale a ${formatPct(m.expectedLoss / m.pla)} do PLA. Revise mitigadores e concentracao.`]);
+  if (!flags.length) flags.push(["Leitura", "Cenario sem gatilho critico nos parametros atuais. O ponto sensivel passa a ser qualidade dos dados de preco, PLA e concentracao."]);
 
   const summary = [
-    ["Alavancagem", `FA ${formatRatio(m.fa)} e FA_Risco ${formatRatio(m.faRisk)} com RWA total de ${money.format(m.rwa)}.`],
+    ["Parecer", `${company}: ${decision}. Rating interno ${m.rating}, score ${number.format(m.score)} e FA ${formatRatio(m.fa)}.`],
+    ["Alavancagem", `FA_Risco ${formatRatio(m.faRisk)} com RWA total de ${money.format(m.rwa)} e PLA de ${money.format(m.pla)}.`],
     ["Mercado", `VaR total ${money.format(m.varTotal)}, stress ${money.format(m.stressTotal)} e RWA de mercado ${money.format(m.rwaMarket)}.`],
-    ["Resultado prudencial", `RES_FIN ${money.format(m.resFin)}, composto por PnL ${money.format(m.pnl)}, FIN_PV ${money.format(m.finPv)} e ACR ${money.format(m.acrRevenue)}.`],
-    ["Crédito", `EAD líquido ${money.format(m.eadTotal)}, perda esperada ${money.format(m.expectedLoss)} e rating interno ${m.rating}.`]
+    ["Resultado", `RES_FIN ${money.format(m.resFin)}, composto por PnL ${money.format(m.pnl)}, FIN_PV ${money.format(m.finPv)} e ACR ${money.format(m.acrRevenue)}.`],
+    ["Credito", `EAD liquido ${money.format(m.eadTotal)}, perda esperada ${money.format(m.expectedLoss)} e maior exposicao equivalente a ${formatPct(m.pla > 0 ? m.topEad / m.pla : Infinity)} do PLA.`],
   ];
 
   document.querySelector("#reportText").innerHTML = [...summary, ...flags]
@@ -431,16 +481,27 @@ function bindEvents() {
     if (!file) return;
     try {
       const imported = JSON.parse(await file.text());
-      state = { ...clone(defaultState), ...imported };
+      state = mergeState(clone(defaultState), imported);
       renderAll();
     } catch {
-      alert("Arquivo JSON inválido.");
+      alert("Arquivo JSON invalido.");
     } finally {
       event.target.value = "";
     }
   });
 
   document.querySelector("#printButton").addEventListener("click", () => window.print());
+
+  document.querySelector("#copyReportButton").addEventListener("click", async () => {
+    const text = Array.from(document.querySelectorAll(".report-item"))
+      .map((item) => item.textContent.trim())
+      .join("\n\n");
+    await navigator.clipboard.writeText(text);
+    document.querySelector("#copyReportButton").textContent = "Copiado";
+    window.setTimeout(() => {
+      document.querySelector("#copyReportButton").textContent = "Copiar";
+    }, 1400);
+  });
 }
 
 function renderAll() {
