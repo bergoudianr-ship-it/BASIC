@@ -458,15 +458,24 @@ async function salvarPremissas(){
 
 async function uploadCCEE(input){
   const file=input.files[0]; if(!file) return;
-  const fd=new FormData(); fd.append('file',file);
-  const res=await fetch('/api/upload/premissas',{method:'POST',body:fd}).then(r=>r.json());
-  if(res.ok){
-    premissas=await fetch('/api/premissas').then(r=>r.json());
-    renderPremissas();
-    showMsg('msg-ccee',`✔ Planilha CCEE importada — Referência: ${res.data.data_referencia||'?'} | φ=${res.data.phi_norm||''}`,'ok');
-    await calcularEmp();
-  } else {
-    showMsg('msg-ccee','Erro na importação: '+res.errors.join('; '),'err');
+  showMsg('msg-ccee','Carregando...','info');
+  try {
+    const buf = await file.arrayBuffer();
+    const res = await fetch('/api/upload/premissas',{
+      method:'POST',
+      headers:{'Content-Type':'application/octet-stream'},
+      body: buf
+    }).then(r=>r.json());
+    if(res.ok){
+      premissas=await fetch('/api/premissas').then(r=>r.json());
+      renderPremissas();
+      showMsg('msg-ccee',`✔ Planilha CCEE importada — Referência: ${res.data.data_referencia||'?'} | φ=${res.data.phi_norm||''}`,'ok');
+      await calcularEmp();
+    } else {
+      showMsg('msg-ccee','Erro na importação: '+(res.errors||[]).join('; '),'err');
+    }
+  } catch(e) {
+    showMsg('msg-ccee','Falha na requisição: '+e.message,'err');
   }
   input.value='';
 }
@@ -672,15 +681,24 @@ async function salvarHistorico(){
 // ============================================================
 async function uploadPortfolio(input){
   const file=input.files[0]; if(!file) return;
-  const fd=new FormData(); fd.append('file',file);
-  const res=await fetch('/api/upload/portfolio',{method:'POST',body:fd}).then(r=>r.json());
-  if(res.ok){
-    emp=Object.assign(emp, res.data);
-    loadEmpresaForm();
-    renderPortfolioTables('emp',emp,triggerCalcEmp);
-    showMsg('msg-port','✔ Portfólio importado com sucesso.');
-    await calcularEmp();
-  } else { showMsg('msg-port','Erro: '+res.errors.join('; '),'err'); }
+  showMsg('msg-port','Carregando...','info');
+  try {
+    const buf = await file.arrayBuffer();
+    const res = await fetch('/api/upload/portfolio',{
+      method:'POST',
+      headers:{'Content-Type':'application/octet-stream'},
+      body: buf
+    }).then(r=>r.json());
+    if(res.ok){
+      emp=Object.assign(emp, res.data);
+      loadEmpresaForm();
+      renderPortfolioTables('emp',emp,triggerCalcEmp);
+      showMsg('msg-port','✔ Portfólio importado com sucesso.');
+      await calcularEmp();
+    } else { showMsg('msg-port','Erro: '+(res.errors||[]).join('; '),'err'); }
+  } catch(e) {
+    showMsg('msg-port','Falha na requisição: '+e.message,'err');
+  }
   input.value='';
 }
 

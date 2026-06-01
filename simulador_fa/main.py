@@ -79,8 +79,17 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _read_body(self):
-        length = int(self.headers.get("Content-Length", 0))
-        return self.rfile.read(length)
+        length = self.headers.get("Content-Length")
+        if length:
+            return self.rfile.read(int(length))
+        # Fallback: read in chunks until connection closes
+        data = b""
+        while True:
+            chunk = self.rfile.read(65536)
+            if not chunk:
+                break
+            data += chunk
+        return data
 
     def do_OPTIONS(self):
         self.send_response(204)
