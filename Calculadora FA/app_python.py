@@ -1132,9 +1132,12 @@ def render_section_table(section, state):
 
     return f"""
     <article class="card">
-      <h2>{escape(section["title"])}</h2>
+      <div class="section-head">
+        <h2>{escape(section["title"])}</h2>
+        <button class="mini-btn" type="button" data-action="paste-block" data-section="{key}">Colar bloco do Excel</button>
+      </div>
       <div class="table-wrap">
-        <table>
+        <table data-section="{key}">
           <thead>
             <tr>
               <th>Exposições</th><th>Portifólio</th><th>Unid.</th>{month_headers}<th>Acoes</th>
@@ -1388,6 +1391,7 @@ def render_main_page(state, metrics, flash_msg):
     .upload-inline input[type=file]{{max-width:320px;padding:6px}}
     .upload-inline button,.upload-inline a.btn{{white-space:nowrap}}
     .card{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}}
+    .section-head{{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}}
     .grid5{{display:grid;grid-template-columns:repeat(5,minmax(170px,1fr));gap:10px}}
     .big{{font-size:1.85rem;font-weight:700;margin-top:6px}}
     .layout{{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}}
@@ -1433,7 +1437,7 @@ def render_main_page(state, metrics, flash_msg):
       <div class="card" style="margin-bottom:12px"><p class="muted" style="margin:0">{escape(flash_msg)}</p></div>
       <div class="helper-bar">
         <span class="hint">Atalho: Enter move para a proxima coluna. Use "M+0 -> todos" para preencher linha rapidamente.</span>
-        <span class="hint">NET ENERGETICO permanece travado e calculado automatico.</span>
+        <span class="hint">Use "Colar bloco do Excel" para colar varias linhas do portfolio de uma vez. NET ENERGETICO permanece travado.</span>
       </div>
 
       <section class="card" style="margin-bottom:12px">
@@ -1565,6 +1569,33 @@ def render_main_page(state, metrics, flash_msg):
       function rowInputs(rowId) {{
         return Array.from(document.querySelectorAll('input.grid-input[data-row="' + rowId + '"]'));
       }}
+      function sectionRows(sectionKey) {{
+        var table = document.querySelector('table[data-section="' + sectionKey + '"]');
+        if (!table) return [];
+        var rows = Array.from(table.querySelectorAll("tbody tr"));
+        return rows
+          .map(function (tr) {{ return tr.getAttribute("data-row-id"); }})
+          .filter(Boolean)
+          .filter(function (v, i, arr) {{ return arr.indexOf(v) === i; }});
+      }}
+      function fillFromMatrix(sectionKey, rawText) {{
+        var lines = String(rawText || "").replace(/\\r/g, "").split("\\n").filter(function (l) {{ return l.trim() !== ""; }});
+        if (!lines.length) return 0;
+        var rows = sectionRows(sectionKey);
+        var written = 0;
+        for (var r = 0; r < lines.length && r < rows.length; r++) {{
+          var cells = lines[r].split("\\t");
+          var inputs = rowInputs(rows[r]).filter(function (i) {{ return !i.readOnly; }});
+          for (var c = 0; c < 7 && c < cells.length && c < inputs.length; c++) {{
+            var v = cells[c].trim();
+            if (v !== "") {{
+              inputs[c].value = v.replace(/\\./g, "").replace(",", ".");
+              written++;
+            }}
+          }}
+        }}
+        return written;
+      }}
 
       document.addEventListener("click", function (ev) {{
         var btn = ev.target.closest("button[data-action]");
@@ -1578,6 +1609,13 @@ def render_main_page(state, metrics, flash_msg):
           inputs.forEach(function (i) {{ i.value = val; }});
         }} else if (action === "clear-row") {{
           inputs.forEach(function (i) {{ i.value = ""; }});
+        }} else if (action === "paste-block") {{
+          var sectionKey = btn.getAttribute("data-section");
+          var text = window.prompt("Cole aqui o bloco copiado do Excel (linhas x colunas M+0..M+6):");
+          if (text) {{
+            var n = fillFromMatrix(sectionKey, text);
+            window.alert("Colagem aplicada em " + n + " celula(s).");
+          }}
         }}
       }});
 
