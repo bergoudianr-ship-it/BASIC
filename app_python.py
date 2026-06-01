@@ -7,6 +7,7 @@ import io
 import json
 from math import erf, exp, isfinite, pi, sqrt
 from pathlib import Path
+import re
 import unicodedata
 from urllib.parse import parse_qs, urlparse
 
@@ -104,6 +105,7 @@ SECTION_DEFS = [
 ]
 
 HISTORY_PATH = Path(__file__).with_name("historico_analises.json")
+RANKING_HISTORY_PATH = Path(__file__).with_name("historico_fa_ccee.json")
 UPLOADS_DIR = Path(__file__).with_name("uploads_portfolio")
 DEFAULT_XLSX_CANDIDATES = [
     Path.home() / "Downloads" / "2026.05.27 - Arquivo de apoio para simulação (declaração semanal).xlsx",
@@ -766,6 +768,158 @@ def append_history_record(state, metrics):
     return record
 
 
+def load_ranking_history():
+    if not RANKING_HISTORY_PATH.exists():
+        return []
+    try:
+        data = json.loads(RANKING_HISTORY_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_ranking_history(records):
+    RANKING_HISTORY_PATH.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def parse_week_key(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    m = re.search(r"(\d{2})/(\d{2})/(\d{4})", text)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    m = re.search(r"(\d{2})/(\d{4})", text)
+    if m:
+        return f"{m.group(2)}-{m.group(1)}"
+    return text
+
+
+def parse_fa_ranking_xlsx(path):
+    wb = load_workbook(path, data_only=True)
+    ws = wb.active
+
+    header_row = None
+    header_map = {}
+    for row_idx in range(1, min(ws.max_row, 40) + 1):
+        cells = [ws.cell(row_idx, col).value for col in range(1, min(ws.max_column, 40) + 1)]
+        norm = [norm_text(v) for v in cells]
+        if any("fator de alavancagem" in c for c in norm) and any("classe" in c for c in norm):
+            header_row = row_idx
+            for col_idx, val in enumerate(norm, start=1):
+                if val:
+                    header_map[val] = col_idx
+            break
+
+    if not header_row:
+        raise ValueError("Nao encontrei cabecalho da CCEE (Classe/Fator de Alavancagem) no arquivo.")
+
+    def find_col(options):
+        for key, idx in header_map.items():
+            for opt in options:
+                if opt in key:
+                    return idx
+        return None
+
+    col_class = find_col(["classe"])
+    col_fa = find_col(["fator de alavancagem"])
+    col_name = find_col(["razao social", "agente"])
+    col_cnpj = find_col(["cnpj"])
+    col_sigla = find_col(["sigla"])
+    col_week = find_col(["inicio do periodo", "mes/ano evento", "mês/ano evento"])
+
+    if not col_class or not col_fa or not col_name:
+        raise ValueError("Arquivo sem colunas minimas: Classe, Razao Social/Agente e Fator de Alavancagem.")
+
+    rows = []
+    week_key = ""
+    for row_idx in range(header_row + 1, ws.max_row + 1):
+        cls = ws.cell(row_idx, col_class).value
+        if not cls:
+            continue
+        cls_norm = norm_text(cls)
+        if "comercial" not in cls_norm:
+            continue
+
+        fa = parse_number(ws.cell(row_idx, col_fa).value, float("nan"))
+        if not isfinite(fa):
+            continue
+
+        name = str(ws.cell(row_idx, col_name).value or "").strip()
+        if not name:
+            continue
+
+        cnpj = str(ws.cell(row_idx, col_cnpj).value or "").strip() if col_cnpj else ""
+        sigla = str(ws.cell(row_idx, col_sigla).value or "").strip() if col_sigla else ""
+        week_raw = ws.cell(row_idx, col_week).value if col_week else ""
+        wk = parse_week_key(week_raw)
+        if wk and not week_key:
+            week_key = wk
+
+        rows.append(
+            {
+                "name": name,
+                "cnpj": cnpj,
+                "sigla": sigla,
+                "classe": str(cls).strip(),
+                "fa": fa,
+            }
+        )
+
+    if not rows:
+        raise ValueError("Nenhuma comercializadora encontrada no arquivo.")
+
+    if not week_key:
+        week_key = datetime.now().strftime("%Y-%m-%d")
+    return week_key, rows
+
+
+def update_ranking_snapshot(path):
+    week_key, rows = parse_fa_ranking_xlsx(path)
+    history = load_ranking_history()
+    now = datetime.now().isoformat(timespec="seconds")
+    snapshot = {"week": week_key, "uploaded_at": now, "source_path": path, "records": rows}
+    replaced = False
+    for i, item in enumerate(history):
+        if item.get("week") == week_key:
+            history[i] = snapshot
+            replaced = True
+            break
+    if not replaced:
+        history.append(snapshot)
+    history.sort(key=lambda x: x.get("week", ""))
+    history = history[-120:]
+    save_ranking_history(history)
+    return snapshot, history
+
+
+def build_ranking_view_data():
+    history = load_ranking_history()
+    if not history:
+        return None
+    current = history[-1]
+    previous = history[-2] if len(history) > 1 else None
+    prev_map = {}
+    if previous:
+        for rec in previous.get("records", []):
+            key = (rec.get("cnpj") or "").strip() or norm_text(rec.get("name"))
+            prev_map[key] = parse_number(rec.get("fa"), 0.0)
+
+    ranking = []
+    for rec in current.get("records", []):
+        key = (rec.get("cnpj") or "").strip() or norm_text(rec.get("name"))
+        fa_now = parse_number(rec.get("fa"), 0.0)
+        fa_prev = prev_map.get(key)
+        delta = fa_now - fa_prev if fa_prev is not None else float("nan")
+        ranking.append({**rec, "delta": delta})
+
+    ranking.sort(key=lambda x: parse_number(x.get("fa"), 0.0), reverse=True)
+    ups = sorted([r for r in ranking if isfinite(r["delta"]) and r["delta"] > 0], key=lambda x: x["delta"], reverse=True)[:5]
+    downs = sorted([r for r in ranking if isfinite(r["delta"]) and r["delta"] < 0], key=lambda x: x["delta"])[:5]
+    critical = [r for r in ranking if parse_number(r.get("fa"), 0.0) >= 1.5]
+    return {"history": history, "current": current, "previous": previous, "ranking": ranking, "ups": ups, "downs": downs, "critical": critical}
+
+
 def initial_state():
     state = new_default_state()
     try:
@@ -979,6 +1133,107 @@ def render_section_table(section, state):
     """
 
 
+def render_ranking_page(flash_msg=""):
+    data = build_ranking_view_data()
+    if not data:
+        empty = """
+        <div class="card">
+          <h2>Sem base semanal ainda</h2>
+          <p>Suba o arquivo .xlsx da CCEE para gerar o ranking de comercializadoras e as variacoes semanais.</p>
+        </div>
+        """
+        rows_html = ""
+        cards = ""
+        week_label = "-"
+    else:
+        week_label = data["current"].get("week", "-")
+        cards = f"""
+        <div class="kpi-grid">
+          <div class="kpi"><small>Comercializadoras</small><strong>{len(data['ranking'])}</strong></div>
+          <div class="kpi"><small>FA >= 1,5x</small><strong>{len(data['critical'])}</strong></div>
+          <div class="kpi"><small>Semana atual</small><strong>{escape(week_label)}</strong></div>
+        </div>
+        """
+        def bullet_rows(items):
+            if not items:
+                return "<li>Sem variacao relevante.</li>"
+            return "".join(
+                f"<li><strong>{escape(it['name'])}</strong>: {ratio(parse_number(it['fa'], 0.0))} ({br_number(it['delta'], 2)}x)</li>"
+                for it in items
+            )
+        empty = f"""
+        {cards}
+        <div class="card">
+          <h2>Principais alteracoes da semana</h2>
+          <div class="split">
+            <div><h3>Altas de FA</h3><ul>{bullet_rows(data['ups'])}</ul></div>
+            <div><h3>Quedas de FA</h3><ul>{bullet_rows(data['downs'])}</ul></div>
+          </div>
+        </div>
+        """
+        rows = []
+        for idx, rec in enumerate(data["ranking"], start=1):
+            delta = rec["delta"]
+            delta_text = br_number(delta, 2) + "x" if isfinite(delta) else "n.a."
+            rows.append(
+                f"<tr><td>{idx}</td><td>{escape(rec.get('name',''))}</td><td>{escape(rec.get('sigla',''))}</td><td>{escape(rec.get('cnpj',''))}</td><td>{ratio(parse_number(rec.get('fa'),0.0))}</td><td>{delta_text}</td></tr>"
+            )
+        rows_html = "".join(rows)
+
+    return f"""<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ranking FA CCEE - Trading</title>
+  <style>
+    body{{margin:0;background:#f6f6f2;font-family:Segoe UI,Arial,sans-serif;color:#1c221f}}
+    .wrap{{max-width:1200px;margin:0 auto;padding:18px}}
+    .top{{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}}
+    .btn{{display:inline-block;background:#1f2a25;color:#fff;border-radius:8px;padding:9px 12px;text-decoration:none;border:none;cursor:pointer;font-weight:700}}
+    .muted{{color:#66716b}}
+    .card{{background:#fff;border:1px solid #d7dfd8;border-radius:8px;padding:14px;margin-bottom:12px}}
+    .kpi-grid{{display:grid;grid-template-columns:repeat(3,minmax(160px,1fr));gap:10px;margin-bottom:12px}}
+    .kpi{{background:#fff;border:1px solid #d7dfd8;border-radius:8px;padding:10px}}
+    .kpi small{{display:block;color:#67706b}} .kpi strong{{font-size:1.3rem}}
+    .split{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+    table{{width:100%;border-collapse:collapse;font-size:.92rem}} th,td{{border:1px solid #d8e1db;padding:7px;text-align:left}}
+    th{{background:#f1f5f2}} ul{{margin:0;padding-left:18px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1 style="margin:0">Ranking Semanal FA - Comercializadoras</h1>
+        <p class="muted" style="margin:4px 0 0 0">Base da CCEE, com foco nas maiores variacoes para decisao de trading.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn" href="/">Voltar ao simulador</a>
+        <a class="btn" href="/historico">Historico analises</a>
+      </div>
+    </div>
+    <div class="card">
+      <form method="post" enctype="multipart/form-data" action="/ranking" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="file" name="ranking_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+        <button class="btn" type="submit" name="action" value="upload_ranking_xlsx">Atualizar Semana CCEE</button>
+        <span class="muted">Semana atual: {escape(week_label)}</span>
+      </form>
+      <p class="muted" style="margin:8px 0 0 0">{escape(flash_msg)}</p>
+    </div>
+    {empty}
+    <div class="card">
+      <h2 style="margin-top:0">Ranking por FA</h2>
+      <table>
+        <thead><tr><th>#</th><th>Empresa</th><th>Sigla</th><th>CNPJ</th><th>FA</th><th>Var. vs semana anterior</th></tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
 def render_main_page(state, metrics, flash_msg):
     p = state["parameters"]
     pla_input = "" if abs(state["pla"]) <= EPS else str(state["pla"])
@@ -1150,6 +1405,7 @@ def render_main_page(state, metrics, flash_msg):
           <button type="submit" name="action" value="import_xlsx">Importar da planilha</button>
           <button type="submit" name="action" value="save_analysis">Salvar analise</button>
           <a class="btn" href="/historico">Historico salvo</a>
+          <a class="btn" href="/ranking">Ranking CCEE</a>
         </div>
       </div>
       <div class="card" style="margin-bottom:12px"><p class="muted" style="margin:0">{escape(flash_msg)}</p></div>
@@ -1461,6 +1717,14 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content)
             return
+        if parsed.path == "/ranking":
+            content = render_ranking_page("Painel de ranking semanal pronto para atualizacao.").encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
 
         state = APP_STATE
         metrics = calculate(state)
@@ -1481,6 +1745,24 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/historico":
             self.send_response(405)
             self.end_headers()
+            return
+        if parsed.path == "/ranking":
+            params, files = parse_form_payload(self)
+            action = params.get("action", [""])[0]
+            flash_msg = "Nada para atualizar."
+            if action == "upload_ranking_xlsx":
+                try:
+                    uploaded_path = save_uploaded_xlsx(files.get("ranking_file"))
+                    snapshot, _ = update_ranking_snapshot(uploaded_path)
+                    flash_msg = f"Ranking atualizado para semana {snapshot.get('week', '-')}. Fonte: {uploaded_path}"
+                except Exception as exc:
+                    flash_msg = f"Falha ao atualizar ranking: {exc}"
+            content = render_ranking_page(flash_msg).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
             return
 
         params, files = parse_form_payload(self)
