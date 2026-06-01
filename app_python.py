@@ -1405,7 +1405,6 @@ def render_main_page(state, metrics, flash_msg):
           <button type="submit" name="action" value="import_xlsx">Importar da planilha</button>
           <button type="submit" name="action" value="save_analysis">Salvar analise</button>
           <a class="btn" href="/historico">Historico salvo</a>
-          <a class="btn" href="/ranking">Ranking CCEE</a>
         </div>
       </div>
       <div class="card" style="margin-bottom:12px"><p class="muted" style="margin:0">{escape(flash_msg)}</p></div>
@@ -1677,6 +1676,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         global APP_STATE
         parsed = urlparse(self.path)
+        if parsed.path == "/ranking":
+            self.send_response(404)
+            self.end_headers()
+            return
         if parsed.path == "/download/modelo_portfolio.xlsx":
             payload = build_portfolio_template_bytes()
             self.send_response(200)
@@ -1717,14 +1720,6 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content)
             return
-        if parsed.path == "/ranking":
-            content = render_ranking_page("Painel de ranking semanal pronto para atualizacao.").encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
-            return
 
         state = APP_STATE
         metrics = calculate(state)
@@ -1742,29 +1737,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         global APP_STATE
         parsed = urlparse(self.path)
+        if parsed.path == "/ranking":
+            self.send_response(404)
+            self.end_headers()
+            return
         if parsed.path == "/historico":
             self.send_response(405)
             self.end_headers()
             return
-        if parsed.path == "/ranking":
-            params, files = parse_form_payload(self)
-            action = params.get("action", [""])[0]
-            flash_msg = "Nada para atualizar."
-            if action == "upload_ranking_xlsx":
-                try:
-                    uploaded_path = save_uploaded_xlsx(files.get("ranking_file"))
-                    snapshot, _ = update_ranking_snapshot(uploaded_path)
-                    flash_msg = f"Ranking atualizado para semana {snapshot.get('week', '-')}. Fonte: {uploaded_path}"
-                except Exception as exc:
-                    flash_msg = f"Falha ao atualizar ranking: {exc}"
-            content = render_ranking_page(flash_msg).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
-            return
-
         params, files = parse_form_payload(self)
         action = params.get("action", ["calculate"])[0]
 
