@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Energia SaaS — Gestão de Contratos</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; font-size: 13px; }
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
+  ::-webkit-scrollbar-track { background: #1a1d27; }
+  ::-webkit-scrollbar-thumb { background: #3a3f55; border-radius: 3px; }
+
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+  .header { background: #13161f; border-bottom: 1px solid #252836; padding: 12px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+  .logo { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+  .logo span { color: #3b82f6; }
+  .header-date { margin-left: auto; color: #64748b; font-size: 12px; }
+  .header-info { color: #64748b; font-size: 12px; }
+
+  .main { display: flex; flex: 1; }
+  .sidebar { width: 200px; background: #13161f; border-right: 1px solid #252836; padding: 16px 0; flex-shrink: 0; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; color: #94a3b8; cursor: pointer; font-size: 12px; border-left: 3px solid transparent; transition: all .15s; }
+  .nav-item:hover { background: #1a1d2e; color: #cbd5e1; }
+  .nav-item.active { color: #3b82f6; border-left-color: #3b82f6; background: #1a1d2e; }
+  .nav-section { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: .8px; padding: 16px 20px 6px; }
+
+  .content { flex: 1; overflow-x: hidden; padding: 24px; }
+
+  .import-zone { border: 2px dashed #2d3148; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: all .2s; background: #13161f; }
+  .import-zone:hover, .import-zone.dragover { border-color: #3b82f6; background: #141827; }
+  .import-title { font-size: 16px; font-weight: 600; color: #cbd5e1; margin-bottom: 8px; }
+  .import-sub { color: #64748b; font-size: 12px; margin-bottom: 20px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; }
+  .btn-primary { background: #3b82f6; color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-ghost { background: #1e2235; color: #94a3b8; border: 1px solid #2d3148; }
+  .btn-ghost:hover { background: #252a3d; color: #cbd5e1; }
+
+  .card { background: #13161f; border: 1px solid #252836; border-radius: 10px; padding: 16px; }
+  .card-title { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 12px; font-weight: 600; }
+  .card-value { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+  .card-sub { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .card-delta { font-size: 12px; font-weight: 500; margin-top: 4px; }
+  .delta-pos { color: #22c55e; } .delta-neg { color: #ef4444; }
+
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 1200px) { .grid-4 { grid-template-columns: repeat(2,1fr); } }
+
+  .section-header { display: flex; align-items: center; gap: 10px; margin: 28px 0 16px; }
+  .section-title { font-size: 14px; font-weight: 600; color: #f1f5f9; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 8px 12px; color: #64748b; border-bottom: 1px solid #1e2235; font-weight: 500; font-size: 11px; white-space: nowrap; }
+  td { padding: 8px 12px; border-bottom: 1px solid #1a1d27; color: #cbd5e1; white-space: nowrap; }
+  tr:hover td { background: #161929; }
+  .td-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .badge-red { background: #2d1a1a; color: #f87171; border: 1px solid #5c2020; }
+  .badge-yellow { background: #2d2510; color: #fbbf24; border: 1px solid #5c4a10; }
+  .badge-green { background: #0f2d1a; color: #4ade80; border: 1px solid #1a5c30; }
+  .badge-blue { background: #0f1f3d; color: #60a5fa; border: 1px solid #1a3a6c; }
+  .badge-gray { background: #1a1d27; color: #64748b; border: 1px solid #2d3148; }
+  .badge-purple { background: #1e1a35; color: #a78bfa; border: 1px solid #3d2f6c; }
+
+  .alert-row-crit td { background: #1a0f0f !important; }
+  .alert-row-warn td { background: #1a160a !important; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #252836; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 8px 16px; font-size: 12px; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab:hover { color: #94a3b8; }
+  .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+  .chart-card { background: #13161f; border: 1px solid #252836; border-radius: 10px; padding: 16px; }
+  .chart-title { font-size: 12px; color: #94a3b8; margin-bottom: 12px; font-weight: 600; }
+
+  .ficha { background: #13161f; border: 1px solid #252836; border-radius: 10px; margin-bottom: 12px; }
+  .ficha-header { padding: 12px 16px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .ficha-header:hover { background: #161929; }
+  .ficha-body { padding: 12px 16px 16px; border-top: 1px solid #1e2235; }
+  .ficha-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .ficha-label { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+  .ficha-value { font-size: 13px; color: #e2e8f0; font-weight: 500; }
+
+  .status-ativo { background: #0a2a18; color: #34d399; border: 1px solid #0f4025; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .status-ainc { background: #0a1a3a; color: #60a5fa; border: 1px solid #0f2a5c; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .status-enc { background: #1a1d27; color: #475569; border: 1px solid #252836; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .status-venc { background: #2d1a0a; color: #fb923c; border: 1px solid #5c300a; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+
+  .pos-long { color: #4ade80; } .pos-short { color: #f87171; } .pos-zero { color: #64748b; }
+
+  .paste-area { width: 100%; min-height: 140px; background: #0f1117; border: 1px solid #252836; border-radius: 8px; color: #94a3b8; font-family: monospace; font-size: 12px; padding: 12px; resize: vertical; outline: none; }
+  .paste-area:focus { border-color: #3b82f6; }
+  .sep { height: 1px; background: #1e2235; margin: 8px 20px; }
+  .result-box { background: #0f1a2e; border: 1px solid #1e3a5f; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .result-box .rb-title { font-size: 12px; color: #60a5fa; font-weight: 600; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .empty-state { text-align: center; padding: 60px 20px; }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: .4; }
+  .empty-text { font-size: 14px; color: #64748b; }
+  .err { color: #ef4444; font-size: 12px; margin-top: 6px; }
+
+  /* CSS bar chart */
+  .bars { display: flex; align-items: flex-end; gap: 8px; height: 180px; padding-top: 10px; }
+  .bar-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+  .bar-pair { display: flex; gap: 3px; align-items: flex-end; height: 100%; width: 100%; justify-content: center; }
+  .bar { width: 18px; border-radius: 3px 3px 0 0; transition: height .3s; }
+  .bar-label { font-size: 10px; color: #64748b; }
+  .legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: #94a3b8; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+"use strict";
+// ── Helpers ──────────────────────────────────────────────────────────────
+var TODAY = new Date('2026-06-01');
+var COLORS = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a78bfa','#06b6d4','#f97316'];
+function fmt(n, dec){ dec = dec==null?2:dec; if(n==null||isNaN(n)) return '—'; return Number(n).toLocaleString('pt-BR',{minimumFractionDigits:dec,maximumFractionDigits:dec}); }
+function fmtR(n){ return (n==null||isNaN(n))?'—':'R$ '+fmt(n); }
+function fmtMW(n,dec){ dec=dec==null?3:dec; return (n==null||isNaN(n))?'—':fmt(n,dec)+' MWm'; }
+function daysDiff(d){ return Math.round((new Date(d)-TODAY)/86400000); }
+function parseDate(s){ if(!s) return null; var p=s.split(/[\/\-]/); if(p.length===3){ if(p[2].length===4) return new Date(p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0')); return new Date(s);} var d=new Date(s); return isNaN(d)?null:d; }
+function num(v){ if(v==null) return 0; var n=parseFloat(String(v).replace(/\./g,'').replace(',','.')); if(isNaN(n)){ n=parseFloat(String(v).replace(',','.')); } return isNaN(n)?0:n; }
+function esc(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function lc(s){ return (s||'').toLowerCase(); }
+function isCompra(c){ return lc(c.tipoOp).indexOf('compra')>=0; }
+function isVenda(c){ return lc(c.tipoOp).indexOf('venda')>=0; }
+
+// ── CSV parser (zero deps) ───────────────────────────────────────────────
+function detectDelim(line){ var c=['\t','|',';',','].map(function(d){return {d:d,n:line.split(d).length};}); c.sort(function(a,b){return b.n-a.n;}); return c[0].d; }
+function parseCSV(raw){
+  raw = raw.replace(/\r/g,'').trim();
+  var lines = raw.split('\n').filter(function(l){return l.trim()!=='';});
+  if(lines.length<2) return [];
+  var delim = detectDelim(lines[0]);
+  function splitLine(line){
+    var out=[], cur='', q=false;
+    for(var i=0;i<line.length;i++){ var ch=line[i];
+      if(ch==='"'){ if(q && line[i+1]==='"'){cur+='"';i++;} else q=!q; }
+      else if(ch===delim && !q){ out.push(cur); cur=''; }
+      else cur+=ch;
+    }
+    out.push(cur); return out.map(function(x){return x.trim();});
+  }
+  var headers = splitLine(lines[0]);
+  var rows=[];
+  for(var i=1;i<lines.length;i++){ var vals=splitLine(lines[i]); var o={}; for(var j=0;j<headers.length;j++){ o[headers[j]]=vals[j]||''; } rows.push(o); }
+  return rows;
+}
+function g(row,keys){ for(var i=0;i<keys.length;i++){ if(row[keys[i]]!=null && row[keys[i]]!=='') return row[keys[i]]; if(row[keys[i]]!=null) return row[keys[i]]; } return ''; }
+function parseContracts(raw){
+  var rows = parseCSV(raw);
+  return rows.map(function(r,i){
+    return {
+      _id:i,
+      negocio: g(r,['Negócio','Negocio'])||('NEG-'+(i+1)),
+      unidadeNegocio: g(r,['Unidade de negócio','Unidade de negocio']),
+      tipoOp: g(r,['Tipo de operação','Tipo de operacao']),
+      natureza: g(r,['Natureza de operação','Natureza de operacao']),
+      empresa: g(r,['Empresa Responsável','Empresa Responsavel']),
+      negociante: g(r,['Negociante']),
+      operador: g(r,['Operador']),
+      origem: g(r,['Origem da operação','Origem da operacao']),
+      dataCriacao: parseDate(g(r,['Data de criação','Data de criacao'])),
+      contratoCCEE: g(r,['Contrato CCEE']),
+      inicioForn: parseDate(g(r,['Início do fornecimento','Inicio do fornecimento'])),
+      fimForn: parseDate(g(r,['Fim do fornecimento'])),
+      volPrevMWm: num(g(r,['Volume previsto (MWm)'])),
+      volPrevMWh: num(g(r,['Volume previsto (MWh)'])),
+      volAjMWm: num(g(r,['Volume ajustado (MWm)'])),
+      volAjMWh: num(g(r,['Volume ajustado (MWh)'])),
+      possuiAjVol: lc(g(r,['Possui ajuste de volume'])),
+      submercado: g(r,['Submercado']),
+      possuiAjSub: lc(g(r,['Possui ajuste de submercado'])),
+      fonte: g(r,['Fonte de energia']),
+      retusd: lc(g(r,['RETUSD'])),
+      classificacao: g(r,['Classificação','Classificacao']),
+      flexSup: num(g(r,['Flexibilidade superior'])),
+      flexInf: num(g(r,['Flexibilidade inferior'])),
+      condPag: g(r,['Condição de pagamento','Condicao de pagamento']),
+      datFimCondPag: parseDate(g(r,['Data Final Condição de pagamento','Data Final Condicao de pagamento'])),
+      obsFinanceiro: g(r,['Observação Financeiro','Observacao Financeiro']),
+      precPrev: num(g(r,['Preço previsto','Preco previsto'])),
+      precAj: num(g(r,['Preço ajustado','Preco ajustado'])),
+      possuiAjPreco: lc(g(r,['Possui ajuste de preço','Possui ajuste de preco'])),
+      tipoSpread: g(r,['Tipo de Spread']),
+      indice: g(r,['Índice','Indice']),
+      spread: num(g(r,['Spread'])),
+      pisoFlex: num(g(r,['Piso da flexibilidade de preço','Piso da flexibilidade de preco'])),
+      tetoFlex: num(g(r,['Teto da flexibilidade de preço','Teto da flexibilidade de preco'])),
+      indiceReaj: g(r,['Índice de reajuste','Indice de reajuste']),
+      dataPrimReaj: parseDate(g(r,['Data do 1o reajuste','Data do 1º reajuste'])),
+      valorNF: num(g(r,['Valor NF']))
+    };
+  });
+}
+function status(c){
+  if(!c.inicioForn||!c.fimForn) return {label:'Indefinido',cls:'status-enc',code:'indef'};
+  var d=daysDiff(c.fimForn);
+  if(c.fimForn<TODAY) return {label:'Encerrado',cls:'status-enc',code:'enc'};
+  if(c.inicioForn>TODAY) return {label:'A iniciar',cls:'status-ainc',code:'ainc'};
+  if(d<=30) return {label:'Vencendo em '+d+'d',cls:'status-venc',code:'venc'};
+  return {label:'Ativo',cls:'status-ativo',code:'ativo'};
+}
+function alerts(c){
+  var a=[], st=status(c);
+  if(c.fimForn){ var d=daysDiff(c.fimForn); if(d>=0&&d<=30) a.push({msg:'Fim de fornecimento em '+d+' dias',crit:'Crítico'}); else if(d>30&&d<=90) a.push({msg:'Fim de fornecimento em '+d+' dias',crit:'Atenção'}); }
+  if(!c.contratoCCEE) a.push({msg:'Sem Contrato CCEE registrado',crit:'Crítico'});
+  if((c.possuiAjVol==='sim'||c.possuiAjVol==='yes')&&c.volAjMWm===0) a.push({msg:'Ajuste de volume pendente',crit:'Atenção'});
+  if((c.possuiAjPreco==='sim'||c.possuiAjPreco==='yes')&&c.precAj===0) a.push({msg:'Ajuste de preço pendente',crit:'Atenção'});
+  if(c.possuiAjSub==='sim'||c.possuiAjSub==='yes') a.push({msg:'Ajuste de submercado pendente',crit:'Atenção'});
+  if(st.code==='ativo'&&c.valorNF===0) a.push({msg:'Valor NF zerado com fornecimento ativo',crit:'Crítico'});
+  if(c.datFimCondPag&&c.datFimCondPag<TODAY) a.push({msg:'Condição de pagamento vencida',crit:'Atenção'});
+  if(c.dataPrimReaj){ var dr=daysDiff(c.dataPrimReaj); if(dr<0) a.push({msg:'1º reajuste vencido sem aplicação',crit:'Atenção'}); else if(dr<=30) a.push({msg:'1º reajuste em '+dr+' dias',crit:'Atenção'}); }
+  if((c.flexSup>0||c.flexInf>0)&&st.code==='venc') a.push({msg:'Flexibilidade próxima do vencimento sem exercício',crit:'Crítico'});
+  return a;
+}
+function expFin(c){ return (c.volAjMWh||c.volPrevMWh)*(c.precAj||c.precPrev); }
+function volMWm(c){ return c.volAjMWm||c.volPrevMWm; }
+function volMWh(c){ return c.volAjMWh||c.volPrevMWh; }
+
+// ── State ────────────────────────────────────────────────────────────────
+var STATE = { contracts: [], tab: 'dashboard' };
+var NAV = [['dashboard','Dashboard'],['alertas','Alertas'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['alavancagem','Fator Alavancagem'],['posicao','Posição Mensal'],['recomendacoes','Recomendações']];
+var MARKET_PRICE = null;
+function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\b(sa|ltda|me|epp|eireli|energia|comercializadora|geracao)\b/g,'').replace(/[^a-z0-9]/g,''); }
+function onlyDigits(s){ return (s||'').replace(/\D/g,''); }
+
+// ── Render helpers ───────────────────────────────────────────────────────
+function metric(title,value,sub,delta,sign){
+  return '<div class="card"><div class="card-title">'+esc(title)+'</div><div class="card-value">'+value+'</div>'+
+    (sub?'<div class="card-sub">'+esc(sub)+'</div>':'')+
+    (delta!=null?'<div class="card-delta '+(sign>=0?'delta-pos':'delta-neg')+'">'+esc(delta)+'</div>':'')+'</div>';
+}
+function cssBars(data, keys, colors, names){
+  var max=0; data.forEach(function(d){ keys.forEach(function(k){ if(d[k]>max) max=d[k]; }); }); if(max===0) max=1;
+  var h='<div class="bars">';
+  data.forEach(function(d){
+    h+='<div class="bar-group"><div class="bar-pair">';
+    keys.forEach(function(k,i){ var pct=Math.max(2,(d[k]/max)*100); h+='<div class="bar" title="'+esc(names[i])+': '+fmt(d[k],2)+'" style="height:'+pct+'%;background:'+colors[i]+'"></div>'; });
+    h+='</div><div class="bar-label">'+esc(d.name||d.label)+'</div></div>';
+  });
+  h+='</div><div class="legend">';
+  names.forEach(function(n,i){ h+='<span><span class="legend-dot" style="background:'+colors[i]+'"></span>'+esc(n)+'</span>'; });
+  h+='</div>';
+  return h;
+}
+function lineChart(data, key, color){
+  var w=900,hgt=200,pad=30; var vals=data.map(function(d){return d[key];});
+  var max=Math.max.apply(null,vals.concat([0])), min=Math.min.apply(null,vals.concat([0]));
+  if(max===min){max+=1;min-=1;}
+  var sx=function(i){ return pad+i*((w-2*pad)/(data.length-1||1)); };
+  var sy=function(v){ return pad+(1-(v-min)/(max-min))*(hgt-2*pad); };
+  var pts=data.map(function(d,i){return sx(i)+','+sy(d[key]);}).join(' ');
+  var zero=sy(0);
+  var s='<svg viewBox="0 0 '+w+' '+hgt+'" style="width:100%;height:200px">';
+  s+='<line x1="'+pad+'" y1="'+zero+'" x2="'+(w-pad)+'" y2="'+zero+'" stroke="#2d3148" stroke-dasharray="3 3"/>';
+  s+='<polyline fill="none" stroke="'+color+'" stroke-width="2" points="'+pts+'"/>';
+  data.forEach(function(d,i){ s+='<circle cx="'+sx(i)+'" cy="'+sy(d[key])+'" r="2.5" fill="'+color+'"><title>'+esc(d.label)+': '+fmt(d[key],2)+'</title></circle>'; });
+  s+='</svg>';
+  return s;
+}
+function pieList(data){
+  var total=data.reduce(function(s,x){return s+x.value;},0)||1;
+  var rows=data.slice().sort(function(a,b){return b.value-a.value;}).map(function(f,i){
+    return '<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+COLORS[i%COLORS.length]+';margin-right:6px"></span>'+esc(f.name)+'</td><td class="td-num">'+fmt(f.value,2)+'</td><td class="td-num">'+fmt((f.value/total)*100,1)+'%</td></tr>';
+  }).join('');
+  return '<table><thead><tr><th>Fonte</th><th>MWm</th><th>%</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+// ── Compute stats ────────────────────────────────────────────────────────
+function computeStats(cs){
+  var ativos=cs.filter(function(c){return status(c).code==='ativo';});
+  var ainc=cs.filter(function(c){return status(c).code==='ainc';});
+  var enc=cs.filter(function(c){return status(c).code==='enc';});
+  var compras=cs.filter(isCompra), vendas=cs.filter(isVenda);
+  var volC=compras.reduce(function(s,c){return s+volMWm(c);},0);
+  var volV=vendas.reduce(function(s,c){return s+volMWm(c);},0);
+  var volCh=compras.reduce(function(s,c){return s+volMWh(c);},0);
+  var volVh=vendas.reduce(function(s,c){return s+volMWh(c);},0);
+  var rec=vendas.reduce(function(s,c){return s+expFin(c);},0);
+  var custo=compras.reduce(function(s,c){return s+expFin(c);},0);
+  var margem=rec-custo;
+  var bySub={}; cs.forEach(function(c){ var s=c.submercado||'N/D'; if(!bySub[s])bySub[s]={compra:0,venda:0}; if(isCompra(c))bySub[s].compra+=volMWm(c); else bySub[s].venda+=volMWm(c); });
+  var byFonte={}; cs.forEach(function(c){ var f=c.fonte||'N/D'; byFonte[f]=(byFonte[f]||0)+volMWm(c); });
+  var byNeg={}; cs.forEach(function(c){ var n=c.negociante||'N/D'; if(!byNeg[n])byNeg[n]={vol:0,val:0,count:0}; byNeg[n].vol+=volMWm(c); byNeg[n].val+=expFin(c); byNeg[n].count++; });
+  var byEmp={}; cs.forEach(function(c){ var e=c.empresa||'N/D'; if(!byEmp[e])byEmp[e]={vol:0,val:0,count:0}; byEmp[e].vol+=volMWm(c); byEmp[e].val+=expFin(c); byEmp[e].count++; });
+  var ret=cs.filter(function(c){return c.retusd==='sim'||c.retusd==='yes';});
+  var months=[];
+  for(var i=0;i<24;i++){ var d=new Date(TODAY); d.setMonth(d.getMonth()+i); var st=new Date(d.getFullYear(),d.getMonth(),1), en=new Date(d.getFullYear(),d.getMonth()+1,0);
+    var act=cs.filter(function(c){return c.inicioForn&&c.fimForn&&c.inicioForn<=en&&c.fimForn>=st;});
+    var comp=act.filter(isCompra).reduce(function(s,c){return s+volMWm(c);},0);
+    var vend=act.filter(isVenda).reduce(function(s,c){return s+volMWm(c);},0);
+    var pcVal=act.filter(isCompra).reduce(function(s,c){return s+expFin(c);},0);
+    var pvVal=act.filter(isVenda).reduce(function(s,c){return s+expFin(c);},0);
+    var pcVh=act.filter(isCompra).reduce(function(s,c){return s+volMWh(c);},0);
+    var pvVh=act.filter(isVenda).reduce(function(s,c){return s+volMWh(c);},0);
+    months.push({label:d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}),comp:comp,vend:vend,saldo:vend-comp,pmComp:pcVh>0?pcVal/pcVh:0,pmVend:pvVh>0?pvVal/pvVh:0,resultado:pvVal-pcVal});
+  }
+  return { total:cs.length,ativos:ativos.length,ainc:ainc.length,enc:enc.length,volC:volC,volV:volV,volCh:volCh,volVh:volVh,posLiq:volV-volC,
+    rec:rec,custo:custo,margem:margem,margemPct:rec>0?margem/rec*100:0,ticket:cs.length>0?(rec+custo)/cs.length:0,
+    pmC:volCh>0?custo/volCh:0,pmV:volVh>0?rec/volVh:0,bySub:bySub,byFonte:byFonte,byNeg:byNeg,byEmp:byEmp,
+    retCount:ret.length,expUSD:ret.reduce(function(s,c){return s+expFin(c);},0),
+    ajVol:cs.filter(function(c){return (c.possuiAjVol==='sim')&&c.volAjMWm===0;}).length,
+    ajPrec:cs.filter(function(c){return (c.possuiAjPreco==='sim')&&c.precAj===0;}).length,
+    semCCEE:cs.filter(function(c){return !c.contratoCCEE;}).length,
+    nfPend:ativos.filter(function(c){return c.valorNF===0;}).length, months:months };
+}
+
+// ── Views ────────────────────────────────────────────────────────────────
+function viewDashboard(){
+  var s=computeStats(STATE.contracts);
+  var subData=Object.keys(s.bySub).map(function(k){var v=s.bySub[k];return {name:k,compra:+v.compra.toFixed(2),venda:+v.venda.toFixed(2),saldo:+(v.venda-v.compra).toFixed(2)};});
+  var fonteData=Object.keys(s.byFonte).map(function(k){return {name:k,value:+s.byFonte[k].toFixed(2)};});
+  var h='';
+  h+='<div class="section-header"><span class="section-title">1.1 Visão Geral do Portfólio</span></div>';
+  h+='<div class="grid-4">'+
+    metric('Total de Contratos',s.total,s.ativos+' ativos · '+s.ainc+' a iniciar · '+s.enc+' encerrados')+
+    metric('Vol. Comprado',fmtMW(s.volC),fmt(s.volCh,0)+' MWh')+
+    metric('Vol. Vendido',fmtMW(s.volV),fmt(s.volVh,0)+' MWh')+
+    metric('Posição Líquida',fmtMW(s.posLiq),s.posLiq>=0?'Long (sobrecontratado)':'Short (descoberto)',s.posLiq>=0?'LONG':'SHORT',s.posLiq)+'</div>';
+  h+='<div class="grid-4">'+
+    metric('Receita (Venda)',fmtR(s.rec))+
+    metric('Custo (Compra)',fmtR(s.custo))+
+    metric('Margem Bruta',fmtR(s.margem),fmt(s.margemPct,1)+'%',null,s.margem)+
+    metric('Ticket Médio',fmtR(s.ticket))+'</div>';
+  h+='<div class="grid-4">'+
+    metric('Preço Médio Compra','R$ '+fmt(s.pmC)+'/MWh')+
+    metric('Preço Médio Venda','R$ '+fmt(s.pmV)+'/MWh')+
+    metric('Spread Médio','R$ '+fmt(s.pmV-s.pmC)+'/MWh',null,null,s.pmV-s.pmC)+
+    metric('Contratos RETUSD',s.retCount,'Exp. aprox.: '+fmtR(s.expUSD))+'</div>';
+
+  h+='<div class="section-header"><span class="section-title">1.2 Posição por Submercado</span></div>';
+  if(subData.length){
+    h+='<div class="grid-2"><div class="chart-card"><div class="chart-title">Volume por Submercado (MWm)</div>'+cssBars(subData,['compra','venda'],['#3b82f6','#22c55e'],['Compra','Venda'])+'</div>';
+    h+='<div class="card"><div class="card-title">Posição Líquida por Submercado</div><table><thead><tr><th>Submercado</th><th>Compra</th><th>Venda</th><th>Líquido</th></tr></thead><tbody>';
+    subData.forEach(function(x){ h+='<tr><td><span class="badge badge-blue">'+esc(x.name)+'</span></td><td class="td-num">'+fmt(x.compra)+'</td><td class="td-num">'+fmt(x.venda)+'</td><td class="td-num '+(x.saldo>=0?'pos-long':'pos-short')+'">'+fmt(x.saldo)+'</td></tr>'; });
+    h+='</tbody></table></div></div>';
+  }
+
+  h+='<div class="section-header"><span class="section-title">1.3 Posição por Fonte de Energia</span></div>';
+  if(fonteData.length){ h+='<div class="grid-2"><div class="chart-card"><div class="chart-title">Volume por Fonte (MWm)</div>'+cssBars(fonteData.map(function(f){return {name:f.name,v:f.value};}),['v'],['#a78bfa'],['MWm'])+'</div><div class="card"><div class="card-title">Volume por Fonte</div>'+pieList(fonteData)+'</div></div>'; }
+
+  h+='<div class="section-header"><span class="section-title">1.7 Indicadores de Risco</span></div>';
+  h+='<div class="grid-4">'+
+    metric('Ajustes Vol. Pendentes',s.ajVol,'sem volume ajustado',s.ajVol>0?'Atenção':'OK',-s.ajVol)+
+    metric('Ajustes Preço Pend.',s.ajPrec,'sem preço ajustado',s.ajPrec>0?'Atenção':'OK',-s.ajPrec)+
+    metric('Sem Contrato CCEE',s.semCCEE,'risco regulatório',s.semCCEE>0?'Crítico':'OK',-s.semCCEE)+
+    metric('NF Pendente (Ativos)',s.nfPend,'fornec. ativo sem NF',s.nfPend>0?'Crítico':'OK',-s.nfPend)+'</div>';
+
+  h+='<div class="section-header"><span class="section-title">1.9 Performance Comercial — Ranking Negociantes</span></div>';
+  var negArr=Object.keys(s.byNeg).map(function(k){return [k,s.byNeg[k]];}).sort(function(a,b){return b[1].vol-a[1].vol;});
+  var totNeg=negArr.reduce(function(t,x){return t+x[1].vol;},0)||1;
+  h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>#</th><th>Negociante</th><th>Contratos</th><th>Volume MWm</th><th>Valor R$</th><th>% Vol</th></tr></thead><tbody>';
+  negArr.slice(0,10).forEach(function(x,i){ h+='<tr><td style="color:#475569">'+(i+1)+'</td><td>'+esc(x[0])+'</td><td class="td-num">'+x[1].count+'</td><td class="td-num">'+fmt(x[1].vol)+'</td><td class="td-num">'+fmtR(x[1].val)+'</td><td class="td-num">'+fmt(x[1].vol/totNeg*100,1)+'%</td></tr>'; });
+  h+='</tbody></table></div></div>';
+
+  h+='<div class="section-header"><span class="section-title">1.10 Posição Consolidada — Próximos 24 Meses</span></div>';
+  h+='<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">Saldo Líquido Mensal (MWm)</div>'+lineChart(s.months,'saldo','#f59e0b')+'</div>';
+  h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Compra</th><th>Venda</th><th>Saldo</th><th>PM Compra</th><th>PM Venda</th><th>Resultado R$</th></tr></thead><tbody>';
+  s.months.forEach(function(m){ h+='<tr><td>'+esc(m.label)+'</td><td class="td-num">'+fmt(m.comp)+'</td><td class="td-num">'+fmt(m.vend)+'</td><td class="td-num '+(m.saldo>0?'pos-long':m.saldo<0?'pos-short':'pos-zero')+'">'+fmt(m.saldo)+'</td><td class="td-num">'+(m.pmComp>0?'R$ '+fmt(m.pmComp):'—')+'</td><td class="td-num">'+(m.pmVend>0?'R$ '+fmt(m.pmVend):'—')+'</td><td class="td-num '+(m.resultado>=0?'pos-long':'pos-short')+'">'+fmtR(m.resultado)+'</td></tr>'; });
+  h+='</tbody></table></div></div>';
+  return h;
+}
+
+function viewAlertas(){
+  var rows=[];
+  STATE.contracts.forEach(function(c){ alerts(c).forEach(function(a){ rows.push({negocio:c.negocio,ccee:c.contratoCCEE,empresa:c.empresa,msg:a.msg,crit:a.crit}); }); });
+  var ord={'Crítico':0,'Atenção':1,'Informativo':2};
+  rows.sort(function(a,b){return (ord[a.crit]||3)-(ord[b.crit]||3);});
+  var crit=rows.filter(function(r){return r.crit==='Crítico';}).length;
+  var aten=rows.filter(function(r){return r.crit==='Atenção';}).length;
+  var h='<div class="grid-3" style="margin-bottom:20px">'+
+    metric('Alertas Críticos',crit,null,crit>0?'Ação imediata':'Nenhum',-crit)+
+    metric('Alertas Atenção',aten,null,aten>0?'Monitorar':'Nenhum',aten>0?-1:0)+
+    metric('Total de Alertas',rows.length)+'</div>';
+  if(!rows.length){ return h+'<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Nenhum alerta identificado</div></div>'; }
+  h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>Negócio</th><th>CCEE</th><th>Empresa</th><th>Alerta</th><th>Criticidade</th></tr></thead><tbody>';
+  rows.forEach(function(r){ h+='<tr class="'+(r.crit==='Crítico'?'alert-row-crit':r.crit==='Atenção'?'alert-row-warn':'')+'"><td style="font-weight:500">'+esc(r.negocio)+'</td><td style="color:#64748b">'+esc(r.ccee||'—')+'</td><td>'+esc(r.empresa)+'</td><td>'+esc(r.msg)+'</td><td><span class="badge '+(r.crit==='Crítico'?'badge-red':r.crit==='Atenção'?'badge-yellow':'badge-gray')+'">'+esc(r.crit)+'</span></td></tr>'; });
+  h+='</tbody></table></div></div>';
+  return h;
+}
+
+var FILTER='todos';
+function viewContratos(){
+  var cs=STATE.contracts;
+  var vendas=cs.filter(isVenda), compras=cs.filter(isCompra);
+  var rec=vendas.reduce(function(s,c){return s+expFin(c);},0);
+  var custo=compras.reduce(function(s,c){return s+expFin(c);},0);
+  var vVh=vendas.reduce(function(s,c){return s+volMWh(c);},0);
+  var cVh=compras.reduce(function(s,c){return s+volMWh(c);},0);
+  var pmV=vVh>0?rec/vVh:0, pmC=cVh>0?custo/cVh:0;
+  var h='<div class="result-box"><div class="rb-title">Resultado Total do Portfólio</div><div class="grid-4">'+
+    metric('Receita (Venda)',fmtR(rec))+
+    metric('Custo (Compra)',fmtR(custo))+
+    metric('Margem Bruta',fmtR(rec-custo),(rec>0?fmt((rec-custo)/rec*100,1):'0')+'%',null,rec-custo)+
+    metric('PM Venda vs Compra','R$ '+fmt(pmV-pmC)+'/MWh','V: R$'+fmt(pmV)+' · C: R$'+fmt(pmC),null,pmV-pmC)+'</div></div>';
+  var filters=[['todos','Todos'],['ativo','Ativos'],['ainc','A iniciar'],['enc','Encerrados'],['alerta','Com alertas']];
+  h+='<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
+  filters.forEach(function(f){ h+='<button class="btn '+(FILTER===f[0]?'btn-primary':'btn-ghost')+'" data-filter="'+f[0]+'">'+f[1]+'</button>'; });
+  var filtered=cs.filter(function(c){ var st=status(c).code; if(FILTER==='ativo')return st==='ativo'; if(FILTER==='ainc')return st==='ainc'; if(FILTER==='enc')return st==='enc'; if(FILTER==='alerta')return alerts(c).length>0; return true; });
+  h+='<span style="margin-left:auto;color:#64748b;font-size:12px;display:flex;align-items:center">'+filtered.length+' contrato(s)</span></div>';
+  if(!filtered.length){ return h+'<div class="empty-state"><div class="empty-text">Nenhum contrato nesta categoria</div></div>'; }
+  filtered.forEach(function(c){ h+=fichaHTML(c); });
+  return h;
+}
+function fichaHTML(c){
+  var st=status(c), al=alerts(c), exf=expFin(c), dMWm=c.volAjMWm-c.volPrevMWm, dPct=c.volPrevMWm>0?dMWm/c.volPrevMWm*100:0;
+  var h='<div class="ficha" data-ficha="'+c._id+'"><div class="ficha-header" data-toggle="'+c._id+'">';
+  h+='<span style="color:#64748b;font-size:11px;width:16px" data-arrow="'+c._id+'">▶</span>';
+  h+='<span style="font-weight:600;color:#f1f5f9;min-width:120px">'+esc(c.negocio)+'</span>';
+  h+='<span class="'+st.cls+'">'+esc(st.label)+'</span>';
+  h+='<span style="margin-left:10px;color:#64748b;font-size:11px">'+esc(c.empresa)+'</span>';
+  h+='<span style="margin-left:auto;display:flex;gap:6px">';
+  h+='<span class="badge '+(isVenda(c)?'badge-green':'badge-blue')+'">'+esc(c.tipoOp||'—')+'</span>';
+  if(c.submercado) h+='<span class="badge badge-gray">'+esc(c.submercado)+'</span>';
+  if(c.fonte) h+='<span class="badge badge-purple">'+esc(c.fonte)+'</span>';
+  if(al.length) h+='<span class="badge badge-red">'+al.length+' alerta(s)</span>';
+  h+='</span></div>';
+  h+='<div class="ficha-body" data-body="'+c._id+'" style="display:none"><div class="ficha-grid">';
+  function fld(l,v){ return '<div><div class="ficha-label">'+l+'</div><div class="ficha-value">'+v+'</div></div>'; }
+  h+=fld('Contrato CCEE',c.contratoCCEE?esc(c.contratoCCEE):'<span style="color:#ef4444">Não registrado</span>');
+  h+=fld('Negociante',esc(c.negociante||'—'));
+  h+=fld('Operador',esc(c.operador||'—'));
+  h+=fld('Início / Fim',(c.inicioForn?c.inicioForn.toLocaleDateString('pt-BR'):'—')+' → '+(c.fimForn?c.fimForn.toLocaleDateString('pt-BR'):'—'));
+  h+=fld('Vol. Previsto',fmtMW(c.volPrevMWm)+' / '+fmt(c.volPrevMWh,0)+' MWh');
+  h+=fld('Vol. Ajustado',fmtMW(c.volAjMWm)+(c.volAjMWm>0&&c.volPrevMWm>0?' <span class="'+(dMWm>=0?'delta-pos':'delta-neg')+'" style="font-size:11px">('+(dMWm>=0?'+':'')+fmt(dPct,1)+'%)</span>':''));
+  h+=fld('Preço Previsto','R$ '+fmt(c.precPrev)+'/MWh');
+  h+=fld('Preço Ajustado','R$ '+fmt(c.precAj)+'/MWh');
+  h+=fld('Exposição Financeira','<span style="color:#fbbf24">'+fmtR(exf)+'</span>');
+  h+=fld('Índice Reajuste',esc(c.indiceReaj||'—')+(c.dataPrimReaj?' · 1º: '+c.dataPrimReaj.toLocaleDateString('pt-BR'):''));
+  h+=fld('Condição Pgto',esc(c.condPag||'—'));
+  h+=fld('Valor NF','<span style="color:'+((c.valorNF===0&&st.code==='ativo')?'#ef4444':'#e2e8f0')+'">'+fmtR(c.valorNF)+'</span>');
+  h+='</div>';
+  if(al.length){ h+='<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">'; al.forEach(function(a){ h+='<span class="badge '+(a.crit==='Crítico'?'badge-red':'badge-yellow')+'">'+esc(a.crit)+': '+esc(a.msg)+'</span>'; }); h+='</div>'; }
+  if(c.obsFinanceiro){ h+='<div style="margin-top:10px;padding:8px 12px;background:#0f1a2e;border-radius:6px;color:#94a3b8;font-size:12px;border:1px solid #1e3a5f">Obs: '+esc(c.obsFinanceiro)+'</div>'; }
+  h+='</div></div>';
+  return h;
+}
+
+function viewPortfolio(){
+  var cs=STATE.contracts;
+  function agg(key){ var m={}; cs.forEach(function(c){ var k=c[key]||'N/D'; if(!m[k])m[k]={vol:0,val:0,count:0}; m[k].vol+=volMWm(c); m[k].val+=expFin(c); m[k].count++; }); return Object.keys(m).map(function(k){return [k,m[k]];}).sort(function(a,b){return b[1].vol-a[1].vol;}); }
+  function tbl(data,label){ var tot=data.reduce(function(s,x){return s+x[1].vol;},0)||1; var h='<div class="card" style="margin-bottom:12px"><div class="card-title">Concentração por '+label+'</div><div class="table-wrap"><table><thead><tr><th>'+label+'</th><th>Contratos</th><th>Volume MWm</th><th>Valor R$</th><th>% Vol</th></tr></thead><tbody>'; data.slice(0,10).forEach(function(x){ h+='<tr><td>'+esc(x[0])+'</td><td class="td-num">'+x[1].count+'</td><td class="td-num">'+fmt(x[1].vol)+'</td><td class="td-num">'+fmtR(x[1].val)+'</td><td class="td-num">'+fmt(x[1].vol/tot*100,1)+'%</td></tr>'; }); return h+'</tbody></table></div></div>'; }
+  var h='<div class="section-header"><span class="section-title">Concentração de Contraparte</span></div>'+tbl(agg('empresa'),'Empresa')+tbl(agg('negociante'),'Negociante');
+  var ret=cs.filter(function(c){return c.retusd==='sim';});
+  h+='<div class="section-header"><span class="section-title">Exposição Cambial (RETUSD)</span></div>';
+  if(ret.length){ h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>Negócio</th><th>Empresa</th><th>Tipo</th><th>Volume MWm</th><th>Exposição R$</th></tr></thead><tbody>'; ret.forEach(function(c){ h+='<tr><td>'+esc(c.negocio)+'</td><td>'+esc(c.empresa)+'</td><td><span class="badge '+(isVenda(c)?'badge-green':'badge-blue')+'">'+esc(c.tipoOp)+'</span></td><td class="td-num">'+fmt(volMWm(c))+'</td><td class="td-num">'+fmtR(expFin(c))+'</td></tr>'; }); h+='</tbody></table></div></div>'; }
+  else { h+='<div class="card" style="padding:20px;color:#64748b;text-align:center">Nenhum contrato com RETUSD ativo</div>'; }
+  h+='<div class="section-header"><span class="section-title">Spread e Flexibilidade</span></div><div class="card"><div class="table-wrap"><table><thead><tr><th>Negócio</th><th>Tipo Spread</th><th>Índice</th><th>Spread</th><th>Piso</th><th>Teto</th><th>Flex Sup</th><th>Flex Inf</th></tr></thead><tbody>';
+  var flexCs=cs.filter(function(c){return c.tipoSpread||c.flexSup>0||c.flexInf>0;});
+  if(!flexCs.length){ h+='<tr><td colspan="8" style="text-align:center;color:#64748b">Nenhum contrato com spread/flexibilidade</td></tr>'; }
+  flexCs.forEach(function(c){ h+='<tr><td>'+esc(c.negocio)+'</td><td>'+esc(c.tipoSpread||'—')+'</td><td>'+esc(c.indice||'—')+'</td><td class="td-num">'+(c.spread>0?fmt(c.spread):'—')+'</td><td class="td-num">'+(c.pisoFlex>0?'R$ '+fmt(c.pisoFlex):'—')+'</td><td class="td-num">'+(c.tetoFlex>0?'R$ '+fmt(c.tetoFlex):'—')+'</td><td class="td-num">'+(c.flexSup>0?fmt(c.flexSup,1)+'%':'—')+'</td><td class="td-num">'+(c.flexInf>0?fmt(c.flexInf,1)+'%':'—')+'</td></tr>'; });
+  h+='</tbody></table></div></div>';
+  return h;
+}
+
+function viewPosicao(){
+  var cs=STATE.contracts;
+  var subs=[]; cs.forEach(function(c){ if(c.submercado&&subs.indexOf(c.submercado)<0) subs.push(c.submercado); });
+  var h='<div class="section-header"><span class="section-title">Posição Líquida Mensal por Submercado (MWm)</span></div><div class="card"><div class="table-wrap"><table><thead><tr><th>Mês</th>';
+  subs.forEach(function(s){ h+='<th>Compra '+esc(s)+'</th><th>Venda '+esc(s)+'</th><th>Saldo '+esc(s)+'</th>'; });
+  h+='</tr></thead><tbody>';
+  for(var i=0;i<24;i++){ var d=new Date(TODAY); d.setMonth(d.getMonth()+i); var st=new Date(d.getFullYear(),d.getMonth(),1), en=new Date(d.getFullYear(),d.getMonth()+1,0);
+    h+='<tr><td>'+d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'})+'</td>';
+    subs.forEach(function(sm){ var act=cs.filter(function(c){return c.submercado===sm&&c.inicioForn&&c.fimForn&&c.inicioForn<=en&&c.fimForn>=st;}); var comp=act.filter(isCompra).reduce(function(s,c){return s+volMWm(c);},0); var vend=act.filter(isVenda).reduce(function(s,c){return s+volMWm(c);},0); var sal=vend-comp; h+='<td class="td-num">'+fmt(comp)+'</td><td class="td-num">'+fmt(vend)+'</td><td class="td-num '+(sal>0?'pos-long':sal<0?'pos-short':'pos-zero')+'">'+fmt(sal)+'</td>'; });
+    h+='</tr>';
+  }
+  h+='</tbody></table></div></div>';
+  return h;
+}
+
+function viewRecomendacoes(){
+  var cs=STATE.contracts, out=[];
+  var semCCEE=cs.filter(function(c){return !c.contratoCCEE;});
+  var vencendo=cs.filter(function(c){return status(c).code==='venc';});
+  var prox90=cs.filter(function(c){ if(!c.fimForn)return false; var d=daysDiff(c.fimForn); return d>=0&&d<=90&&volMWm(c)>0; });
+  var ret=cs.filter(function(c){return c.retusd==='sim';});
+  var subC=[],subV=[]; cs.forEach(function(c){ if(isCompra(c)&&subC.indexOf(c.submercado)<0)subC.push(c.submercado); if(isVenda(c)&&subV.indexOf(c.submercado)<0)subV.push(c.submercado); });
+  var desc=subV.filter(function(s){return subC.indexOf(s)<0;}).concat(subC.filter(function(s){return subV.indexOf(s)<0;}));
+  if(semCCEE.length) out.push({p:1,t:'Regulatório',ti:'Registrar '+semCCEE.length+' contrato(s) na CCEE',d:'Sem registro: '+semCCEE.map(function(c){return c.negocio;}).join(', ')+'. Risco de penalidade.'});
+  if(vencendo.length) out.push({p:1,t:'Comercial',ti:vencendo.length+' contrato(s) vencendo em 30 dias',d:vencendo.map(function(c){return c.negocio+' ('+c.empresa+')';}).join(', ')});
+  if(prox90.length) out.push({p:2,t:'Comercial',ti:prox90.length+' candidato(s) a renovação antecipada (90 dias)',d:prox90.map(function(c){return c.negocio+' — '+fmtMW(volMWm(c))+' · '+c.empresa;}).join(' | ')});
+  if(ret.length) out.push({p:2,t:'Risco Cambial',ti:ret.length+' contrato(s) RETUSD sem hedge identificado',d:'Avaliar hedge via NDF ou câmbio a termo para proteger margem.'});
+  if(desc.length) out.push({p:2,t:'Risco Submercado',ti:'Descasamento de submercado: '+desc.join(', '),d:'Compras/vendas em submercados distintos expõem ao PLD diferencial. Avaliar hedge.'});
+  out.sort(function(a,b){return a.p-b.p;});
+  var h='<div class="section-header"><span class="section-title">Recomendações Estratégicas</span></div>';
+  if(!out.length) return h+'<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Nenhuma recomendação crítica</div></div>';
+  out.slice(0,6).forEach(function(r,i){ h+='<div class="card" style="margin-bottom:10px;border-left:3px solid '+(r.p===1?'#ef4444':'#f59e0b')+'"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-weight:700;color:#f1f5f9;font-size:13px">'+(i+1)+'. '+esc(r.ti)+'</span><span class="badge '+(r.p===1?'badge-red':'badge-yellow')+'">'+esc(r.t)+'</span></div><div style="color:#94a3b8;font-size:12px;line-height:1.5">'+esc(r.d)+'</div></div>'; });
+  return h;
+}
+
+// ── Import screen ────────────────────────────────────────────────────────
+var SAMPLE='Negócio;Unidade de negócio;Tipo de operação;Natureza de operação;Empresa Responsável;Negociante;Operador;Origem da operação;Data de criação;Contrato CCEE;Início do fornecimento;Fim do fornecimento;Volume previsto (MWm);Volume previsto (MWh);Volume ajustado (MWm);Volume ajustado (MWh);Possui ajuste de volume;Submercado;Possui ajuste de submercado;Fonte de energia;RETUSD;Classificação;Flexibilidade superior;Flexibilidade inferior;Condição de pagamento;Data Final Condição de pagamento;Observação Financeiro;Preço previsto;Preço ajustado;Possui ajuste de preço;Tipo de Spread;Índice;Spread;Piso da flexibilidade de preço;Teto da flexibilidade de preço;Índice de reajuste;Data do 1o reajuste;Valor NF\n'+
+'NEG-001;Comercial;Compra;Bilateral;Empresa Alpha S.A.;João Silva;Pedro Costa;Mesa;01/01/2026;CCEE-2026-001;01/01/2026;31/12/2026;10;7320;10;7320;Não;SE/CO;Não;Convencional;Não;ACL;0;0;D+30;31/12/2026;;250;255;Sim;;;0;0;0;IPCA;01/01/2027;255000\n'+
+'NEG-002;Comercial;Venda;Bilateral;Empresa Beta Ltda;Maria Santos;Pedro Costa;Mesa;15/01/2026;CCEE-2026-002;01/01/2026;30/06/2026;5;3660;5;3660;Não;SE/CO;Não;EOL;Não;ACL;10;10;D+15;30/06/2026;;300;300;Não;;;0;0;0;IPCA;01/07/2026;1098000\n'+
+'NEG-003;Comercial;Compra;Bilateral;Empresa Gamma S.A.;João Silva;Ana Lima;Corretora;10/02/2026;CCEE-2026-003;01/03/2026;28/02/2027;8;5856;8;5856;Não;S;Não;PCH;Não;ACL;5;5;D+30;28/02/2027;;220;225;Não;;;0;180;280;IGP-M;01/03/2027;225000\n'+
+'NEG-004;Industrial;Venda;Bilateral;Empresa Delta S.A.;Carlos Rocha;Ana Lima;Indicação;05/03/2026;;01/06/2026;31/12/2027;15;10980;15;10980;Não;NE;Não;UFV;Sim;ACL;0;0;D+30;31/12/2027;Reajuste pendente;280;0;Sim;;;0;0;0;IPCA;01/06/2027;0\n'+
+'NEG-005;Comercial;Venda;Bilateral;Empresa Epsilon Ltda;Maria Santos;Pedro Costa;Mesa;20/04/2026;CCEE-2026-005;01/06/2026;30/06/2026;3;2190;3;2190;Não;SE/CO;Não;Convencional;Não;ACL;0;0;D+15;30/06/2026;;310;310;Não;;;0;0;0;;;930000';
+
+function viewImport(){
+  return '<div style="max-width:800px;margin:0 auto;padding-top:40px">'+
+    '<div style="text-align:center;margin-bottom:32px"><div style="font-size:24px;font-weight:700;color:#f1f5f9;margin-bottom:8px">Gestão de Contratos de Energia</div><div style="color:#64748b;font-size:14px">Importe sua base de contratos para iniciar a análise</div></div>'+
+    '<div class="import-zone" id="dropZone"><div class="import-title">Arraste o arquivo CSV aqui</div><div class="import-sub">ou clique para selecionar · separador ; , ou TAB</div><button class="btn btn-primary" id="pickBtn">Selecionar arquivo</button><input type="file" id="fileInput" accept=".csv,.txt" style="display:none"></div>'+
+    '<div style="margin-top:24px"><div style="color:#64748b;font-size:12px;margin-bottom:8px">Ou cole os dados diretamente:</div>'+
+    '<textarea class="paste-area" id="pasteArea" placeholder="Cole aqui os dados CSV com cabeçalho"></textarea>'+
+    '<div id="importErr" class="err" style="display:none"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-primary" id="analyzeBtn">Analisar</button><button class="btn btn-ghost" id="sampleBtn">Carregar dados de exemplo</button></div></div></div>';
+}
+
+// ── MtM Contrapartes ─────────────────────────────────────────────────────
+function marketDefault(cs){ var v=0,val=0; cs.forEach(function(c){ v+=volMWh(c); val+=expFin(c); }); return v>0?val/v:0; }
+function mtmContract(c,M){ var P=c.precAj||c.precPrev, vol=volMWh(c); if(isCompra(c)) return (M-P)*vol; if(isVenda(c)) return (P-M)*vol; return 0; }
+function mtmBars(arr){
+  var max=Math.max.apply(null,arr.map(function(x){return Math.abs(x.mtm);}).concat([1]));
+  var h='';
+  arr.forEach(function(x){ var pct=Math.abs(x.mtm)/max*100, col=x.mtm>=0?'#22c55e':'#ef4444';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><div style="width:180px;font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.nome)+'</div><div style="flex:1;background:#0f1117;border-radius:4px;height:18px"><div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:4px"></div></div><div style="width:130px;text-align:right;font-size:12px;color:'+col+'">'+fmtR(x.mtm)+'</div></div>';
+  });
+  return h;
+}
+function viewMtM(){
+  var cs=STATE.contracts;
+  if(MARKET_PRICE==null) MARKET_PRICE=Math.round(marketDefault(cs)*100)/100;
+  var M=MARKET_PRICE;
+  var by={}; cs.forEach(function(c){ var k=c.empresa||'N/D'; if(!by[k])by[k]={mtm:0,vol:0,count:0,exp:0}; by[k].mtm+=mtmContract(c,M); by[k].vol+=volMWm(c); by[k].exp+=expFin(c); by[k].count++; });
+  var arr=Object.keys(by).map(function(k){return {nome:k,mtm:by[k].mtm,vol:by[k].vol,exp:by[k].exp,count:by[k].count};});
+  arr.sort(function(a,b){return b.mtm-a.mtm;});
+  var totalMtM=arr.reduce(function(s,x){return s+x.mtm;},0);
+  var pos=arr.filter(function(x){return x.mtm>0;});
+  var neg=arr.filter(function(x){return x.mtm<0;}).sort(function(a,b){return a.mtm-b.mtm;});
+  var h='';
+  h+='<div class="section-header"><span class="section-title">Marcação a Mercado (MtM) por Contraparte</span></div>';
+  h+='<div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap"><div><div class="ficha-label">Preço de mercado de referência (R$/MWh)</div><input id="mktPrice" type="number" step="1" value="'+M+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:6px 10px;width:140px;font-size:13px;outline:none"></div><button class="btn btn-primary" id="mktApply">Recalcular MtM</button><span style="color:#64748b;font-size:11px">MtM = (Mercado − Preço) × Volume para compras · (Preço − Mercado) × Volume para vendas. Padrão = preço médio do portfólio.</span></div>';
+  h+='<div class="grid-3" style="margin-bottom:8px">'+
+    metric('MtM Total do Portfólio',fmtR(totalMtM),null,totalMtM>=0?'A favor':'Contra',totalMtM)+
+    metric('Contrapartes com MtM Positivo',pos.length,'ganho marcado a mercado')+
+    metric('Contrapartes com MtM Negativo',neg.length,'perda marcada a mercado',neg.length>0?'Monitorar':'OK',-neg.length)+'</div>';
+  h+='<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">MtM por Contraparte (verde = a favor · vermelho = contra)</div>'+mtmBars(arr)+'</div>';
+  h+='<div class="grid-2">';
+  h+='<div class="card"><div class="card-title">Maiores MtM (favoráveis)</div><table><thead><tr><th>Contraparte</th><th>Contratos</th><th>Vol MWm</th><th>MtM R$</th></tr></thead><tbody>';
+  (pos.length?pos.slice(0,10):[{nome:'—',count:'',vol:0,mtm:0}]).forEach(function(x){ h+='<tr><td>'+esc(x.nome)+'</td><td class="td-num">'+x.count+'</td><td class="td-num">'+fmt(x.vol)+'</td><td class="td-num pos-long">'+fmtR(x.mtm)+'</td></tr>'; });
+  h+='</tbody></table></div>';
+  h+='<div class="card"><div class="card-title">Menores MtM (desfavoráveis)</div><table><thead><tr><th>Contraparte</th><th>Contratos</th><th>Vol MWm</th><th>MtM R$</th></tr></thead><tbody>';
+  (neg.length?neg.slice(0,10):[{nome:'—',count:'',vol:0,mtm:0}]).forEach(function(x){ h+='<tr><td>'+esc(x.nome)+'</td><td class="td-num">'+x.count+'</td><td class="td-num">'+fmt(x.vol)+'</td><td class="td-num pos-short">'+fmtR(x.mtm)+'</td></tr>'; });
+  h+='</tbody></table></div></div>';
+  return h;
+}
+
+// ── Fator de Alavancagem (CCEE) ──────────────────────────────────────────
+function loadPBI(){ try{ return localStorage.getItem('ccee_pbi_url')||''; }catch(e){ return ''; } }
+function savePBI(u){ try{ if(u) localStorage.setItem('ccee_pbi_url',u); else localStorage.removeItem('ccee_pbi_url'); }catch(e){} }
+function loadFA(){ try{ return JSON.parse(localStorage.getItem('ccee_fa_snapshots')||'[]'); }catch(e){ return []; } }
+function saveFA(s){ try{ localStorage.setItem('ccee_fa_snapshots',JSON.stringify(s)); }catch(e){} }
+function parseFA(raw){
+  var rows=parseCSV(raw); if(!rows.length) return null;
+  var keys=Object.keys(rows[0]);
+  function fk(terms){ for(var i=0;i<keys.length;i++){ var lk=keys[i].toLowerCase(); for(var j=0;j<terms.length;j++){ if(lk.indexOf(terms[j])>=0) return keys[i]; } } return null; }
+  var kn=fk(['nome','agente','razao','razão']), kc=fk(['cnpj','cpf']), ks=fk(['segmento','classe','categoria','perfil','natureza','tipo']), kf=fk(['fator','alavanc']), kd=fk(['data','referenc','referên','semana','periodo','período','competenc','competênc','mes','mês']);
+  if(!kf) return null;
+  var recs=rows.map(function(r){ return { nome:(kn?r[kn]:'')||'', cnpj:(kc?r[kc]:'')||'', segmento:(ks?r[ks]:'')||'', fator:num(kf?r[kf]:0), data:(kd?r[kd]:'')||'' }; }).filter(function(x){ return x.nome||x.cnpj; });
+  if(!recs.length) return null;
+  var date = recs[0].data || new Date().toISOString().slice(0,10);
+  return { date:String(date), records:recs };
+}
+function addFASnapshot(snap){
+  var snaps=loadFA();
+  snaps=snaps.filter(function(s){return s.date!==snap.date;});
+  snaps.push(snap);
+  snaps.sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:0;});
+  saveFA(snaps);
+}
+function segType(s){ var l=(s||'').toLowerCase(); if(l.indexOf('comerc')>=0) return 'Comercializadora'; if(l.indexOf('gera')>=0||l.indexOf('gerad')>=0) return 'Gerador'; return s||'Outro'; }
+function matchMine(rec, mineSet, mineDigits){
+  if(rec.cnpj){ var d=onlyDigits(rec.cnpj); if(d && mineDigits[d]) return true; }
+  var n=norm(rec.nome); if(!n) return false;
+  for(var i=0;i<mineSet.length;i++){ var mn=mineSet[i]; if(mn && (n.indexOf(mn)>=0 || mn.indexOf(n)>=0) && Math.min(n.length,mn.length)>=4) return true; }
+  return false;
+}
+var FA_SAMPLE_LOADED=false;
+function viewAlavancagem(){
+  var snaps=loadFA();
+  var h='<div class="section-header"><span class="section-title">Fator de Alavancagem CCEE — Monitoramento Semanal</span></div>';
+  var pbi=loadPBI();
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">Painel Power BI da CCEE</div>'+
+    '<div style="color:#94a3b8;font-size:12px;line-height:1.6;margin-bottom:10px">A CCEE bloqueia acesso automático (proteção anti-bot), então cole aqui o link do painel Power BI da página de <a href="https://www.ccee.org.br/web/guest/fator-de-alavancagem" target="_blank" style="color:#60a5fa">Fator de Alavancagem</a>. Abra a página no navegador, no painel clique nos três pontos / compartilhar e copie o link <b>app.powerbi.com</b> (ou o src do iframe). O painel é exibido aqui dentro.</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><input id="pbiUrl" type="text" value="'+esc(pbi)+'" placeholder="https://app.powerbi.com/view?r=... ou link do reportEmbed" style="flex:1;min-width:260px;background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:8px 10px;font-size:12px;outline:none"><button class="btn btn-primary" id="pbiLoad">Carregar painel</button>'+(pbi?'<button class="btn btn-ghost" id="pbiClear">Remover</button>':'')+'</div>';
+  if(pbi){ h+='<div style="margin-top:12px;border:1px solid #252836;border-radius:8px;overflow:hidden;background:#0f1117"><iframe src="'+esc(pbi)+'" style="width:100%;height:560px;border:0" allowfullscreen></iframe></div><div style="color:#475569;font-size:11px;margin-top:6px">Se ficar em branco, o painel da CCEE provavelmente exige login (não é "publicar na web") e não pode ser embutido — use a importação de CSV abaixo.</div>'; }
+  h+='</div>';
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">Importar dados da CCEE</div>'+
+    '<div style="color:#94a3b8;font-size:12px;line-height:1.6;margin-bottom:10px">Baixe o CSV no <a href="https://dadosabertos.ccee.org.br/dataset/fator_alavancagem" target="_blank" style="color:#60a5fa">Portal de Dados Abertos da CCEE</a> (a CCEE bloqueia download automático, por isso a importação é manual) e cole/importe aqui. O app guarda cada semana e calcula a variação. Colunas detectadas automaticamente: nome/agente, CNPJ, segmento, fator, data de referência.</div>'+
+    '<textarea class="paste-area" id="faPaste" style="min-height:90px" placeholder="Cole aqui o CSV do Fator de Alavancagem"></textarea>'+
+    '<div id="faErr" class="err" style="display:none"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-primary" id="faImport">Importar snapshot</button><input type="file" id="faFile" accept=".csv,.txt" style="display:none"><button class="btn btn-ghost" id="faPick">Selecionar arquivo</button><button class="btn btn-ghost" id="faSample">Carregar exemplo (2 semanas)</button>'+(snaps.length?'<button class="btn btn-ghost" id="faClear" style="margin-left:auto">Limpar histórico</button>':'')+'</div></div>';
+
+  if(!snaps.length){ return h+'<div class="empty-state"><div class="empty-icon">↥</div><div class="empty-text">Nenhum snapshot importado ainda. Importe o CSV da CCEE ou carregue o exemplo.</div></div>'; }
+
+  var latest=snaps[snaps.length-1], prev=snaps.length>1?snaps[snaps.length-2]:null;
+  // index prev by cnpj/name
+  var prevIdx={}; if(prev){ prev.records.forEach(function(r){ if(r.cnpj) prevIdx['c'+onlyDigits(r.cnpj)]=r.fator; prevIdx['n'+norm(r.nome)]=r.fator; }); }
+  function prevFator(r){ if(r.cnpj && prevIdx['c'+onlyDigits(r.cnpj)]!=null) return prevIdx['c'+onlyDigits(r.cnpj)]; var k='n'+norm(r.nome); return prevIdx[k]!=null?prevIdx[k]:null; }
+
+  // my counterparties
+  var mineSet=[], mineDigits={};
+  STATE.contracts.forEach(function(c){ var n=norm(c.empresa); if(n&&mineSet.indexOf(n)<0) mineSet.push(n); });
+
+  h+='<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap"><span class="badge badge-blue">Snapshot atual: '+esc(latest.date)+'</span>'+(prev?'<span class="badge badge-gray">Comparando com: '+esc(prev.date)+'</span>':'<span class="badge badge-yellow">Sem semana anterior para comparar</span>')+'<span class="badge badge-gray">'+snaps.length+' snapshot(s) guardado(s)</span><span class="badge badge-gray">'+latest.records.length+' agentes</span></div>';
+
+  // My counterparties table
+  var mine=latest.records.filter(function(r){ return matchMine(r,mineSet,mineDigits); });
+  mine.sort(function(a,b){return b.fator-a.fator;});
+  h+='<div class="section-header"><span class="section-title">Minhas Contrapartes — Fator de Alavancagem</span></div>';
+  if(mine.length){
+    h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>Agente</th><th>Segmento</th><th>Fator Atual</th><th>Semana Anterior</th><th>Variação</th><th>Tendência</th></tr></thead><tbody>';
+    mine.forEach(function(r){ var pf=prevFator(r), dv=pf!=null?r.fator-pf:null;
+      var trend = dv==null?'<span class="badge badge-gray">novo</span>':(dv>0.0001?'<span class="badge badge-red">▲ alavancagem subindo</span>':dv<-0.0001?'<span class="badge badge-green">▼ reduzindo</span>':'<span class="badge badge-gray">estável</span>');
+      h+='<tr><td style="font-weight:500">'+esc(r.nome)+'</td><td>'+esc(segType(r.segmento))+'</td><td class="td-num">'+fmt(r.fator)+'</td><td class="td-num">'+(pf!=null?fmt(pf):'—')+'</td><td class="td-num '+(dv==null?'':dv>0?'pos-short':dv<0?'pos-long':'')+'">'+(dv==null?'—':(dv>0?'+':'')+fmt(dv))+'</td><td>'+trend+'</td></tr>'; });
+    h+='</tbody></table></div></div>';
+  } else {
+    h+='<div class="card" style="padding:20px;color:#64748b;text-align:center">Nenhuma das suas contrapartes foi encontrada no snapshot da CCEE (verifique se os nomes batem ou inclua CNPJ nos dados).</div>';
+  }
+
+  // Top leverage by segment
+  function topSeg(seg){ return latest.records.filter(function(r){return segType(r.segmento)===seg;}).sort(function(a,b){return b.fator-a.fator;}).slice(0,10); }
+  function segTable(title,rows){ var h2='<div class="card"><div class="card-title">'+title+'</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Agente</th><th>Fator</th><th>Var.</th></tr></thead><tbody>';
+    if(!rows.length){ h2+='<tr><td colspan="4" style="text-align:center;color:#64748b">Sem dados deste segmento</td></tr>'; }
+    rows.forEach(function(r,i){ var pf=prevFator(r), dv=pf!=null?r.fator-pf:null; var mineFlag=matchMine(r,mineSet,mineDigits)?' <span class="badge badge-blue" style="font-size:10px">minha</span>':'';
+      h2+='<tr><td style="color:#475569">'+(i+1)+'</td><td>'+esc(r.nome)+mineFlag+'</td><td class="td-num">'+fmt(r.fator)+'</td><td class="td-num '+(dv==null?'':dv>0?'pos-short':dv<0?'pos-long':'')+'">'+(dv==null?'—':(dv>0?'+':'')+fmt(dv))+'</td></tr>'; });
+    return h2+'</tbody></table></div></div>'; }
+  h+='<div class="section-header"><span class="section-title">Maiores Fatores de Alavancagem do Mercado</span></div>';
+  h+='<div class="grid-2">'+segTable('Comercializadoras — Top 10',topSeg('Comercializadora'))+segTable('Geradores — Top 10',topSeg('Gerador'))+'</div>';
+  return h;
+}
+function faSampleData(){
+  var prev='Nome do Agente;CNPJ;Segmento;Fator de Alavancagem;Data de Referência\n'+
+    'Empresa Alpha S.A.;11111111000111;Comercializadora;2,10;2026-05-23\n'+
+    'Empresa Beta Ltda;22222222000122;Comercializadora;1,45;2026-05-23\n'+
+    'Empresa Gamma S.A.;33333333000133;Gerador;0,95;2026-05-23\n'+
+    'Empresa Delta S.A.;44444444000144;Gerador;1,80;2026-05-23\n'+
+    'Trader XYZ Energia;55555555000155;Comercializadora;3,20;2026-05-23\n'+
+    'Mega Geradora S.A.;66666666000166;Gerador;2,75;2026-05-23\n'+
+    'Comercial Sul Energia;77777777000177;Comercializadora;2,55;2026-05-23';
+  var cur='Nome do Agente;CNPJ;Segmento;Fator de Alavancagem;Data de Referência\n'+
+    'Empresa Alpha S.A.;11111111000111;Comercializadora;2,48;2026-05-30\n'+
+    'Empresa Beta Ltda;22222222000122;Comercializadora;1,38;2026-05-30\n'+
+    'Empresa Gamma S.A.;33333333000133;Gerador;1,12;2026-05-30\n'+
+    'Empresa Delta S.A.;44444444000144;Gerador;1,72;2026-05-30\n'+
+    'Trader XYZ Energia;55555555000155;Comercializadora;3,65;2026-05-30\n'+
+    'Mega Geradora S.A.;66666666000166;Gerador;2,60;2026-05-30\n'+
+    'Comercial Sul Energia;77777777000177;Comercializadora;2,90;2026-05-30';
+  addFASnapshot(parseFA(prev));
+  addFASnapshot(parseFA(cur));
+}
+
+// ── Main render ──────────────────────────────────────────────────────────
+function render(){
+  var root=document.getElementById('root');
+  var critCount=STATE.contracts.reduce(function(s,c){return s+alerts(c).filter(function(a){return a.crit==='Crítico';}).length;},0);
+  var h='<div class="app"><div class="header"><div class="logo">Energia<span>SaaS</span></div>';
+  if(STATE.contracts.length){ h+='<span class="header-info">'+STATE.contracts.length+' contratos carregados</span>'; if(critCount) h+='<span class="badge badge-red">'+critCount+' crítico(s)</span>'; h+='<button class="btn btn-ghost" id="clearBtn" style="margin-left:8px">Limpar</button>'; }
+  h+='<div class="header-date">'+TODAY.toLocaleDateString('pt-BR',{weekday:'short',year:'numeric',month:'long',day:'numeric'})+'</div></div>';
+  if(!STATE.contracts.length){ h+='<div class="content">'+viewImport()+'</div></div>'; root.innerHTML=h; bindImport(); return; }
+  h+='<div class="main"><div class="sidebar"><div class="nav-section">Análise</div>';
+  NAV.forEach(function(n){ h+='<div class="nav-item '+(STATE.tab===n[0]?'active':'')+'" data-nav="'+n[0]+'">'+n[1]; if(n[0]==='alertas'&&critCount) h+='<span class="badge badge-red" style="margin-left:auto;font-size:10px;padding:1px 5px">'+critCount+'</span>'; h+='</div>'; });
+  h+='<div class="sep"></div><div class="nav-section">Dados</div><div class="nav-item" data-nav="_import">Nova importação</div></div>';
+  h+='<div class="content"><div class="tabs">';
+  NAV.forEach(function(n){ h+='<div class="tab '+(STATE.tab===n[0]?'active':'')+'" data-nav="'+n[0]+'">'+n[1]+'</div>'; });
+  h+='</div><div id="viewBody">'+renderView()+'</div></div></div></div>';
+  root.innerHTML=h;
+  bindApp();
+}
+function renderView(){
+  switch(STATE.tab){
+    case 'dashboard': return viewDashboard();
+    case 'alertas': return viewAlertas();
+    case 'contratos': return viewContratos();
+    case 'portfolio': return viewPortfolio();
+    case 'mtm': return viewMtM();
+    case 'alavancagem': return viewAlavancagem();
+    case 'posicao': return viewPosicao();
+    case 'recomendacoes': return viewRecomendacoes();
+    default: return viewDashboard();
+  }
+}
+function bindImport(){
+  var fi=document.getElementById('fileInput'), dz=document.getElementById('dropZone'), pb=document.getElementById('pickBtn');
+  var ab=document.getElementById('analyzeBtn'), sb=document.getElementById('sampleBtn'), pa=document.getElementById('pasteArea');
+  function load(raw){ try{ var cs=parseContracts(raw); if(!cs.length){ showErr('Nenhum contrato encontrado. Verifique o formato.'); return; } STATE.contracts=cs; STATE.tab='dashboard'; render(); }catch(e){ showErr('Erro: '+e.message); } }
+  function showErr(m){ var e=document.getElementById('importErr'); e.textContent=m; e.style.display='block'; }
+  pb.onclick=function(e){ e.stopPropagation(); fi.click(); };
+  dz.onclick=function(){ fi.click(); };
+  fi.onchange=function(){ var f=fi.files[0]; if(f){ var r=new FileReader(); r.onload=function(ev){load(ev.target.result);}; r.readAsText(f); } };
+  dz.ondragover=function(e){ e.preventDefault(); dz.classList.add('dragover'); };
+  dz.ondragleave=function(){ dz.classList.remove('dragover'); };
+  dz.ondrop=function(e){ e.preventDefault(); dz.classList.remove('dragover'); var f=e.dataTransfer.files[0]; if(f){ var r=new FileReader(); r.onload=function(ev){load(ev.target.result);}; r.readAsText(f); } };
+  ab.onclick=function(){ load(pa.value); };
+  sb.onclick=function(){ pa.value=SAMPLE; load(SAMPLE); };
+}
+function bindApp(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'),function(el){
+    el.onclick=function(){ var t=el.getAttribute('data-nav'); if(t==='_import'){ STATE.contracts=[]; render(); } else { STATE.tab=t; render(); } };
+  });
+  var cb=document.getElementById('clearBtn'); if(cb) cb.onclick=function(){ STATE.contracts=[]; render(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindFichas(); bindFilters(); }; });
+  bindFichas();
+  if(STATE.tab==='mtm') bindMtM();
+  if(STATE.tab==='alavancagem') bindFA();
+}
+function bindMtM(){
+  var inp=document.getElementById('mktPrice'), btn=document.getElementById('mktApply');
+  function apply(){ var v=parseFloat(inp.value); if(!isNaN(v)){ MARKET_PRICE=v; document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); } }
+  if(btn) btn.onclick=apply;
+  if(inp) inp.onkeydown=function(e){ if(e.key==='Enter') apply(); };
+}
+function bindFA(){
+  var imp=document.getElementById('faImport'), pa=document.getElementById('faPaste'), pick=document.getElementById('faPick'), fi=document.getElementById('faFile'), sb=document.getElementById('faSample'), cl=document.getElementById('faClear');
+  function err(m){ var e=document.getElementById('faErr'); if(e){ e.textContent=m; e.style.display='block'; } }
+  function doImport(raw){ var snap=parseFA(raw); if(!snap){ err('Não encontrei a coluna de Fator de Alavancagem. Verifique o cabeçalho do CSV.'); return; } addFASnapshot(snap); document.getElementById('viewBody').innerHTML=viewAlavancagem(); bindFA(); }
+  if(imp) imp.onclick=function(){ doImport(pa.value); };
+  if(pick) pick.onclick=function(){ fi.click(); };
+  if(fi) fi.onchange=function(){ var f=fi.files[0]; if(f){ var r=new FileReader(); r.onload=function(ev){ doImport(ev.target.result); }; r.readAsText(f); } };
+  if(sb) sb.onclick=function(){ faSampleData(); document.getElementById('viewBody').innerHTML=viewAlavancagem(); bindFA(); };
+  if(cl) cl.onclick=function(){ saveFA([]); document.getElementById('viewBody').innerHTML=viewAlavancagem(); bindFA(); };
+  var pu=document.getElementById('pbiUrl'), pl=document.getElementById('pbiLoad'), pc=document.getElementById('pbiClear');
+  if(pl) pl.onclick=function(){ savePBI((pu.value||'').trim()); document.getElementById('viewBody').innerHTML=viewAlavancagem(); bindFA(); };
+  if(pc) pc.onclick=function(){ savePBI(''); document.getElementById('viewBody').innerHTML=viewAlavancagem(); bindFA(); };
+}
+function bindFilters(){ Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindFichas(); bindFilters(); }; }); }
+function bindFichas(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-toggle]'),function(el){
+    el.onclick=function(){ var id=el.getAttribute('data-toggle'); var body=document.querySelector('[data-body="'+id+'"]'); var arrow=document.querySelector('[data-arrow="'+id+'"]'); if(body){ var open=body.style.display!=='none'; body.style.display=open?'none':'block'; if(arrow) arrow.textContent=open?'▶':'▼'; } };
+  });
+}
+
+render();
+</script>
+</body>
+</html>
