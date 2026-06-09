@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Inspeção PU — Medidas por foto</title>
+<style>
+  :root{
+    --bg:#0f1512; --panel:#16201b; --panel2:#1d2a23; --line:#2c3c33;
+    --txt:#e7efe9; --muted:#90a399; --accent:#39d98a; --accent2:#1f9d63;
+    --ok:#39d98a; --warn:#f5b945; --bad:#ff5b6e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI",system-ui,Arial,sans-serif;-webkit-text-size-adjust:100%}
+  header{padding:14px 16px;background:var(--panel);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+  header h1{font-size:1.05rem;margin:0;font-weight:600}
+  header .tag{font-size:.7rem;color:var(--muted);border:1px solid var(--line);
+    padding:2px 7px;border-radius:20px}
+  main{max-width:860px;margin:0 auto;padding:14px}
+  .tabs{display:flex;gap:6px;margin-bottom:12px}
+  .tabs button{flex:1;padding:10px;border:1px solid var(--line);background:var(--panel);
+    color:var(--muted);border-radius:9px;font-size:.85rem;font-weight:600}
+  .tabs button.active{background:var(--panel2);color:var(--accent);border-color:var(--accent2)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px;margin-bottom:12px}
+  .card h2{font-size:.92rem;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .card h2 .n{width:22px;height:22px;border-radius:50%;background:var(--accent2);color:#04130c;
+    display:grid;place-items:center;font-size:.78rem;font-weight:700;flex:none}
+  .card p.hint{margin:2px 0 10px;color:var(--muted);font-size:.78rem;line-height:1.45}
+  label{display:block;font-size:.76rem;color:var(--muted);margin:8px 0 4px}
+  input,select{width:100%;padding:10px;border-radius:9px;border:1px solid var(--line);
+    background:var(--bg);color:var(--txt);font-size:.95rem}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  button.btn{width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent);
+    color:#04130c;font-weight:700;font-size:.92rem}
+  button.btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  button.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  button.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+  button:disabled{opacity:.45}
+  .btns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  .btns>*{flex:1;min-width:120px}
+  .stage{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    background:#000;touch-action:none}
+  canvas{display:block;width:100%;height:auto}
+  .stage .empty{padding:40px 16px;text-align:center;color:var(--muted);font-size:.85rem}
+  .toolbar{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
+  .toolbar button{flex:1;min-width:90px;padding:9px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel);color:var(--muted);font-size:.78rem;font-weight:600}
+  .toolbar button.active{color:var(--accent);border-color:var(--accent2);background:var(--panel2)}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.72rem;font-weight:700}
+  .pill.ok{background:rgba(57,217,138,.15);color:var(--ok)}
+  .pill.bad{background:rgba(255,91,110,.15);color:var(--bad)}
+  .pill.warn{background:rgba(245,185,69,.15);color:var(--warn)}
+  .scalebox{font-size:.78rem;color:var(--muted);margin-top:6px}
+  .scalebox b{color:var(--accent)}
+  table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:8px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .mlist{list-style:none;margin:8px 0 0;padding:0}
+  .mlist li{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);
+    border-radius:9px;margin-bottom:6px;font-size:.82rem}
+  .mlist li .name{flex:1}
+  .mlist li .val{font-variant-numeric:tabular-nums;color:var(--accent)}
+  .mlist li button{flex:none;width:auto;padding:5px 9px;font-size:.72rem}
+  .savedlist{list-style:none;margin:0;padding:0}
+  .savedlist li{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:8px}
+  .savedlist li img{width:46px;height:46px;object-fit:cover;border-radius:8px;background:#000;flex:none}
+  .savedlist li .meta{flex:1}
+  .savedlist li .meta b{font-size:.88rem}
+  .savedlist li .meta small{display:block;color:var(--muted);font-size:.72rem}
+  .verdict{text-align:center;padding:16px;border-radius:12px;font-size:1.1rem;font-weight:800;margin-bottom:12px}
+  .verdict.ok{background:rgba(57,217,138,.12);color:var(--ok);border:1px solid var(--accent2)}
+  .verdict.bad{background:rgba(255,91,110,.12);color:var(--bad);border:1px solid var(--bad)}
+  .hidden{display:none!important}
+  .filein{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+  footer{padding:20px 16px;text-align:center;color:var(--muted);font-size:.72rem}
+  .step-note{font-size:.75rem;color:var(--warn);margin-top:6px;min-height:1em}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔍 Inspeção PU</h1>
+  <span class="tag">medidas por foto · v1</span>
+</header>
+
+<main>
+  <div class="tabs">
+    <button id="tabInspect" class="active" onclick="showTab('inspect')">Inspecionar</button>
+    <button id="tabStandards" onclick="showTab('standards')">Padrões (peça boa)</button>
+  </div>
+
+  <!-- ===================== ABA INSPECIONAR / CRIAR PADRÃO ===================== -->
+  <section id="viewInspect">
+
+    <div class="card">
+      <h2><span class="n">1</span> Modo</h2>
+      <p class="hint">Escolha cadastrar uma <b>peça boa</b> como padrão, ou inspecionar uma peça comparando com um padrão salvo.</p>
+      <div class="row">
+        <select id="mode" onchange="onModeChange()">
+          <option value="new">📐 Cadastrar peça boa (criar padrão)</option>
+          <option value="check">✅ Inspecionar peça (comparar)</option>
+        </select>
+      </div>
+      <div id="stdPicker" class="hidden">
+        <label>Padrão de referência</label>
+        <select id="stdSelect" onchange="onStdSelect()"></select>
+        <p class="step-note" id="stdPickerNote"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">2</span> Foto da peça</h2>
+      <p class="hint">Fotografe a peça <b>de cima, reta</b>, com um objeto de medida conhecida ao lado (régua, moeda, cartão). Quanto mais perpendicular ao plano, mais preciso.</p>
+      <div class="btns">
+        <button class="btn" onclick="openCamera()">📷 Câmera</button>
+        <button class="btn sec" onclick="document.getElementById('fileInput').click()">🖼️ Galeria</button>
+      </div>
+      <input id="fileInput" class="filein" type="file" accept="image/*" capture="environment" onchange="loadFromFile(event)"/>
+      <div id="camWrap" class="hidden" style="margin-top:10px">
+        <div class="stage"><video id="video" playsinline style="width:100%;display:block"></video></div>
+        <div class="btns">
+          <button class="btn" onclick="snap()">⚪ Capturar</button>
+          <button class="btn ghost" onclick="closeCamera()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="stageCard">
+      <h2><span class="n">3</span> Marcar na foto</h2>
+      <p class="hint">Toque em <b>dois pontos</b> para criar uma linha. Use a ferramenta <b>Calibrar</b> uma vez (objeto conhecido) e depois <b>Medir</b> as dimensões.</p>
+      <div class="toolbar">
+        <button id="toolCal" class="active" onclick="setTool('cal')">📏 Calibrar escala</button>
+        <button id="toolMeas" onclick="setTool('meas')">✏️ Medir</button>
+        <button onclick="undoPoint()">↶ Desfazer ponto</button>
+      </div>
+      <div class="stage" id="stage">
+        <div class="empty" id="stageEmpty">Capture ou escolha uma foto para começar.</div>
+        <canvas id="canvas" class="hidden"></canvas>
+      </div>
+      <div class="scalebox" id="scaleBox">Escala: <b>não calibrada</b></div>
+      <div id="calForm" class="hidden">
+        <label>Tamanho real do objeto de referência marcado (mm)</label>
+        <div class="row">
+          <input id="calMm" type="number" inputmode="decimal" placeholder="ex: 27.0 (moeda R$1)" />
+          <button class="btn" style="flex:.6" onclick="applyCalibration()">Aplicar</button>
+        </div>
+        <p class="step-note">Dica: moeda de R$1 = 27 mm · cartão = 85,6 mm de largura.</p>
+      </div>
+    </div>
+
+    <!-- Bloco MEDIDAS (modo criar padrão) -->
+    <div class="card hidden" id="measCard">
+      <h2><span class="n">4</span> Medidas</h2>
+      <p class="hint" id="measHint"></p>
+      <ul class="mlist" id="measList"></ul>
+      <p class="step-note" id="measNote"></p>
+    </div>
+
+    <!-- Salvar padrão -->
+    <div class="card hidden" id="saveCard">
+      <h2><span class="n">5</span> Salvar padrão</h2>
+      <label>Nome da peça</label>
+      <input id="stdName" placeholder="ex: Coxim 50mm — Cliente X"/>
+      <label>Tolerância padrão (±)</label>
+      <div class="row">
+        <input id="tolValue" type="number" inputmode="decimal" value="2" />
+        <select id="tolType">
+          <option value="pct">%</option>
+          <option value="mm">mm</option>
+        </select>
+      </div>
+      <p class="hint" style="margin-top:8px">A tolerância vale para todas as medidas (você pode ajustar por medida depois de salvar).</p>
+      <button class="btn" onclick="saveStandard()">💾 Salvar como padrão</button>
+    </div>
+
+    <!-- Resultado da inspeção -->
+    <div class="card hidden" id="resultCard">
+      <h2><span class="n">5</span> Resultado</h2>
+      <div id="verdict" class="verdict ok">—</div>
+      <table id="resultTable"><thead><tr>
+        <th>Medida</th><th class="num">Nominal</th><th class="num">Medido</th><th class="num">Desvio</th><th>Status</th>
+      </tr></thead><tbody></tbody></table>
+      <div class="btns">
+        <button class="btn sec" onclick="resetInspection()">Nova inspeção</button>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ===================== ABA PADRÕES ===================== -->
+  <section id="viewStandards" class="hidden">
+    <div class="card">
+      <h2>Padrões salvos</h2>
+      <p class="hint">Padrões ficam salvos neste aparelho/navegador. Exporte para backup ou para passar a outro celular.</p>
+      <ul class="savedlist" id="savedList"></ul>
+      <div class="btns">
+        <button class="btn sec" onclick="exportStandards()">⬇️ Exportar (.json)</button>
+        <button class="btn ghost" onclick="document.getElementById('importInput').click()">⬆️ Importar</button>
+      </div>
+      <input id="importInput" class="filein" type="file" accept="application/json" onchange="importStandards(event)"/>
+    </div>
+  </section>
+</main>
+
+<footer>Funciona offline · dados salvos só neste aparelho · escala depende da foto reta + objeto de referência</footer>
+
+<script>
+/* ============================ Estado ============================ */
+const S = {
+  img: null,            // HTMLImageElement / ImageBitmap-ish (we use Image)
+  imgDataUrl: null,
+  scale: null,          // mm por pixel (na resolução da imagem)
+  calib: null,          // {a:{x,y}, b:{x,y}, mm}
+  tool: 'cal',          // 'cal' | 'meas'
+  pending: [],          // pontos pendentes (coords da imagem)
+  measures: [],         // [{name, a, b, mm}]  (modo criar padrão)
+  mode: 'new',          // 'new' | 'check'
+  activeStd: null,      // padrão carregado p/ inspeção
+  checkIndex: 0,        // qual medida do padrão está sendo medida
+  checkResults: [],     // resultados da inspeção
+};
+const LS_KEY = 'inspecao_pu_padroes_v1';
+
+const cv = document.getElementById('canvas');
+const ctx = cv.getContext('2d');
+
+/* ============================ Abas ============================ */
+function showTab(t){
+  document.getElementById('viewInspect').classList.toggle('hidden', t!=='inspect');
+  document.getElementById('viewStandards').classList.toggle('hidden', t!=='standards');
+  document.getElementById('tabInspect').classList.toggle('active', t==='inspect');
+  document.getElementById('tabStandards').classList.toggle('active', t==='standards');
+  if(t==='standards') renderSaved();
+}
+
+/* ============================ Modo ============================ */
+function onModeChange(){
+  S.mode = document.getElementById('mode').value;
+  const picker = document.getElementById('stdPicker');
+  picker.classList.toggle('hidden', S.mode!=='check');
+  if(S.mode==='check') populateStdSelect();
+  refreshFlowCards();
+}
+function populateStdSelect(){
+  const sel = document.getElementById('stdSelect');
+  const stds = loadStandards();
+  sel.innerHTML = '';
+  if(stds.length===0){
+    document.getElementById('stdPickerNote').textContent = 'Nenhum padrão salvo ainda. Cadastre uma peça boa primeiro.';
+    S.activeStd = null; return;
+  }
+  document.getElementById('stdPickerNote').textContent = '';
+  stds.forEach((s,i)=>{
+    const o=document.createElement('option'); o.value=s.id; o.textContent=s.name; sel.appendChild(o);
+  });
+  onStdSelect();
+}
+function onStdSelect(){
+  const id = document.getElementById('stdSelect').value;
+  S.activeStd = loadStandards().find(s=>s.id===id) || null;
+  S.checkIndex = 0; S.checkResults = [];
+  refreshFlowCards();
+}
+
+/* ============================ Câmera ============================ */
+let stream=null;
+async function openCamera(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+    const v=document.getElementById('video'); v.srcObject=stream; await v.play();
+    document.getElementById('camWrap').classList.remove('hidden');
+  }catch(e){
+    alert('Não consegui abrir a câmera ('+e.message+'). Use o botão "Galeria" para tirar/escolher a foto.');
+  }
+}
+function closeCamera(){
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  document.getElementById('camWrap').classList.add('hidden');
+}
+function snap(){
+  const v=document.getElementById('video');
+  const c=document.createElement('canvas');
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0);
+  setImage(c.toDataURL('image/jpeg',0.92));
+  closeCamera();
+}
+function loadFromFile(ev){
+  const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>setImage(r.result);
+  r.readAsDataURL(f);
+  ev.target.value='';
+}
+
+/* ============================ Imagem / Canvas ============================ */
+function setImage(dataUrl){
+  const im=new Image();
+  im.onload=()=>{
+    S.img=im; S.imgDataUrl=dataUrl;
+    S.scale=null; S.calib=null; S.pending=[];
+    if(S.mode==='new') S.measures=[];
+    if(S.mode==='check'){ S.checkIndex=0; S.checkResults=[]; }
+    document.getElementById('stageEmpty').classList.add('hidden');
+    cv.classList.remove('hidden');
+    fitCanvas(); draw(); updateScaleBox(); refreshFlowCards();
+    setTool('cal');
+  };
+  im.src=dataUrl;
+}
+function fitCanvas(){
+  // resolução interna do canvas = resolução da imagem (mantém precisão)
+  cv.width=S.img.naturalWidth; cv.height=S.img.naturalHeight;
+}
+function canvasPointFromEvent(ev){
+  const rect=cv.getBoundingClientRect();
+  const cx=(ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left;
+  const cy=(ev.touches?ev.touches[0].clientY:ev.clientY)-rect.top;
+  // converte coords do elemento (CSS px) -> coords internas da imagem
+  return {x:cx*(cv.width/rect.width), y:cy*(cv.height/rect.height)};
+}
+function onTap(ev){
+  if(!S.img)return;
+  ev.preventDefault();
+  const p=canvasPointFromEvent(ev);
+  S.pending.push(p);
+  if(S.pending.length===2){
+    commitSegment(S.pending[0], S.pending[1]);
+    S.pending=[];
+  }
+  draw();
+}
+cv.addEventListener('mousedown', onTap);
+cv.addEventListener('touchstart', onTap, {passive:false});
+
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+
+function commitSegment(a,b){
+  if(S.tool==='cal'){
+    S.calib={a,b}; // mm preenchido no form
+    document.getElementById('calForm').classList.remove('hidden');
+    const cm=document.getElementById('calMm'); cm.focus();
+  } else {
+    if(!S.scale){ alert('Calibre a escala primeiro (ferramenta 📏 Calibrar).'); return; }
+    const mm = dist(a,b)*S.scale;
+    if(S.mode==='new'){
+      const name = prompt('Nome desta medida:', 'Medida '+(S.measures.length+1));
+      if(name===null) return;
+      S.measures.push({name:name||('Medida '+(S.measures.length+1)), a,b, mm});
+      renderMeasList();
+    } else {
+      // inspeção: associa à medida atual do padrão
+      const std=S.activeStd; if(!std)return;
+      const target=std.measures[S.checkIndex];
+      S.checkResults[S.checkIndex]={name:target.name, nominal:target.mm, tolType:std.tolType, tolValue:target.tolValue??std.tolValue, measured:mm, a,b};
+      S.checkIndex++;
+      if(S.checkIndex>=std.measures.length){ finishInspection(); }
+      else { refreshFlowCards(); }
+      return; // evita que o refresh abaixo esconda o resultado
+    }
+  }
+  refreshFlowCards();
+}
+
+function applyCalibration(){
+  const mm=parseFloat(document.getElementById('calMm').value.replace(',','.'));
+  if(!S.calib||!(mm>0)){ alert('Marque o objeto de referência e informe o tamanho em mm.'); return; }
+  S.calib.mm=mm;
+  S.scale = mm / dist(S.calib.a, S.calib.b); // mm por pixel
+  document.getElementById('calForm').classList.add('hidden');
+  updateScaleBox(); draw();
+  setTool('meas');
+  refreshFlowCards();
+}
+function updateScaleBox(){
+  const el=document.getElementById('scaleBox');
+  el.innerHTML = S.scale
+    ? 'Escala: <b>'+(1/S.scale).toFixed(2)+' px/mm</b> ('+(S.scale).toFixed(4)+' mm/px) ✅'
+    : 'Escala: <b>não calibrada</b>';
+}
+
+function setTool(t){
+  S.tool=t; S.pending=[];
+  document.getElementById('toolCal').classList.toggle('active', t==='cal');
+  document.getElementById('toolMeas').classList.toggle('active', t==='meas');
+  document.getElementById('calForm').classList.toggle('hidden', t!=='cal' || !S.calib);
+  draw();
+}
+function undoPoint(){
+  if(S.pending.length>0){ S.pending.pop(); draw(); return; }
+  if(S.tool==='meas' && S.mode==='new' && S.measures.length>0){
+    S.measures.pop(); renderMeasList(); draw(); refreshFlowCards();
+  }
+}
+
+/* ============================ Desenho ============================ */
+function draw(){
+  if(!S.img)return;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.drawImage(S.img,0,0,cv.width,cv.height);
+  const lw=Math.max(2, cv.width/400);
+  const fs=Math.max(14, cv.width/45);
+  ctx.lineWidth=lw; ctx.font='bold '+fs+'px system-ui'; ctx.textBaseline='bottom';
+
+  // calibração
+  if(S.calib){ drawSeg(S.calib.a,S.calib.b,'#39d98a', S.calib.mm?fmt(S.calib.mm)+' mm (ref)':'ref', fs); }
+
+  // medidas (modo criar padrão)
+  if(S.mode==='new'){
+    S.measures.forEach(m=>drawSeg(m.a,m.b,'#f5b945', m.name+': '+fmt(m.mm)+' mm', fs));
+  } else {
+    // inspeção: desenha resultados já medidos
+    S.checkResults.forEach(r=>{
+      if(!r)return;
+      const st=status(r);
+      drawSeg(r.a,r.b, st.pass?'#39d98a':'#ff5b6e', r.name+': '+fmt(r.measured)+' mm', fs);
+    });
+  }
+  // pontos pendentes
+  S.pending.forEach(p=>{ ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(p.x,p.y,lw*2.2,0,7); ctx.fill(); });
+}
+function drawSeg(a,b,color,label,fs){
+  const lw=ctx.lineWidth;
+  ctx.strokeStyle=color; ctx.fillStyle=color;
+  ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  [a,b].forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,lw*2.2,0,7);ctx.fill();});
+  if(label){
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    ctx.save();
+    const w=ctx.measureText(label).width+10;
+    ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(mx+6,my-fs-6,w,fs+8);
+    ctx.fillStyle=color; ctx.fillText(label,mx+11,my);
+    ctx.restore();
+  }
+}
+function fmt(n){return (Math.round(n*100)/100).toFixed(2);}
+
+/* ============================ Fluxo das cards ============================ */
+function refreshFlowCards(){
+  const hasImg=!!S.img;
+  document.getElementById('stageCard').classList.toggle('hidden', !hasImg && false); // sempre visível
+  // criar padrão
+  const isNew=S.mode==='new';
+  document.getElementById('measCard').classList.toggle('hidden', !(isNew&&hasImg));
+  document.getElementById('saveCard').classList.toggle('hidden', !(isNew&&hasImg&&S.scale&&S.measures.length>0));
+  // inspeção
+  const isCheck=S.mode==='check';
+  document.getElementById('resultCard').classList.add('hidden'); // só mostra ao terminar
+  if(isNew){
+    document.getElementById('measHint').textContent = S.scale
+      ? 'Marque cada dimensão da peça (toque 2 pontos). Dê um nome para cada uma.'
+      : '⚠️ Calibre a escala antes de medir.';
+    renderMeasList();
+  }
+  if(isCheck){
+    document.getElementById('measCard').classList.toggle('hidden', !(hasImg));
+    if(hasImg && S.activeStd){
+      const std=S.activeStd;
+      const done=S.checkIndex>=std.measures.length;
+      document.getElementById('measHint').innerHTML = !S.scale
+        ? '⚠️ Calibre a escala antes de medir.'
+        : (done? 'Todas as medidas foram lidas.' :
+           'Meça: <b>'+std.measures[S.checkIndex].name+'</b> (nominal '+fmt(std.measures[S.checkIndex].mm)+' mm). Toque 2 pontos.');
+      renderCheckProgress();
+    } else if(hasImg && !S.activeStd){
+      document.getElementById('measHint').textContent='Selecione um padrão de referência no passo 1.';
+    }
+  }
+}
+
+function renderMeasList(){
+  const ul=document.getElementById('measList'); ul.innerHTML='';
+  if(S.mode!=='new'){return;}
+  S.measures.forEach((m,i)=>{
+    const li=document.createElement('li');
+    li.innerHTML='<span class="name">'+escapeHtml(m.name)+'</span><span class="val">'+fmt(m.mm)+' mm</span>';
+    const del=document.createElement('button'); del.className='btn danger'; del.textContent='✕';
+    del.onclick=()=>{S.measures.splice(i,1);renderMeasList();draw();refreshFlowCards();};
+    li.appendChild(del); ul.appendChild(li);
+  });
+  document.getElementById('measNote').textContent = S.measures.length? '' : 'Nenhuma medida ainda.';
+}
+function renderCheckProgress(){
+  const ul=document.getElementById('measList'); ul.innerHTML='';
+  const std=S.activeStd; if(!std)return;
+  std.measures.forEach((m,i)=>{
+    const r=S.checkResults[i];
+    const li=document.createElement('li');
+    let val='—', cls='';
+    if(r){const st=status(r); val=fmt(r.measured)+' mm'; cls=st.pass?'ok':'bad';}
+    else if(i===S.checkIndex){val='medindo…';}
+    li.innerHTML='<span class="name">'+escapeHtml(m.name)+' <small style="color:var(--muted)">('+fmt(m.mm)+' mm)</small></span>'
+      +'<span class="val '+cls+'" style="color:'+(cls==='bad'?'var(--bad)':cls==='ok'?'var(--ok)':'var(--muted)')+'">'+val+'</span>';
+    ul.appendChild(li);
+  });
+}
+
+/* ============================ Tolerância / status ============================ */
+function tolMm(nominal, tolType, tolValue){
+  return tolType==='pct' ? nominal*(tolValue/100) : tolValue;
+}
+function status(r){
+  const t=tolMm(r.nominal, r.tolType, r.tolValue);
+  const dev=r.measured-r.nominal;
+  return {pass:Math.abs(dev)<=t+1e-9, dev, tol:t};
+}
+
+/* ============================ Salvar padrão ============================ */
+function saveStandard(){
+  const name=document.getElementById('stdName').value.trim();
+  if(!name){alert('Dê um nome ao padrão.');return;}
+  if(!S.scale||S.measures.length===0){alert('Calibre e adicione ao menos uma medida.');return;}
+  const tolValue=parseFloat(document.getElementById('tolValue').value.replace(',','.'))||0;
+  const tolType=document.getElementById('tolType').value;
+  const thumb=makeThumb();
+  const std={
+    id:'std_'+Date.now(),
+    name, tolType, tolValue,
+    createdAt:new Date().toISOString(),
+    thumb,
+    measures:S.measures.map(m=>({name:m.name, mm:m.mm, tolValue})),
+  };
+  const all=loadStandards(); all.push(std); persist(all);
+  alert('Padrão "'+name+'" salvo com '+std.measures.length+' medida(s).');
+  showTab('standards');
+}
+function makeThumb(){
+  const c=document.createElement('canvas'); const w=120; const h=Math.round(w*cv.height/cv.width);
+  c.width=w;c.height=h; c.getContext('2d').drawImage(cv,0,0,w,h);
+  return c.toDataURL('image/jpeg',0.6);
+}
+
+/* ============================ Inspeção: finalizar ============================ */
+function finishInspection(){
+  const results=S.checkResults;
+  const tbody=document.querySelector('#resultTable tbody'); tbody.innerHTML='';
+  let allPass=true;
+  results.forEach(r=>{
+    const st=status(r); if(!st.pass)allPass=false;
+    const tr=document.createElement('tr');
+    const sign=st.dev>=0?'+':'';
+    tr.innerHTML='<td>'+escapeHtml(r.name)+'</td>'
+      +'<td class="num">'+fmt(r.nominal)+'</td>'
+      +'<td class="num">'+fmt(r.measured)+'</td>'
+      +'<td class="num">'+sign+fmt(st.dev)+' mm</td>'
+      +'<td><span class="pill '+(st.pass?'ok':'bad')+'">'+(st.pass?'OK':'FORA')+'</span></td>';
+    tbody.appendChild(tr);
+  });
+  const v=document.getElementById('verdict');
+  v.className='verdict '+(allPass?'ok':'bad');
+  v.textContent=allPass?'✅ APROVADA — dentro da tolerância':'❌ REPROVADA — medida(s) fora do padrão';
+  document.getElementById('measCard').classList.add('hidden');
+  document.getElementById('resultCard').classList.remove('hidden');
+  draw();
+}
+function resetInspection(){
+  S.checkIndex=0; S.checkResults=[]; S.scale=null; S.calib=null; S.pending=[];
+  document.getElementById('resultCard').classList.add('hidden');
+  updateScaleBox(); refreshFlowCards();
+  if(S.img){draw();}
+}
+
+/* ============================ Persistência ============================ */
+function loadStandards(){
+  try{return JSON.parse(localStorage.getItem(LS_KEY)||'[]');}catch(e){return [];}
+}
+function persist(arr){localStorage.setItem(LS_KEY, JSON.stringify(arr));}
+function renderSaved(){
+  const ul=document.getElementById('savedList'); ul.innerHTML='';
+  const all=loadStandards();
+  if(all.length===0){ul.innerHTML='<li style="color:var(--muted)">Nenhum padrão salvo.</li>';return;}
+  all.forEach(s=>{
+    const li=document.createElement('li');
+    const tol = s.tolType==='pct'? ('±'+s.tolValue+'%') : ('±'+s.tolValue+' mm');
+    li.innerHTML='<img src="'+(s.thumb||'')+'" alt=""/>'
+      +'<div class="meta"><b>'+escapeHtml(s.name)+'</b>'
+      +'<small>'+s.measures.length+' medida(s) · tol '+tol+' · '+new Date(s.createdAt).toLocaleDateString('pt-BR')+'</small></div>';
+    const del=document.createElement('button'); del.className='btn danger'; del.style.width='auto'; del.style.flex='none'; del.textContent='Excluir';
+    del.onclick=()=>{ if(confirm('Excluir padrão "'+s.name+'"?')){persist(loadStandards().filter(x=>x.id!==s.id));renderSaved();} };
+    li.appendChild(del); ul.appendChild(li);
+  });
+}
+function exportStandards(){
+  const data=JSON.stringify(loadStandards(),null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='padroes-inspecao-pu.json'; a.click();
+}
+function importStandards(ev){
+  const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const incoming=JSON.parse(r.result);
+      if(!Array.isArray(incoming))throw new Error('formato');
+      const all=loadStandards();
+      const ids=new Set(all.map(x=>x.id));
+      incoming.forEach(s=>{ if(!ids.has(s.id)) all.push(s); });
+      persist(all); renderSaved(); alert('Importado: '+incoming.length+' padrão(ões).');
+    }catch(e){alert('Arquivo inválido.');}
+  };
+  r.readAsText(f); ev.target.value='';
+}
+
+/* ============================ util ============================ */
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* init */
+onModeChange();
+</script>
+</body>
+</html>
