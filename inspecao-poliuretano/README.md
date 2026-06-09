@@ -1,65 +1,51 @@
-# Inspeção PU — medidas por foto
+# Inspeção PU — Rolamentos revestidos (medidas digitadas + inspeção visual)
 
-Ferramenta web (1 arquivo, funciona offline no celular) para **inspeção dimensional**
-de peças de poliuretano usando só a câmera do telefone. Você cadastra uma **peça boa**
-como padrão e a ferramenta compara as próximas peças, apontando o que está **fora da
-tolerância**.
+Ferramenta web (1 arquivo, **funciona offline no celular**) para **controle de qualidade
+de rolamentos revestidos de poliuretano** (até ~700 mm). Você cadastra o **padrão**
+digitando as medidas, e na inspeção **digita as medidas reais** (paquímetro/instrumento)
++ faz um **checklist visual** com **fotos dos defeitos**. Nada é marcado/medido sobre a
+foto — a câmera serve para documentar.
 
-## Como usar
+Abra `index.html` no navegador do celular. Tudo roda no aparelho; nada vai para a internet.
 
-Abra `index.html` no navegador do celular (Chrome/Safari). Nada é enviado para a
-internet — tudo roda no aparelho e os padrões ficam salvos no próprio navegador.
+## Por que as medidas são digitadas (e não medidas pela foto)
+Em peças grandes (700 mm cabendo na tela), cada pixel da foto vale **vários milímetros**,
+então medir pela imagem não tem precisão de QC. A medida confiável vem do **seu
+instrumento** (paquímetro, trena, micrômetro) e é **digitada**. A câmera é usada para
+**documentar e comparar** a peça e registrar defeitos visíveis.
 
-**Botões de foto:** **📷 Câmera** abre a câmera ao vivo (com fallback para a câmera do
-sistema se o navegador bloquear). **🖼️ Minhas fotos** abre a galeria do celular.
+## Padrões (aba "Padrões")
+Crie um padrão digitando:
+- **Nome da peça** e, opcionalmente, uma **foto de referência** da peça correta.
+- **Medidas**: para cada uma, `Nome`, `Tipo` (diâmetro, largura, altura, profundidade,
+  **espessura do revestimento**, outro), **Nominal (mm)** e **Variação ± (mm)**.
+  A ferramenta calcula os limites mín/máx automaticamente.
+- **Itens de inspeção visual** (trinca, falha no revestimento, descolamento, desgaste,
+  oxidação, ovalização, etc.) — há sugestões prontas e você pode adicionar os seus.
 
-### Vistas (fotos) e profundidade
-Uma foto de cima dá **diâmetros/larguras**. **Profundidade, altura e espessura do
-revestimento não saem de uma foto de cima** — para isso, adicione uma **segunda foto**
-**lateral** ou **de corte/seção**. Cada foto tem sua própria escala (sua própria moeda).
-Use a faixa de miniaturas para alternar entre as vistas; cada medida fica marcada pelo
-seu **tipo** (diâmetro, altura, profundidade, espessura do revestimento).
+## Inspecionar (aba "Inspecionar")
+1. Escolha o **padrão** e (opcional) a **identificação da peça/lote**.
+2. **Fotos da peça**: passe a câmera e capture os pontos importantes (documentação).
+3. **Medidas**: digite o valor de cada dimensão em mm — a ferramenta mostra na hora
+   **OK / FORA**, o desvio e a **causa provável** se estiver fora.
+4. **Inspeção visual**: marque **OK / Problema** em cada item; se houver problema, escreva
+   uma observação e **anexe a foto do defeito**.
+5. **Finalizar** → veredito **APROVADA / REPROVADA** com o diagnóstico do que saiu fora.
+6. **Salvar no histórico** para guardar o registro da peça.
 
-### Escala com moeda
-Selecione a moeda usada (R$1 = 27 mm, R$0,50 = 23 mm, R$0,25 = 25 mm, R$0,10 = 20 mm,
-R$0,05 = 22 mm, ou cartão = 85,6 mm) — assim você não precisa digitar/lembrar a medida.
-Ao marcar a moeda, uma **lupa** aparece para você acertar a borda com precisão (era a
-causa de "às vezes não entendia": toque impreciso no diâmetro da moeda).
+## Histórico (aba "Histórico")
+Lista das inspeções salvas (peça, padrão, data, veredito). Abra para ver o relatório
+completo com medidas, itens visuais e fotos. Exporte/importe `.json` para backup ou para
+passar a outro celular.
 
-### 1. Cadastrar uma peça boa (criar padrão)
-1. Modo → **Cadastrar peça boa**.
-2. Adicione a(s) foto(s) — de cima e, se precisar de profundidade, lateral/corte — cada
-   uma com a **moeda no mesmo plano** da medida.
-3. **📏 Calibrar** → marque o diâmetro da moeda (use a lupa), escolha a moeda → **Aplicar**.
-4. **✏️ Medir** → marque 2 pontos, dê **nome** e **tipo** (diâmetro/profundidade/…).
-5. Defina a tolerância (ex.: ±2%) e **Salvar como padrão**.
-
-### 2. Inspecionar uma peça
-1. Modo → **Inspecionar peça** e escolha o padrão.
-2. Adicione as fotos e calibre cada uma.
-3. A ferramenta indica, na ordem, **qual medida e em qual vista** medir.
-4. Mostra **APROVADA/REPROVADA**, o desvio de cada medida e um **diagnóstico da causa
-   provável** das medidas fora (ex.: revestimento fino/desgaste, sobremedida).
-
-### Backup
-Aba **Padrões** → **Exportar (.json)** para salvar/transferir os padrões para outro
-celular (**Importar**).
-
-## Precisão e limitações (importante)
-
-- A medição é por **foto 2D**. A precisão depende de:
-  - fotografar **perpendicular** ao plano da peça (sem inclinação → sem distorção);
-  - o objeto de referência estar **no mesmo plano** da medida;
-  - boa iluminação e contraste das bordas.
-- **Profundidade/altura/espessura** vêm de uma **foto lateral ou de corte** (não da foto
-  de cima). Uma foto sozinha não contém informação de profundidade.
-- Não corrige perspectiva/lente automaticamente nesta versão — espere erros maiores
-  em peças altas ou fotos anguladas.
-- Mede **distâncias entre 2 pontos** marcados à mão (com lupa de precisão); não detecta
-  automaticamente as bordas (ainda).
+## Limitações
+- As medidas dependem da precisão do **seu instrumento** (a ferramenta só compara/registra).
+- A inspeção visual depende da qualidade das fotos e do olho do inspetor — a ferramenta
+  organiza e documenta, não detecta defeitos automaticamente.
+- Dados e fotos ficam no **armazenamento do navegador** deste aparelho (pode encher com
+  muitas fotos — exporte e limpe periodicamente).
 
 ## Ideias para próximas versões
-- Calibração por marcador impresso (ArUco) com correção de perspectiva.
-- Detecção automática de borda/contorno para medir sem marcar à mão.
-- Defeitos de superfície (bolhas, trincas, manchas) por visão computacional.
-- Relatório em PDF/foto anotada por peça inspecionada.
+- Relatório em **PDF** por peça (para enviar ao cliente).
+- Campos de **variação assimétrica** (+x / -y) por medida.
+- Comparação **lado a lado** da foto da peça com a foto de referência.

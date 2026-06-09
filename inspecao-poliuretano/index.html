@@ -3,670 +3,543 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Inspeção PU — Medidas por foto</title>
+<title>Inspeção PU — Rolamentos revestidos</title>
 <style>
   :root{
-    --bg:#0f1512; --panel:#16201b; --panel2:#1d2a23; --line:#2c3c33;
-    --txt:#e7efe9; --muted:#90a399; --accent:#39d98a; --accent2:#1f9d63;
-    --ok:#39d98a; --warn:#f5b945; --bad:#ff5b6e;
+    --bg:#0f1512;--panel:#16201b;--panel2:#1d2a23;--line:#2c3c33;
+    --txt:#e7efe9;--muted:#90a399;--accent:#39d98a;--accent2:#1f9d63;
+    --ok:#39d98a;--warn:#f5b945;--bad:#ff5b6e;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;background:var(--bg);color:var(--txt);
-    font-family:"Segoe UI",system-ui,Arial,sans-serif;-webkit-text-size-adjust:100%}
-  header{padding:14px 16px;background:var(--panel);border-bottom:1px solid var(--line);
-    display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font-family:"Segoe UI",system-ui,Arial,sans-serif;-webkit-text-size-adjust:100%}
+  header{padding:14px 16px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
   header h1{font-size:1.05rem;margin:0;font-weight:600}
   header .tag{font-size:.7rem;color:var(--muted);border:1px solid var(--line);padding:2px 7px;border-radius:20px}
-  main{max-width:860px;margin:0 auto;padding:14px}
+  main{max-width:880px;margin:0 auto;padding:14px}
   .tabs{display:flex;gap:6px;margin-bottom:12px}
-  .tabs button{flex:1;padding:10px;border:1px solid var(--line);background:var(--panel);
-    color:var(--muted);border-radius:9px;font-size:.85rem;font-weight:600}
+  .tabs button{flex:1;padding:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:9px;font-size:.82rem;font-weight:600}
   .tabs button.active{background:var(--panel2);color:var(--accent);border-color:var(--accent2)}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
   .card h2{font-size:.92rem;margin:0 0 4px;display:flex;align-items:center;gap:8px}
-  .card h2 .n{width:22px;height:22px;border-radius:50%;background:var(--accent2);color:#04130c;
-    display:grid;place-items:center;font-size:.78rem;font-weight:700;flex:none}
   .card p.hint{margin:2px 0 10px;color:var(--muted);font-size:.78rem;line-height:1.45}
-  label{display:block;font-size:.76rem;color:var(--muted);margin:8px 0 4px}
-  input,select{width:100%;padding:10px;border-radius:9px;border:1px solid var(--line);
-    background:var(--bg);color:var(--txt);font-size:.95rem}
-  .row{display:flex;gap:8px}
-  .row>*{flex:1}
-  button.btn{width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent);
-    color:#04130c;font-weight:700;font-size:.92rem}
+  label{display:block;font-size:.74rem;color:var(--muted);margin:8px 0 4px}
+  input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:.95rem;font-family:inherit}
+  textarea{min-height:54px;resize:vertical}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  button.btn{width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent);color:#04130c;font-weight:700;font-size:.92rem}
   button.btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
   button.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
   button.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+  button.btn.sm{padding:8px 10px;font-size:.78rem;width:auto}
   button:disabled{opacity:.45}
-  .btns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
-  .btns>*{flex:1;min-width:120px}
-  .stage{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#000;touch-action:none}
-  canvas#canvas{display:block;width:100%;height:auto;touch-action:none}
-  .stage .empty{padding:40px 16px;text-align:center;color:var(--muted);font-size:.85rem}
-  #loupe{position:absolute;top:8px;right:8px;width:120px;height:120px;border-radius:50%;
-    border:2px solid var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.5);display:none;background:#000;overflow:hidden;z-index:3}
-  #loupe canvas{width:120px;height:120px;display:block}
-  .toolbar{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
-  .toolbar button{flex:1;min-width:90px;padding:9px;border-radius:9px;border:1px solid var(--line);
-    background:var(--panel);color:var(--muted);font-size:.78rem;font-weight:600}
-  .toolbar button.active{color:var(--accent);border-color:var(--accent2);background:var(--panel2)}
+  .btns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.btns>*{flex:1;min-width:120px}
   .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.72rem;font-weight:700}
   .pill.ok{background:rgba(57,217,138,.15);color:var(--ok)}
   .pill.bad{background:rgba(255,91,110,.15);color:var(--bad)}
-  .scalebox{font-size:.78rem;color:var(--muted);margin-top:6px}
-  .scalebox b{color:var(--accent)}
-  table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:8px}
-  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
-  th{color:var(--muted);font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
-  td.num{text-align:right;font-variant-numeric:tabular-nums}
-  .mlist{list-style:none;margin:8px 0 0;padding:0}
-  .mlist li{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);
-    border-radius:9px;margin-bottom:6px;font-size:.82rem}
-  .mlist li .name{flex:1}
-  .mlist li .name small{color:var(--muted)}
-  .mlist li .val{font-variant-numeric:tabular-nums;color:var(--accent)}
-  .mlist li button{flex:none;width:auto;padding:5px 9px;font-size:.72rem}
-  /* faixa de vistas */
-  .viewstrip{display:flex;gap:8px;overflow-x:auto;padding:4px 0;margin-top:8px}
-  .viewstrip .vthumb{flex:none;width:84px;border:2px solid var(--line);border-radius:10px;overflow:hidden;
-    background:#000;position:relative;text-align:center}
-  .viewstrip .vthumb.active{border-color:var(--accent)}
-  .viewstrip .vthumb img{width:100%;height:60px;object-fit:cover;display:block}
-  .viewstrip .vthumb .lbl{font-size:.64rem;padding:3px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .viewstrip .vthumb .badge{position:absolute;top:2px;right:2px;font-size:.6rem;background:rgba(0,0,0,.6);
-    border-radius:6px;padding:1px 4px}
-  .viewstrip .vthumb .badge.ok{color:var(--ok)}
-  .viewstrip .vadd{flex:none;width:84px;height:83px;border:2px dashed var(--line);border-radius:10px;
-    background:var(--panel2);color:var(--muted);font-size:.72rem;display:grid;place-items:center;cursor:pointer}
+  .pill.warn{background:rgba(245,185,69,.15);color:var(--warn)}
+  .pill.muted{background:rgba(144,163,153,.15);color:var(--muted)}
+  /* linha de dimensão (padrão) */
+  .dimrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+  .dimrow .lim{font-size:.72rem;color:var(--muted);margin-top:6px}
+  .dimrow .lim b{color:var(--accent)}
+  /* dimensão na inspeção */
+  .measrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+  .measrow .top{display:flex;align-items:center;gap:8px}
+  .measrow .top .nm{flex:1;font-size:.86rem;font-weight:600}
+  .measrow .top .nm small{display:block;color:var(--muted);font-weight:400;font-size:.72rem}
+  .measrow input.meas{width:110px;flex:none}
+  .measrow .fb{font-size:.74rem;margin-top:6px;min-height:1em}
+  /* item visual */
+  .visrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+  .visrow .top{display:flex;align-items:center;gap:8px}
+  .visrow .top .nm{flex:1;font-size:.86rem}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none}
+  .seg button{border:none;background:var(--bg);color:var(--muted);padding:7px 11px;font-size:.76rem;font-weight:700}
+  .seg button.ok.on{background:var(--accent);color:#04130c}
+  .seg button.bad.on{background:var(--bad);color:#fff}
+  .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .thumbs .th{position:relative;width:74px;height:74px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#000}
+  .thumbs .th img{width:100%;height:100%;object-fit:cover}
+  .thumbs .th button{position:absolute;top:2px;right:2px;width:auto;padding:1px 6px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:6px;font-size:.7rem}
+  .suggest{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+  .suggest button{width:auto;flex:none;padding:6px 10px;font-size:.74rem;border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:20px}
   .savedlist{list-style:none;margin:0;padding:0}
   .savedlist li{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
   .savedlist li img{width:46px;height:46px;object-fit:cover;border-radius:8px;background:#000;flex:none}
-  .savedlist li .meta{flex:1}
-  .savedlist li .meta b{font-size:.88rem}
+  .savedlist li .meta{flex:1}.savedlist li .meta b{font-size:.88rem}
   .savedlist li .meta small{display:block;color:var(--muted);font-size:.72rem}
-  .verdict{text-align:center;padding:16px;border-radius:12px;font-size:1.1rem;font-weight:800;margin-bottom:12px}
+  .verdict{text-align:center;padding:16px;border-radius:12px;font-size:1.05rem;font-weight:800;margin-bottom:12px}
   .verdict.ok{background:rgba(57,217,138,.12);color:var(--ok);border:1px solid var(--accent2)}
   .verdict.bad{background:rgba(255,91,110,.12);color:var(--bad);border:1px solid var(--bad)}
   .diaglist{list-style:none;margin:10px 0 0;padding:0}
-  .diaglist li{padding:9px 10px;border:1px solid var(--bad);border-radius:9px;margin-bottom:6px;
-    font-size:.8rem;background:rgba(255,91,110,.07)}
-  .diaglist li b{color:var(--bad)}
+  .diaglist li{padding:9px 10px;border-radius:9px;margin-bottom:6px;font-size:.8rem}
+  .diaglist li.bad{border:1px solid var(--bad);background:rgba(255,91,110,.07)}
+  .diaglist li.warn{border:1px solid var(--warn);background:rgba(245,185,69,.07)}
+  .diaglist li b{color:inherit}
   .hidden{display:none!important}
   .filein{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
   footer{padding:20px 16px;text-align:center;color:var(--muted);font-size:.72rem}
-  .step-note{font-size:.75rem;color:var(--warn);margin-top:6px;min-height:1em}
-  .inlineform{border:1px dashed var(--accent2);border-radius:10px;padding:10px;margin-top:8px;background:var(--panel2)}
+  /* modal câmera */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:none;flex-direction:column;padding:14px}
+  .modal.on{display:flex}
+  .modal video{width:100%;flex:1;object-fit:contain;border-radius:12px;background:#000}
+  .modal .mbtns{display:flex;gap:8px;margin-top:10px}
+  .modal .mbtns button{flex:1}
 </style>
 </head>
 <body>
 <header>
   <h1>🔍 Inspeção PU</h1>
-  <span class="tag">medidas · vistas · v2</span>
+  <span class="tag">rolamentos revestidos · v3</span>
 </header>
 
 <main>
   <div class="tabs">
     <button id="tabInspect" class="active" onclick="showTab('inspect')">Inspecionar</button>
-    <button id="tabStandards" onclick="showTab('standards')">Padrões (peça boa)</button>
+    <button id="tabSpecs" onclick="showTab('specs')">Padrões</button>
+    <button id="tabHist" onclick="showTab('hist')">Histórico</button>
   </div>
 
+  <!-- ===================== INSPECIONAR ===================== -->
   <section id="viewInspect">
-    <!-- 1. MODO -->
     <div class="card">
-      <h2><span class="n">1</span> Modo</h2>
-      <p class="hint">Cadastre uma <b>peça boa</b> como padrão, ou inspecione uma peça comparando com um padrão salvo.</p>
-      <select id="mode" onchange="onModeChange()">
-        <option value="new">📐 Cadastrar peça boa (criar padrão)</option>
-        <option value="check">✅ Inspecionar peça (comparar)</option>
-      </select>
-      <div id="stdPicker" class="hidden">
-        <label>Padrão de referência</label>
-        <select id="stdSelect" onchange="onStdSelect()"></select>
-        <p class="step-note" id="stdPickerNote"></p>
+      <h2>1 · Padrão e peça</h2>
+      <label>Padrão (peça correta)</label>
+      <select id="inspSpec" onchange="startInspection()"></select>
+      <p class="hint" id="noSpecMsg"></p>
+      <div id="refPhotoWrap" class="hidden">
+        <label>Foto de referência (peça correta)</label>
+        <div class="thumbs"><div class="th"><img id="refPhotoImg" src=""></div></div>
       </div>
+      <label>Identificação da peça / lote (opcional)</label>
+      <input id="pieceId" placeholder="ex: NF 1234 — peça 3"/>
     </div>
 
-    <!-- 2. VISTAS / FOTOS -->
-    <div class="card">
-      <h2><span class="n">2</span> Fotos da peça (vistas)</h2>
-      <p class="hint">Adicione uma foto de <b>cima</b> (diâmetros) e, para <b>profundidade/altura/espessura do revestimento</b>, uma foto <b>lateral ou de corte</b>. <b>Cada foto precisa de uma moeda/objeto de referência</b> no mesmo plano da medida.</p>
+    <div class="card" id="photosCard">
+      <h2>2 · Fotos da peça</h2>
+      <p class="hint">Passe a câmera pela peça e capture os pontos importantes. As fotos ficam no relatório (documentação), não são usadas para medir.</p>
       <div class="btns">
-        <button class="btn" onclick="openCamera()">📷 Câmera</button>
-        <button class="btn sec" onclick="document.getElementById('galleryInput').click()">🖼️ Minhas fotos</button>
+        <button class="btn" onclick="capturePhoto(d=>addPartPhoto(d))">📷 Câmera</button>
+        <button class="btn sec" onclick="pickFile(d=>addPartPhoto(d))">🖼️ Minhas fotos</button>
       </div>
-      <!-- input galeria: SEM capture => abre a galeria/biblioteca de fotos -->
-      <input id="galleryInput" class="filein" type="file" accept="image/*" onchange="loadFromFile(event)"/>
-      <!-- input câmera (fallback nativo quando getUserMedia falha) -->
-      <input id="cameraInput" class="filein" type="file" accept="image/*" capture="environment" onchange="loadFromFile(event)"/>
-
-      <div id="camWrap" class="hidden" style="margin-top:10px">
-        <div class="stage"><video id="video" playsinline autoplay muted style="width:100%;display:block"></video></div>
-        <div class="btns">
-          <button class="btn" onclick="snap()">⚪ Capturar</button>
-          <button class="btn ghost" onclick="closeCamera()">Cancelar</button>
-        </div>
-      </div>
-
-      <div id="viewArea" class="hidden">
-        <div class="viewstrip" id="viewStrip"></div>
-        <label>Tipo desta vista</label>
-        <select id="viewLabel" onchange="setViewLabel()">
-          <option value="Topo (de cima)">Topo (de cima)</option>
-          <option value="Lateral (perfil)">Lateral (perfil)</option>
-          <option value="Corte (seção)">Corte (seção)</option>
-          <option value="Outra">Outra</option>
-        </select>
-      </div>
+      <div class="thumbs" id="partPhotos"></div>
     </div>
 
-    <!-- 3. MARCAR NA FOTO -->
-    <div class="card" id="stageCard">
-      <h2><span class="n">3</span> Marcar na foto</h2>
-      <p class="hint">Toque/arraste em <b>dois pontos</b> (a <b>lupa</b> ajuda a acertar a borda). Use <b>Calibrar</b> uma vez por foto (na moeda) e depois <b>Medir</b>.</p>
-      <div class="toolbar">
-        <button id="toolCal" class="active" onclick="setTool('cal')">📏 Calibrar (moeda)</button>
-        <button id="toolMeas" onclick="setTool('meas')">✏️ Medir</button>
-        <button onclick="undoPoint()">↶ Desfazer</button>
-      </div>
-      <div class="stage" id="stage">
-        <div class="empty" id="stageEmpty">Adicione uma foto no passo 2 para começar.</div>
-        <canvas id="canvas" class="hidden"></canvas>
-        <div id="loupe"><canvas id="loupeCv" width="120" height="120"></canvas></div>
-      </div>
-      <div class="scalebox" id="scaleBox">Escala desta foto: <b>não calibrada</b></div>
-
-      <div id="calForm" class="hidden">
-        <label>Objeto de referência marcado</label>
-        <select id="coinPreset" onchange="onCoinPreset()">
-          <option value="27">Moeda R$ 1,00 — 27,0 mm</option>
-          <option value="23">Moeda R$ 0,50 — 23,0 mm</option>
-          <option value="25">Moeda R$ 0,25 — 25,0 mm</option>
-          <option value="20">Moeda R$ 0,10 — 20,0 mm</option>
-          <option value="22">Moeda R$ 0,05 — 22,0 mm</option>
-          <option value="85.6">Cartão (lado maior) — 85,6 mm</option>
-          <option value="custom">Personalizado…</option>
-        </select>
-        <div class="row" style="margin-top:8px">
-          <input id="calMm" type="number" inputmode="decimal" value="27" />
-          <button class="btn" style="flex:.6" onclick="applyCalibration()">Aplicar escala</button>
-        </div>
-        <p class="step-note">Marque a moeda pela maior largura (o diâmetro). Quanto mais perto da câmera, melhor a precisão.</p>
-      </div>
+    <div class="card" id="measCard">
+      <h2>3 · Medidas (digitar em mm)</h2>
+      <p class="hint">Meça com paquímetro/instrumento e digite. A ferramenta compara com os limites na hora.</p>
+      <div id="measRows"></div>
     </div>
 
-    <!-- 4. MEDIDAS -->
-    <div class="card hidden" id="measCard">
-      <h2><span class="n">4</span> Medidas</h2>
-      <p class="hint" id="measHint"></p>
-
-      <!-- form para nomear a medida recém-marcada (modo criar padrão) -->
-      <div id="measForm" class="inlineform hidden">
-        <div class="row">
-          <div>
-            <label>Nome da medida</label>
-            <input id="measName" placeholder="ex: Ø externo"/>
-          </div>
-          <div>
-            <label>Tipo</label>
-            <select id="measDim">
-              <option value="diametro">Diâmetro</option>
-              <option value="comprimento">Comprimento/Largura</option>
-              <option value="altura">Altura</option>
-              <option value="profundidade">Profundidade</option>
-              <option value="espessura">Espessura do revestimento</option>
-              <option value="outro">Outro</option>
-            </select>
-          </div>
-        </div>
-        <div class="btns">
-          <button class="btn" onclick="confirmMeasure()">Adicionar (<span id="measFormVal">0</span> mm)</button>
-          <button class="btn ghost" onclick="cancelMeasure()">Descartar</button>
-        </div>
-      </div>
-
-      <ul class="mlist" id="measList"></ul>
-      <p class="step-note" id="measNote"></p>
+    <div class="card" id="visCard">
+      <h2>4 · Inspeção visual</h2>
+      <p class="hint">Marque cada item e, se houver problema, anexe a foto do defeito.</p>
+      <div id="visRows"></div>
     </div>
 
-    <!-- 5. SALVAR PADRÃO -->
-    <div class="card hidden" id="saveCard">
-      <h2><span class="n">5</span> Salvar padrão</h2>
-      <label>Nome da peça</label>
-      <input id="stdName" placeholder="ex: Rolamento revestido 6205 — Cliente X"/>
-      <label>Tolerância padrão (±)</label>
-      <div class="row">
-        <input id="tolValue" type="number" inputmode="decimal" value="2" />
-        <select id="tolType"><option value="pct">%</option><option value="mm">mm</option></select>
-      </div>
-      <button class="btn" style="margin-top:10px" onclick="saveStandard()">💾 Salvar como padrão</button>
+    <div class="card" id="finishCard">
+      <button class="btn" onclick="finishInspection()">✅ Finalizar inspeção</button>
     </div>
 
-    <!-- 5. RESULTADO -->
     <div class="card hidden" id="resultCard">
-      <h2><span class="n">5</span> Resultado</h2>
+      <h2>Resultado</h2>
       <div id="verdict" class="verdict ok">—</div>
-      <table id="resultTable"><thead><tr>
-        <th>Medida</th><th class="num">Nominal</th><th class="num">Medido</th><th class="num">Desvio</th><th>Status</th>
-      </tr></thead><tbody></tbody></table>
       <ul class="diaglist" id="diagList"></ul>
-      <div class="btns"><button class="btn sec" onclick="resetInspection()">Nova inspeção</button></div>
+      <div class="btns">
+        <button class="btn" onclick="saveInspection()">💾 Salvar no histórico</button>
+        <button class="btn sec" onclick="startInspection()">Nova inspeção (mesma peça)</button>
+      </div>
     </div>
   </section>
 
-  <!-- PADRÕES -->
-  <section id="viewStandards" class="hidden">
-    <div class="card">
+  <!-- ===================== PADRÕES ===================== -->
+  <section id="viewSpecs" class="hidden">
+    <div class="card" id="specListCard">
       <h2>Padrões salvos</h2>
-      <p class="hint">Salvos só neste aparelho. Exporte para backup ou para passar a outro celular.</p>
-      <ul class="savedlist" id="savedList"></ul>
+      <ul class="savedlist" id="specList"></ul>
       <div class="btns">
-        <button class="btn sec" onclick="exportStandards()">⬇️ Exportar (.json)</button>
-        <button class="btn ghost" onclick="document.getElementById('importInput').click()">⬆️ Importar</button>
+        <button class="btn" onclick="newSpec()">➕ Novo padrão</button>
+        <button class="btn sec" onclick="exportData('specs')">⬇️ Exportar</button>
+        <button class="btn ghost" onclick="pickJson(importSpecs)">⬆️ Importar</button>
       </div>
-      <input id="importInput" class="filein" type="file" accept="application/json" onchange="importStandards(event)"/>
     </div>
+
+    <div class="card hidden" id="specFormCard">
+      <h2 id="specFormTitle">Novo padrão</h2>
+      <label>Nome da peça</label>
+      <input id="specName" placeholder="ex: Rolamento revestido Ø700 — Cliente X"/>
+
+      <label>Foto de referência (opcional)</label>
+      <div class="btns">
+        <button class="btn sec sm" onclick="capturePhoto(d=>{editRef=d;renderEditRef();})">📷 Câmera</button>
+        <button class="btn ghost sm" onclick="pickFile(d=>{editRef=d;renderEditRef();})">🖼️ Foto</button>
+      </div>
+      <div class="thumbs" id="editRefWrap"></div>
+
+      <h2 style="margin-top:16px">Medidas (nominal ± variação, em mm)</h2>
+      <div id="dimRows"></div>
+      <button class="btn sec sm" style="margin-top:6px" onclick="addDimRow()">➕ Adicionar medida</button>
+
+      <h2 style="margin-top:16px">Itens de inspeção visual</h2>
+      <div class="suggest" id="visSuggest"></div>
+      <div id="visItemRows"></div>
+      <button class="btn sec sm" style="margin-top:6px" onclick="addVisItem('')">➕ Adicionar item</button>
+
+      <div class="btns" style="margin-top:14px">
+        <button class="btn" onclick="saveSpec()">💾 Salvar padrão</button>
+        <button class="btn ghost" onclick="showTab('specs')">Cancelar</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== HISTÓRICO ===================== -->
+  <section id="viewHist" class="hidden">
+    <div class="card">
+      <h2>Histórico de inspeções</h2>
+      <ul class="savedlist" id="histList"></ul>
+      <div class="btns">
+        <button class="btn sec" onclick="exportData('insp')">⬇️ Exportar</button>
+        <button class="btn ghost" onclick="pickJson(importInsp)">⬆️ Importar</button>
+      </div>
+    </div>
+    <div class="card hidden" id="histDetail"></div>
   </section>
 </main>
 
-<footer>Funciona offline · dados só neste aparelho · profundidade exige foto lateral/corte com moeda no mesmo plano</footer>
+<footer>Funciona offline · dados só neste aparelho · medidas digitadas (precisão do seu instrumento) · câmera = documentação</footer>
+
+<!-- modal câmera -->
+<div class="modal" id="camModal">
+  <video id="video" playsinline autoplay muted></video>
+  <div class="mbtns">
+    <button class="btn" onclick="snap()">⚪ Capturar</button>
+    <button class="btn ghost" onclick="closeCamera()">Cancelar</button>
+  </div>
+</div>
+
+<!-- inputs ocultos -->
+<input id="fileInput" class="filein" type="file" accept="image/*" onchange="onFilePicked(event)"/>
+<input id="jsonInput" class="filein" type="file" accept="application/json" onchange="onJsonPicked(event)"/>
 
 <script>
-/* ============================ Estado ============================ */
-const S = {
-  views:[],            // [{id,label,dataUrl,img,scale,calib}]
-  activeId:null,
-  tool:'cal',
-  pending:[],          // pontos pendentes (coords da imagem)
-  prov:null,           // ponto provisório (durante arraste)
-  pendingMeasure:null, // {a,b,mm} aguardando nome (modo new)
-  measures:[],         // [{name,dim,viewId,viewLabel,a,b,mm}]
-  mode:'new',
-  activeStd:null,
-  checkIndex:0,
-  checkResults:[],
-};
-const LS_KEY='inspecao_pu_padroes_v2';
-const DIM_LABEL={diametro:'Diâmetro',comprimento:'Comprimento',altura:'Altura',profundidade:'Profundidade',espessura:'Esp. revestimento',outro:'Outro'};
+/* ============================ Persistência ============================ */
+const K_SPECS='inspecao_pu_specs_v3', K_INSP='inspecao_pu_insp_v3';
+const loadSpecs=()=>{try{return JSON.parse(localStorage.getItem(K_SPECS)||'[]')}catch(e){return[]}};
+const saveSpecs=a=>localStorage.setItem(K_SPECS,JSON.stringify(a));
+const loadInsp=()=>{try{return JSON.parse(localStorage.getItem(K_INSP)||'[]')}catch(e){return[]}};
+const saveInspAll=a=>localStorage.setItem(K_INSP,JSON.stringify(a));
 
-const cv=document.getElementById('canvas'), ctx=cv.getContext('2d');
-const loupe=document.getElementById('loupe'), lcv=document.getElementById('loupeCv'), lctx=lcv.getContext('2d');
+const DIM_TYPES={diametro:'Diâmetro',largura:'Largura',altura:'Altura',profundidade:'Profundidade',espessura:'Espessura do revestimento',outro:'Outro'};
+const VIS_SUGGESTIONS=['Trinca / fissura','Falha ou bolha no revestimento','Descolamento do revestimento','Desgaste / marca de atrito','Oxidação / corrosão','Ovalização aparente','Riscos / marcas','Folga ou ruído ao girar'];
 
-function activeView(){return S.views.find(v=>v.id===S.activeId)||null;}
+/* ============================ util ============================ */
+const $=id=>document.getElementById(id);
+const num=v=>{const n=parseFloat(String(v).replace(',','.'));return isNaN(n)?null:n;};
+const fmt=n=>(Math.round(n*100)/100).toFixed(2);
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
-/* ============================ Abas ============================ */
-function showTab(t){
-  document.getElementById('viewInspect').classList.toggle('hidden',t!=='inspect');
-  document.getElementById('viewStandards').classList.toggle('hidden',t!=='standards');
-  document.getElementById('tabInspect').classList.toggle('active',t==='inspect');
-  document.getElementById('tabStandards').classList.toggle('active',t==='standards');
-  if(t==='standards') renderSaved();
-}
-
-/* ============================ Modo ============================ */
-function onModeChange(){
-  S.mode=document.getElementById('mode').value;
-  document.getElementById('stdPicker').classList.toggle('hidden',S.mode!=='check');
-  if(S.mode==='check') populateStdSelect();
-  S.measures=[]; S.checkIndex=0; S.checkResults=[]; S.pendingMeasure=null;
-  refreshFlow();
-}
-function populateStdSelect(){
-  const sel=document.getElementById('stdSelect'), stds=loadStandards(); sel.innerHTML='';
-  if(stds.length===0){document.getElementById('stdPickerNote').textContent='Nenhum padrão salvo. Cadastre uma peça boa primeiro.';S.activeStd=null;return;}
-  document.getElementById('stdPickerNote').textContent='';
-  stds.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;sel.appendChild(o);});
-  onStdSelect();
-}
-function onStdSelect(){
-  S.activeStd=loadStandards().find(s=>s.id===document.getElementById('stdSelect').value)||null;
-  S.checkIndex=0; S.checkResults=[]; refreshFlow();
-}
-
-/* ============================ Câmera ============================ */
-let stream=null;
-async function openCamera(){
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
-    // sem API de câmera ao vivo -> usa input nativo (abre a câmera do sistema)
-    document.getElementById('cameraInput').click(); return;
-  }
-  try{
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
-  }catch(e){
-    try{ stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); }
-    catch(e2){
-      alert('Não consegui abrir a câmera ao vivo ('+e2.name+'). Vou usar a câmera do sistema.');
-      document.getElementById('cameraInput').click(); return;
-    }
-  }
-  const v=document.getElementById('video');
-  v.srcObject=stream; v.muted=true; v.setAttribute('playsinline','');
-  try{ await v.play(); }catch(_){}
-  document.getElementById('camWrap').classList.remove('hidden');
-}
-function closeCamera(){
-  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
-  document.getElementById('camWrap').classList.add('hidden');
-}
-function snap(){
-  const v=document.getElementById('video');
-  if(!v.videoWidth){alert('A câmera ainda não carregou. Aguarde um instante.');return;}
-  const c=document.createElement('canvas'); c.width=v.videoWidth; c.height=v.videoHeight;
-  c.getContext('2d').drawImage(v,0,0);
-  addView(c.toDataURL('image/jpeg',0.92)); closeCamera();
-}
-function loadFromFile(ev){
-  const f=ev.target.files&&ev.target.files[0]; if(!f)return;
-  const r=new FileReader(); r.onload=()=>addView(r.result); r.readAsDataURL(f); ev.target.value='';
-}
-
-/* ============================ Vistas ============================ */
-const DEFAULT_LABELS=['Topo (de cima)','Lateral (perfil)','Corte (seção)','Outra'];
-function addView(dataUrl){
+/* downscale + compressão para caber no armazenamento */
+function compress(dataUrl,maxW,cb){
   const im=new Image();
   im.onload=()=>{
-    const id='v'+Date.now()+Math.random().toString(36).slice(2,5);
-    const label=DEFAULT_LABELS[Math.min(S.views.length,DEFAULT_LABELS.length-1)];
-    S.views.push({id,label,dataUrl,img:im,scale:null,calib:null});
-    S.activeId=id;
-    document.getElementById('viewArea').classList.remove('hidden');
-    document.getElementById('stageEmpty').classList.add('hidden');
-    cv.classList.remove('hidden');
-    setTool('cal'); fitCanvas(); renderStrip(); syncViewLabel(); draw(); updateScaleBox(); refreshFlow();
+    const sc=Math.min(1,maxW/im.naturalWidth);
+    const c=document.createElement('canvas');
+    c.width=Math.round(im.naturalWidth*sc); c.height=Math.round(im.naturalHeight*sc);
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    cb(c.toDataURL('image/jpeg',0.7));
   };
   im.src=dataUrl;
 }
-function renderStrip(){
-  const strip=document.getElementById('viewStrip'); strip.innerHTML='';
-  S.views.forEach(v=>{
-    const d=document.createElement('div'); d.className='vthumb'+(v.id===S.activeId?' active':'');
-    d.innerHTML='<img src="'+v.dataUrl+'"><div class="lbl">'+escapeHtml(v.label)+'</div>'
-      +(v.scale?'<span class="badge ok">✔mm</span>':'<span class="badge">sem escala</span>');
-    d.onclick=()=>{S.activeId=v.id;S.pending=[];S.pendingMeasure=null;setTool('cal');fitCanvas();renderStrip();syncViewLabel();draw();updateScaleBox();refreshFlow();};
-    strip.appendChild(d);
+
+/* ============================ Abas ============================ */
+function showTab(t){
+  $('viewInspect').classList.toggle('hidden',t!=='inspect');
+  $('viewSpecs').classList.toggle('hidden',t!=='specs');
+  $('viewHist').classList.toggle('hidden',t!=='hist');
+  $('tabInspect').classList.toggle('active',t==='inspect');
+  $('tabSpecs').classList.toggle('active',t==='specs');
+  $('tabHist').classList.toggle('active',t==='hist');
+  if(t==='specs'){renderSpecList();$('specFormCard').classList.add('hidden');$('specListCard').classList.remove('hidden');}
+  if(t==='hist'){renderHistList();$('histDetail').classList.add('hidden');}
+  if(t==='inspect')populateInspSpec();
+}
+
+/* ============================ Câmera / arquivos ============================ */
+let stream=null, captureCb=null, fileCb=null, jsonCb=null;
+async function capturePhoto(cb){
+  captureCb=cb;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){pickFile(cb);return;}
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});}
+  catch(e){try{stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});}
+    catch(e2){alert('Câmera ao vivo indisponível ('+e2.name+'). Usando câmera do sistema.');pickFile(cb);return;}}
+  const v=$('video');v.srcObject=stream;v.muted=true;try{await v.play();}catch(_){}
+  $('camModal').classList.add('on');
+}
+function closeCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}$('camModal').classList.remove('on');}
+function snap(){
+  const v=$('video'); if(!v.videoWidth){alert('Aguarde a câmera carregar.');return;}
+  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0);
+  const raw=c.toDataURL('image/jpeg',0.9); closeCamera();
+  compress(raw,1280,d=>{if(captureCb)captureCb(d);});
+}
+function pickFile(cb){fileCb=cb;$('fileInput').click();}
+function onFilePicked(ev){const f=ev.target.files&&ev.target.files[0];if(!f){return;}const r=new FileReader();r.onload=()=>compress(r.result,1280,d=>{if(fileCb)fileCb(d);});r.readAsDataURL(f);ev.target.value='';}
+function pickJson(cb){jsonCb=cb;$('jsonInput').click();}
+function onJsonPicked(ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{jsonCb&&jsonCb(JSON.parse(r.result));}catch(e){alert('Arquivo inválido.');}};r.readAsText(f);ev.target.value='';}
+
+/* ============================ EDITOR DE PADRÃO ============================ */
+let editId=null, editDims=[], editVisual=[], editRef=null;
+function newSpec(){editId=null;editDims=[];editVisual=[];editRef=null;
+  $('specName').value='';$('specFormTitle').textContent='Novo padrão';
+  addDimRow(); VIS_SUGGESTIONS.slice(0,4).forEach(addVisItem);
+  openSpecForm();}
+function editSpec(id){
+  const s=loadSpecs().find(x=>x.id===id);if(!s)return;
+  editId=s.id;editDims=s.dims.map(d=>({...d}));editVisual=s.visualItems.slice();editRef=s.refPhoto||null;
+  $('specName').value=s.name;$('specFormTitle').textContent='Editar padrão';
+  openSpecForm();
+}
+function openSpecForm(){
+  $('specListCard').classList.add('hidden');$('specFormCard').classList.remove('hidden');
+  renderEditRef();renderDimRows();renderVisItems();renderVisSuggest();
+}
+function renderEditRef(){$('editRefWrap').innerHTML=editRef?'<div class="th"><img src="'+editRef+'"><button onclick="editRef=null;renderEditRef()">✕</button></div>':'';}
+function addDimRow(){editDims.push({name:'',type:'diametro',nominal:'',varPlus:''});renderDimRows();}
+function renderDimRows(){
+  const wrap=$('dimRows');wrap.innerHTML='';
+  editDims.forEach((d,i)=>{
+    const div=document.createElement('div');div.className='dimrow';
+    div.innerHTML=
+      '<div class="row"><div style="flex:1.4"><label>Nome</label><input value="'+escapeHtml(d.name)+'" oninput="editDims['+i+'].name=this.value"/></div>'
+      +'<div><label>Tipo</label><select onchange="editDims['+i+'].type=this.value;renderDimRows()">'
+      +Object.entries(DIM_TYPES).map(([k,v])=>'<option value="'+k+'"'+(d.type===k?' selected':'')+'>'+v+'</option>').join('')+'</select></div></div>'
+      +'<div class="row" style="margin-top:6px"><div><label>Nominal (mm)</label><input type="number" inputmode="decimal" value="'+escapeHtml(d.nominal)+'" oninput="editDims['+i+'].nominal=this.value;updLim('+i+')"/></div>'
+      +'<div><label>Variação ± (mm)</label><input type="number" inputmode="decimal" value="'+escapeHtml(d.varPlus)+'" oninput="editDims['+i+'].varPlus=this.value;updLim('+i+')"/></div>'
+      +'<div style="flex:.4;display:flex;align-items:flex-end"><button class="btn danger sm" style="width:100%" onclick="editDims.splice('+i+',1);renderDimRows()">✕</button></div></div>'
+      +'<div class="lim" id="lim'+i+'"></div>';
+    wrap.appendChild(div);
+    updLim(i);
   });
-  const add=document.createElement('div'); add.className='vadd'; add.textContent='＋ foto';
-  add.onclick=()=>document.getElementById('galleryInput').click();
-  strip.appendChild(add);
 }
-function syncViewLabel(){const v=activeView();if(v)document.getElementById('viewLabel').value=DEFAULT_LABELS.includes(v.label)?v.label:'Outra';}
-function setViewLabel(){const v=activeView();if(v){v.label=document.getElementById('viewLabel').value;renderStrip();}}
-
-/* ============================ Canvas / pointer + lupa ============================ */
-function fitCanvas(){const v=activeView();if(!v)return;cv.width=v.img.naturalWidth;cv.height=v.img.naturalHeight;}
-function ptFromEvent(ev){
-  const rect=cv.getBoundingClientRect();
-  const cx=ev.clientX-rect.left, cy=ev.clientY-rect.top;
-  return {x:cx*(cv.width/rect.width), y:cy*(cv.height/rect.height)};
+function updLim(i){
+  const d=editDims[i],el=$('lim'+i);if(!el)return;
+  const nom=num(d.nominal),vp=num(d.varPlus);
+  el.innerHTML=(nom!=null&&vp!=null)?'Limites: <b>'+fmt(nom-vp)+'</b> a <b>'+fmt(nom+vp)+'</b> mm':'Informe nominal e variação.';
 }
-cv.addEventListener('pointerdown',e=>{
-  if(!activeView())return; e.preventDefault();
-  cv.setPointerCapture&&cv.setPointerCapture(e.pointerId);
-  S.prov=ptFromEvent(e); showLoupe(e); draw();
-});
-cv.addEventListener('pointermove',e=>{
-  if(!S.prov)return; e.preventDefault();
-  S.prov=ptFromEvent(e); showLoupe(e); draw();
-});
-cv.addEventListener('pointerup',e=>{
-  if(!S.prov)return; e.preventDefault();
-  const p=S.prov; S.prov=null; loupe.style.display='none';
-  commitPoint(p);
-});
-function showLoupe(ev){
-  const v=activeView(); if(!v)return;
-  const L=120, zoom=3.5, src=L/zoom;
-  lctx.clearRect(0,0,L,L);
-  lctx.drawImage(v.img, S.prov.x-src/2, S.prov.y-src/2, src, src, 0,0,L,L);
-  lctx.strokeStyle='#39d98a'; lctx.lineWidth=1.5;
-  lctx.beginPath(); lctx.moveTo(L/2,0);lctx.lineTo(L/2,L);lctx.moveTo(0,L/2);lctx.lineTo(L,L/2); lctx.stroke();
-  // posiciona a lupa do lado oposto ao dedo
-  const rect=cv.getBoundingClientRect();
-  const onLeft=(ev.clientX-rect.left) < rect.width/2;
-  loupe.style.left=onLeft?'auto':'8px'; loupe.style.right=onLeft?'8px':'auto';
-  loupe.style.display='block';
+function renderVisSuggest(){
+  $('visSuggest').innerHTML='';
+  VIS_SUGGESTIONS.forEach(s=>{
+    if(editVisual.includes(s))return;
+    const b=document.createElement('button');b.textContent='+ '+s;b.onclick=()=>{addVisItem(s);renderVisSuggest();};
+    $('visSuggest').appendChild(b);
+  });
 }
-function commitPoint(p){
-  S.pending.push(p);
-  if(S.pending.length===2){ commitSegment(S.pending[0],S.pending[1]); S.pending=[]; }
-  draw();
+function addVisItem(txt){editVisual.push(txt||'');renderVisItems();renderVisSuggest();}
+function renderVisItems(){
+  const wrap=$('visItemRows');wrap.innerHTML='';
+  editVisual.forEach((t,i)=>{
+    const div=document.createElement('div');div.className='row';div.style.marginBottom='6px';
+    div.innerHTML='<input value="'+escapeHtml(t)+'" oninput="editVisual['+i+']=this.value" placeholder="descrição do item"/>'
+      +'<button class="btn danger sm" style="flex:.3" onclick="editVisual.splice('+i+',1);renderVisItems();renderVisSuggest()">✕</button>';
+    wrap.appendChild(div);
+  });
 }
-function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
-
-function commitSegment(a,b){
-  const v=activeView(); if(!v)return;
-  if(S.tool==='cal'){
-    v.calib={a,b};
-    document.getElementById('calForm').classList.remove('hidden');
-    return;
-  }
-  if(!v.scale){alert('Calibre a escala desta foto primeiro (📏 Calibrar na moeda).');return;}
-  const mm=dist(a,b)*v.scale;
-  if(S.mode==='new'){
-    S.pendingMeasure={a,b,mm,viewId:v.id,viewLabel:v.label};
-    document.getElementById('measFormVal').textContent=fmt(mm);
-    document.getElementById('measName').value='';
-    document.getElementById('measForm').classList.remove('hidden');
-    document.getElementById('measName').focus();
-  }else{
-    const std=S.activeStd; if(!std)return;
-    const target=std.measures[S.checkIndex];
-    S.checkResults[S.checkIndex]={name:target.name,dim:target.dim,nominal:target.mm,
-      tolType:std.tolType,tolValue:target.tolValue??std.tolValue,measured:mm,viewId:v.id,a,b};
-    S.checkIndex++;
-    if(S.checkIndex>=std.measures.length){finishInspection();} else {refreshFlow();}
-  }
+function saveSpec(){
+  const name=$('specName').value.trim();if(!name){alert('Dê um nome ao padrão.');return;}
+  const dims=editDims.filter(d=>d.name.trim()&&num(d.nominal)!=null&&num(d.varPlus)!=null)
+    .map(d=>({name:d.name.trim(),type:d.type,nominal:num(d.nominal),varPlus:num(d.varPlus)}));
+  const visualItems=editVisual.map(t=>t.trim()).filter(Boolean);
+  if(dims.length===0&&visualItems.length===0){alert('Adicione ao menos uma medida ou item visual.');return;}
+  const all=loadSpecs();
+  const spec={id:editId||('spec_'+Date.now()),name,refPhoto:editRef,dims,visualItems,createdAt:new Date().toISOString()};
+  const idx=all.findIndex(x=>x.id===spec.id);
+  if(idx>=0)all[idx]=spec;else all.push(spec);
+  saveSpecs(all);showTab('specs');
 }
-function confirmMeasure(){
-  const pm=S.pendingMeasure; if(!pm)return;
-  const name=document.getElementById('measName').value.trim()||('Medida '+(S.measures.length+1));
-  const dim=document.getElementById('measDim').value;
-  S.measures.push({name,dim,viewId:pm.viewId,viewLabel:pm.viewLabel,a:pm.a,b:pm.b,mm:pm.mm});
-  S.pendingMeasure=null;
-  document.getElementById('measForm').classList.add('hidden');
-  renderMeasList(); draw(); refreshFlow();
-}
-function cancelMeasure(){S.pendingMeasure=null;document.getElementById('measForm').classList.add('hidden');draw();}
-
-/* ============================ Calibração ============================ */
-function onCoinPreset(){
-  const v=document.getElementById('coinPreset').value;
-  if(v!=='custom') document.getElementById('calMm').value=v;
-  else document.getElementById('calMm').focus();
-}
-function applyCalibration(){
-  const v=activeView(); if(!v||!v.calib){alert('Marque a moeda/objeto de referência na foto primeiro.');return;}
-  const mm=parseFloat(String(document.getElementById('calMm').value).replace(',','.'));
-  if(!(mm>0)){alert('Informe o tamanho de referência em mm.');return;}
-  v.calib.mm=mm; v.scale=mm/dist(v.calib.a,v.calib.b);
-  document.getElementById('calForm').classList.add('hidden');
-  renderStrip(); updateScaleBox(); draw(); setTool('meas'); refreshFlow();
-}
-function updateScaleBox(){
-  const v=activeView(); const el=document.getElementById('scaleBox');
-  el.innerHTML=(v&&v.scale)?'Escala desta foto: <b>'+(1/v.scale).toFixed(2)+' px/mm</b> ✅'
-    :'Escala desta foto: <b>não calibrada</b>';
-}
-function setTool(t){
-  S.tool=t; S.pending=[]; S.prov=null;
-  document.getElementById('toolCal').classList.toggle('active',t==='cal');
-  document.getElementById('toolMeas').classList.toggle('active',t==='meas');
-  const v=activeView();
-  document.getElementById('calForm').classList.toggle('hidden',!(t==='cal'&&v&&v.calib));
-  draw();
-}
-function undoPoint(){
-  if(S.pending.length>0){S.pending.pop();draw();return;}
-  if(S.pendingMeasure){cancelMeasure();return;}
-  if(S.tool==='meas'&&S.mode==='new'&&S.measures.length>0){S.measures.pop();renderMeasList();draw();refreshFlow();}
-}
-
-/* ============================ Desenho ============================ */
-function draw(){
-  const v=activeView(); if(!v)return;
-  ctx.clearRect(0,0,cv.width,cv.height);
-  ctx.drawImage(v.img,0,0,cv.width,cv.height);
-  const lw=Math.max(2,cv.width/400), fs=Math.max(14,cv.width/45);
-  ctx.lineWidth=lw; ctx.font='bold '+fs+'px system-ui'; ctx.textBaseline='bottom';
-  if(v.calib) drawSeg(v.calib.a,v.calib.b,'#39d98a',(v.calib.mm?fmt(v.calib.mm)+' mm':'')+' ref',fs);
-  if(S.mode==='new'){
-    S.measures.filter(m=>m.viewId===v.id).forEach(m=>drawSeg(m.a,m.b,'#f5b945',m.name+': '+fmt(m.mm)+' mm',fs));
-    if(S.pendingMeasure&&S.pendingMeasure.viewId===v.id) drawSeg(S.pendingMeasure.a,S.pendingMeasure.b,'#fff',fmt(S.pendingMeasure.mm)+' mm',fs);
-  }else{
-    S.checkResults.forEach(r=>{if(r&&r.viewId===v.id){const st=status(r);drawSeg(r.a,r.b,st.pass?'#39d98a':'#ff5b6e',r.name+': '+fmt(r.measured)+' mm',fs);}});
-  }
-  // ponto provisório / pendentes
-  ctx.fillStyle='#fff';
-  S.pending.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,lw*2.4,0,7);ctx.fill();});
-  if(S.prov){ctx.beginPath();ctx.arc(S.prov.x,S.prov.y,lw*2.4,0,7);ctx.fill();
-    if(S.pending.length===1){ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(S.pending[0].x,S.pending[0].y);ctx.lineTo(S.prov.x,S.prov.y);ctx.stroke();}}
-}
-function drawSeg(a,b,color,label,fs){
-  const lw=ctx.lineWidth; ctx.strokeStyle=color; ctx.fillStyle=color;
-  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
-  [a,b].forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,lw*2.4,0,7);ctx.fill();});
-  if(label){const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;ctx.save();
-    const w=ctx.measureText(label).width+10;
-    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(mx+6,my-fs-6,w,fs+8);
-    ctx.fillStyle=color;ctx.fillText(label,mx+11,my);ctx.restore();}
-}
-function fmt(n){return (Math.round(n*100)/100).toFixed(2);}
-
-/* ============================ Fluxo de cards ============================ */
-function refreshFlow(){
-  const hasView=!!activeView();
-  const isNew=S.mode==='new', isCheck=S.mode==='check';
-  document.getElementById('measCard').classList.toggle('hidden',!hasView);
-  document.getElementById('saveCard').classList.toggle('hidden',!(isNew&&hasView&&S.measures.length>0));
-  if(!document.getElementById('resultCard').classList.contains('shown')) document.getElementById('resultCard').classList.add('hidden');
-
-  if(isNew){
-    const v=activeView();
-    document.getElementById('measHint').innerHTML=(v&&v.scale)
-      ?'Marque cada dimensão (2 pontos), dê nome e <b>tipo</b>. Para profundidade/espessura use uma foto lateral ou de corte.'
-      :'⚠️ Calibre a escala desta foto antes de medir.';
-    renderMeasList();
-  }
-  if(isCheck){
-    const std=S.activeStd, v=activeView();
-    if(!std){document.getElementById('measHint').textContent='Selecione um padrão no passo 1.';document.getElementById('measList').innerHTML='';return;}
-    const done=S.checkIndex>=std.measures.length;
-    if(done){document.getElementById('measHint').textContent='Todas as medidas foram lidas.';}
-    else if(!v||!v.scale){document.getElementById('measHint').innerHTML='⚠️ Adicione/abra a foto certa e <b>calibre a escala</b> antes de medir.';}
-    else{const m=std.measures[S.checkIndex];
-      document.getElementById('measHint').innerHTML='Meça: <b>'+escapeHtml(m.name)+'</b> · '+DIM_LABEL[m.dim]+' · vista <b>'+escapeHtml(m.viewLabel||'-')+'</b> (nominal '+fmt(m.mm)+' mm).';}
-    renderCheckProgress();
-  }
-}
-function renderMeasList(){
-  const ul=document.getElementById('measList'); ul.innerHTML='';
-  if(S.mode!=='new')return;
-  S.measures.forEach((m,i)=>{
+function renderSpecList(){
+  const ul=$('specList');ul.innerHTML='';const all=loadSpecs();
+  if(all.length===0){ul.innerHTML='<li style="color:var(--muted)">Nenhum padrão. Crie um novo.</li>';return;}
+  all.forEach(s=>{
     const li=document.createElement('li');
-    li.innerHTML='<span class="name">'+escapeHtml(m.name)+' <small>· '+DIM_LABEL[m.dim]+' · '+escapeHtml(m.viewLabel||'')+'</small></span><span class="val">'+fmt(m.mm)+' mm</span>';
-    const del=document.createElement('button');del.className='btn danger';del.textContent='✕';
-    del.onclick=()=>{S.measures.splice(i,1);renderMeasList();draw();refreshFlow();};
-    li.appendChild(del); ul.appendChild(li);
-  });
-  document.getElementById('measNote').textContent=S.measures.length?'':'Nenhuma medida ainda.';
-}
-function renderCheckProgress(){
-  const ul=document.getElementById('measList'); ul.innerHTML=''; const std=S.activeStd; if(!std)return;
-  std.measures.forEach((m,i)=>{
-    const r=S.checkResults[i]; const li=document.createElement('li');
-    let val='—',color='var(--muted)';
-    if(r){const st=status(r);val=fmt(r.measured)+' mm';color=st.pass?'var(--ok)':'var(--bad)';}
-    else if(i===S.checkIndex)val='medindo…';
-    li.innerHTML='<span class="name">'+escapeHtml(m.name)+' <small>· '+DIM_LABEL[m.dim]+' · '+escapeHtml(m.viewLabel||'')+' ('+fmt(m.mm)+' mm)</small></span><span class="val" style="color:'+color+'">'+val+'</span>';
-    ul.appendChild(li);
+    li.innerHTML=(s.refPhoto?'<img src="'+s.refPhoto+'">':'<div style="width:46px"></div>')
+      +'<div class="meta"><b>'+escapeHtml(s.name)+'</b><small>'+s.dims.length+' medida(s) · '+s.visualItems.length+' item(ns) visual</small></div>';
+    const e=document.createElement('button');e.className='btn sec sm';e.textContent='Editar';e.onclick=()=>editSpec(s.id);
+    const d=document.createElement('button');d.className='btn danger sm';d.textContent='Excluir';
+    d.onclick=()=>{if(confirm('Excluir "'+s.name+'"?')){saveSpecs(loadSpecs().filter(x=>x.id!==s.id));renderSpecList();}};
+    li.appendChild(e);li.appendChild(d);ul.appendChild(li);
   });
 }
 
-/* ============================ Tolerância / status / diagnóstico ============================ */
-function tolMm(nom,type,val){return type==='pct'?nom*(val/100):val;}
-function status(r){const t=tolMm(r.nominal,r.tolType,r.tolValue);const dev=r.measured-r.nominal;return {pass:Math.abs(dev)<=t+1e-9,dev,tol:t};}
-function defectHint(dim,acima){
+/* ============================ INSPEÇÃO ============================ */
+let insp=null; // {specId,spec,pieceId,photos,dims:[{...,measured}],visual:[{label,status,photo,note}]}
+function populateInspSpec(){
+  const sel=$('inspSpec'),all=loadSpecs();sel.innerHTML='';
+  if(all.length===0){$('noSpecMsg').textContent='Nenhum padrão cadastrado. Vá em "Padrões" e crie um.';
+    ['photosCard','measCard','visCard','finishCard'].forEach(id=>$(id).classList.add('hidden'));
+    $('resultCard').classList.add('hidden');return;}
+  $('noSpecMsg').textContent='';
+  all.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;sel.appendChild(o);});
+  startInspection();
+}
+function startInspection(){
+  const spec=loadSpecs().find(s=>s.id===$('inspSpec').value);if(!spec)return;
+  insp={specId:spec.id,spec,pieceId:$('pieceId')?$('pieceId').value:'',photos:[],
+    dims:spec.dims.map(d=>({...d,measured:''})),
+    visual:spec.visualItems.map(l=>({label:l,status:'',photo:null,note:''}))};
+  ['photosCard','measCard','visCard','finishCard'].forEach(id=>$(id).classList.remove('hidden'));
+  $('resultCard').classList.add('hidden');
+  $('refPhotoWrap').classList.toggle('hidden',!spec.refPhoto);
+  if(spec.refPhoto)$('refPhotoImg').src=spec.refPhoto;
+  renderPartPhotos();renderMeasRows();renderVisRows();
+}
+function addPartPhoto(d){insp.photos.push(d);renderPartPhotos();}
+function renderPartPhotos(){
+  const w=$('partPhotos');w.innerHTML='';
+  insp.photos.forEach((p,i)=>{const div=document.createElement('div');div.className='th';
+    div.innerHTML='<img src="'+p+'"><button onclick="insp.photos.splice('+i+',1);renderPartPhotos()">✕</button>';w.appendChild(div);});
+}
+function renderMeasRows(){
+  const w=$('measRows');w.innerHTML='';
+  if(insp.dims.length===0){w.innerHTML='<p class="hint">Sem medidas neste padrão.</p>';return;}
+  insp.dims.forEach((d,i)=>{
+    const div=document.createElement('div');div.className='measrow';
+    div.innerHTML='<div class="top"><div class="nm">'+escapeHtml(d.name)
+      +'<small>'+DIM_TYPES[d.type]+' · '+fmt(d.nominal)+' ±'+fmt(d.varPlus)+' mm ('+fmt(d.nominal-d.varPlus)+'–'+fmt(d.nominal+d.varPlus)+')</small></div>'
+      +'<input class="meas" type="number" inputmode="decimal" placeholder="mm" value="'+escapeHtml(d.measured)+'" oninput="insp.dims['+i+'].measured=this.value;measFeedback('+i+')"/></div>'
+      +'<div class="fb" id="fb'+i+'"></div>';
+    w.appendChild(div);measFeedback(i);
+  });
+}
+function dimStatus(d){
+  const m=num(d.measured);if(m==null)return null;
+  const lo=d.nominal-d.varPlus,hi=d.nominal+d.varPlus,dev=m-d.nominal;
+  return {pass:m>=lo-1e-9&&m<=hi+1e-9,dev,lo,hi};
+}
+function measFeedback(i){
+  const d=insp.dims[i],el=$('fb'+i);if(!el)return;
+  const st=dimStatus(d);
+  if(!st){el.innerHTML='<span class="pill muted">não medido</span>';return;}
+  const sign=st.dev>=0?'+':'';
+  el.innerHTML='<span class="pill '+(st.pass?'ok':'bad')+'">'+(st.pass?'OK':'FORA')+'</span> desvio '+sign+fmt(st.dev)+' mm'
+    +(st.pass?'':' · <i>'+defectHint(d.type,st.dev>0)+'</i>');
+}
+function renderVisRows(){
+  const w=$('visRows');w.innerHTML='';
+  if(insp.visual.length===0){w.innerHTML='<p class="hint">Sem itens visuais neste padrão.</p>';return;}
+  insp.visual.forEach((v,i)=>{
+    const div=document.createElement('div');div.className='visrow';
+    div.innerHTML='<div class="top"><div class="nm">'+escapeHtml(v.label)+'</div>'
+      +'<div class="seg"><button class="ok'+(v.status==='ok'?' on':'')+'" onclick="setVis('+i+',\'ok\')">OK</button>'
+      +'<button class="bad'+(v.status==='problema'?' on':'')+'" onclick="setVis('+i+',\'problema\')">Problema</button></div></div>'
+      +'<div id="visx'+i+'"></div>';
+    w.appendChild(div);renderVisExtra(i);
+  });
+}
+function setVis(i,s){insp.visual[i].status=(insp.visual[i].status===s?'':s);renderVisRows();}
+function renderVisExtra(i){
+  const v=insp.visual[i],el=$('visx'+i);if(!el)return;
+  if(v.status!=='problema'){el.innerHTML='';return;}
+  el.innerHTML='<textarea placeholder="observação (opcional)" oninput="insp.visual['+i+'].note=this.value">'+escapeHtml(v.note||'')+'</textarea>'
+    +'<div class="btns"><button class="btn sec sm" onclick="capturePhoto(d=>{insp.visual['+i+'].photo=d;renderVisRows()})">📷 Foto do defeito</button>'
+    +'<button class="btn ghost sm" onclick="pickFile(d=>{insp.visual['+i+'].photo=d;renderVisRows()})">🖼️ Foto</button></div>'
+    +(v.photo?'<div class="thumbs"><div class="th"><img src="'+v.photo+'"><button onclick="insp.visual['+i+'].photo=null;renderVisRows()">✕</button></div></div>':'');
+}
+function defectHint(type,acima){
   const M={
     diametro:['Sobremedida — possível inchamento/excesso de revestimento','Submedida — desgaste ou revestimento fino'],
     espessura:['Revestimento espesso — excesso/escorrimento','Revestimento fino — desgaste, risco de falha'],
-    profundidade:['Mais profundo que o padrão','Raso — preenchimento/sobra de material'],
+    profundidade:['Mais profundo que o padrão','Raso — sobra de material'],
     altura:['Acima do nominal — sobra de material','Abaixo do nominal — desgaste/retração'],
-    comprimento:['Acima do nominal','Abaixo do nominal — retração'],
+    largura:['Acima do nominal','Abaixo do nominal — retração'],
     outro:['Acima do nominal','Abaixo do nominal'],
   };
-  return (M[dim]||M.outro)[acima?0:1];
+  return (M[type]||M.outro)[acima?0:1];
 }
-
-/* ============================ Salvar padrão ============================ */
-function saveStandard(){
-  const name=document.getElementById('stdName').value.trim();
-  if(!name){alert('Dê um nome ao padrão.');return;}
-  if(S.measures.length===0){alert('Adicione ao menos uma medida.');return;}
-  const tolValue=parseFloat(String(document.getElementById('tolValue').value).replace(',','.'))||0;
-  const tolType=document.getElementById('tolType').value;
-  const std={id:'std_'+Date.now(),name,tolType,tolValue,createdAt:new Date().toISOString(),
-    thumb:makeThumb(),
-    measures:S.measures.map(m=>({name:m.name,dim:m.dim,viewLabel:m.viewLabel,mm:m.mm,tolValue}))};
-  const all=loadStandards(); all.push(std); persist(all);
-  alert('Padrão "'+name+'" salvo com '+std.measures.length+' medida(s).');
-  showTab('standards');
-}
-function makeThumb(){const w=120,h=Math.round(w*cv.height/cv.width),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(cv,0,0,w,h);return c.toDataURL('image/jpeg',0.6);}
-
-/* ============================ Inspeção: finalizar ============================ */
 function finishInspection(){
-  const tbody=document.querySelector('#resultTable tbody'); tbody.innerHTML='';
-  const diag=document.getElementById('diagList'); diag.innerHTML='';
-  let allPass=true;
-  S.checkResults.forEach(r=>{
-    const st=status(r); if(!st.pass)allPass=false;
-    const sign=st.dev>=0?'+':'';
-    const tr=document.createElement('tr');
-    tr.innerHTML='<td>'+escapeHtml(r.name)+'</td><td class="num">'+fmt(r.nominal)+'</td><td class="num">'+fmt(r.measured)+'</td><td class="num">'+sign+fmt(st.dev)+' mm</td><td><span class="pill '+(st.pass?'ok':'bad')+'">'+(st.pass?'OK':'FORA')+'</span></td>';
-    tbody.appendChild(tr);
-    if(!st.pass){const li=document.createElement('li');
-      li.innerHTML='<b>'+escapeHtml(r.name)+'</b> ('+DIM_LABEL[r.dim]+'): '+sign+fmt(st.dev)+' mm fora · <i>'+defectHint(r.dim,st.dev>0)+'</i>';
+  if(!insp)return;
+  const diag=$('diagList');diag.innerHTML='';
+  let fail=false,warn=false;
+  insp.dims.forEach(d=>{
+    const st=dimStatus(d);
+    if(st===null){warn=true;const li=document.createElement('li');li.className='warn';
+      li.innerHTML='⚠️ <b>'+escapeHtml(d.name)+'</b> não foi medido.';diag.appendChild(li);return;}
+    if(!st.pass){fail=true;const sign=st.dev>=0?'+':'';const li=document.createElement('li');li.className='bad';
+      li.innerHTML='❌ <b>'+escapeHtml(d.name)+'</b> ('+DIM_TYPES[d.type]+'): '+fmt(num(d.measured))+' mm · desvio '+sign+fmt(st.dev)+' mm · <i>'+defectHint(d.type,st.dev>0)+'</i>';
       diag.appendChild(li);}
   });
-  const v=document.getElementById('verdict'); v.className='verdict '+(allPass?'ok':'bad');
-  v.textContent=allPass?'✅ APROVADA — dentro da tolerância':'❌ REPROVADA — verifique o diagnóstico abaixo';
-  document.getElementById('measCard').classList.add('hidden');
-  const rc=document.getElementById('resultCard'); rc.classList.remove('hidden'); rc.classList.add('shown');
-  draw();
+  insp.visual.forEach(v=>{
+    if(v.status==='problema'){fail=true;const li=document.createElement('li');li.className='bad';
+      li.innerHTML='❌ <b>'+escapeHtml(v.label)+'</b>'+(v.note?': '+escapeHtml(v.note):'')+(v.photo?' 📷':'');diag.appendChild(li);}
+    else if(v.status===''){warn=true;const li=document.createElement('li');li.className='warn';
+      li.innerHTML='⚠️ <b>'+escapeHtml(v.label)+'</b> não verificado.';diag.appendChild(li);}
+  });
+  if(!fail&&!warn){const li=document.createElement('li');li.style.color='var(--muted)';li.textContent='Tudo dentro do padrão.';diag.appendChild(li);}
+  const v=$('verdict');v.className='verdict '+(fail?'bad':'ok');
+  v.textContent=fail?'❌ REPROVADA':(warn?'✅ APROVADA (com pendências de verificação)':'✅ APROVADA');
+  $('resultCard').classList.remove('hidden');
+  $('resultCard').scrollIntoView({behavior:'smooth'});
 }
-function resetInspection(){
-  S.views.forEach(v=>{v.scale=null;v.calib=null;});
-  S.checkIndex=0; S.checkResults=[]; S.pending=[]; S.prov=null;
-  document.getElementById('resultCard').classList.remove('shown');
-  document.getElementById('resultCard').classList.add('hidden');
-  updateScaleBox(); draw(); refreshFlow();
+function saveInspection(){
+  if(!insp)return;
+  insp.pieceId=$('pieceId').value;
+  const fail=insp.dims.some(d=>{const s=dimStatus(d);return s&&!s.pass;})||insp.visual.some(v=>v.status==='problema');
+  const rec={id:'insp_'+Date.now(),date:new Date().toISOString(),specName:insp.spec.name,
+    pieceId:insp.pieceId,verdict:fail?'REPROVADA':'APROVADA',
+    photos:insp.photos,
+    dims:insp.dims.map(d=>({name:d.name,type:d.type,nominal:d.nominal,varPlus:d.varPlus,measured:num(d.measured)})),
+    visual:insp.visual.map(v=>({label:v.label,status:v.status,note:v.note,photo:v.photo}))};
+  const all=loadInsp();all.unshift(rec);
+  try{saveInspAll(all);alert('Inspeção salva no histórico.');}
+  catch(e){alert('Não foi possível salvar (memória do navegador cheia). Tente exportar e apagar inspeções antigas.');}
 }
 
-/* ============================ Persistência ============================ */
-function loadStandards(){try{return JSON.parse(localStorage.getItem(LS_KEY)||'[]');}catch(e){return [];}}
-function persist(a){localStorage.setItem(LS_KEY,JSON.stringify(a));}
-function renderSaved(){
-  const ul=document.getElementById('savedList'); ul.innerHTML=''; const all=loadStandards();
-  if(all.length===0){ul.innerHTML='<li style="color:var(--muted)">Nenhum padrão salvo.</li>';return;}
-  all.forEach(s=>{
+/* ============================ HISTÓRICO ============================ */
+function renderHistList(){
+  const ul=$('histList');ul.innerHTML='';const all=loadInsp();
+  if(all.length===0){ul.innerHTML='<li style="color:var(--muted)">Nenhuma inspeção salva.</li>';return;}
+  all.forEach(r=>{
     const li=document.createElement('li');
-    const tol=s.tolType==='pct'?('±'+s.tolValue+'%'):('±'+s.tolValue+' mm');
-    li.innerHTML='<img src="'+(s.thumb||'')+'" alt=""><div class="meta"><b>'+escapeHtml(s.name)+'</b><small>'+s.measures.length+' medida(s) · tol '+tol+' · '+new Date(s.createdAt).toLocaleDateString('pt-BR')+'</small></div>';
-    const del=document.createElement('button');del.className='btn danger';del.style.width='auto';del.style.flex='none';del.textContent='Excluir';
-    del.onclick=()=>{if(confirm('Excluir padrão "'+s.name+'"?')){persist(loadStandards().filter(x=>x.id!==s.id));renderSaved();}};
-    li.appendChild(del); ul.appendChild(li);
+    li.innerHTML=(r.photos&&r.photos[0]?'<img src="'+r.photos[0]+'">':'<div style="width:46px"></div>')
+      +'<div class="meta"><b>'+escapeHtml(r.pieceId||r.specName)+'</b><small>'+escapeHtml(r.specName)+' · '+new Date(r.date).toLocaleString('pt-BR')+'</small></div>'
+      +'<span class="pill '+(r.verdict==='APROVADA'?'ok':'bad')+'">'+r.verdict+'</span>';
+    const del=document.createElement('button');del.className='btn danger sm';del.textContent='✕';
+    del.onclick=e=>{e.stopPropagation();if(confirm('Excluir inspeção?')){saveInspAll(loadInsp().filter(x=>x.id!==r.id));renderHistList();}};
+    li.onclick=()=>showHistDetail(r.id);
+    li.appendChild(del);ul.appendChild(li);
   });
 }
-function exportStandards(){const blob=new Blob([JSON.stringify(loadStandards(),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='padroes-inspecao-pu.json';a.click();}
-function importStandards(ev){
-  const f=ev.target.files&&ev.target.files[0]; if(!f)return;
-  const r=new FileReader(); r.onload=()=>{try{const inc=JSON.parse(r.result);if(!Array.isArray(inc))throw 0;
-    const all=loadStandards(),ids=new Set(all.map(x=>x.id));inc.forEach(s=>{if(!ids.has(s.id))all.push(s);});
-    persist(all);renderSaved();alert('Importado: '+inc.length+' padrão(ões).');}catch(e){alert('Arquivo inválido.');}};
-  r.readAsText(f); ev.target.value='';
+function showHistDetail(id){
+  const r=loadInsp().find(x=>x.id===id);if(!r)return;
+  const d=$('histDetail');
+  let h='<h2>'+escapeHtml(r.pieceId||r.specName)+' <span class="pill '+(r.verdict==='APROVADA'?'ok':'bad')+'">'+r.verdict+'</span></h2>';
+  h+='<p class="hint">'+escapeHtml(r.specName)+' · '+new Date(r.date).toLocaleString('pt-BR')+'</p>';
+  if(r.dims.length){h+='<h2 style="margin-top:10px">Medidas</h2>';
+    r.dims.forEach(dd=>{const lo=dd.nominal-dd.varPlus,hi=dd.nominal+dd.varPlus;
+      const pass=dd.measured!=null&&dd.measured>=lo-1e-9&&dd.measured<=hi+1e-9;
+      h+='<div class="measrow"><div class="top"><div class="nm">'+escapeHtml(dd.name)+'<small>'+DIM_TYPES[dd.type]+' · '+fmt(lo)+'–'+fmt(hi)+' mm</small></div>'
+        +'<span class="pill '+(dd.measured==null?'muted':pass?'ok':'bad')+'">'+(dd.measured==null?'—':fmt(dd.measured)+' mm')+'</span></div></div>';});}
+  if(r.visual.length){h+='<h2 style="margin-top:10px">Visual</h2>';
+    r.visual.forEach(vv=>{h+='<div class="visrow"><div class="top"><div class="nm">'+escapeHtml(vv.label)+(vv.note?' — '+escapeHtml(vv.note):'')
+      +'</div><span class="pill '+(vv.status==='ok'?'ok':vv.status==='problema'?'bad':'muted')+'">'+(vv.status==='problema'?'PROBLEMA':vv.status==='ok'?'OK':'—')+'</span></div>'
+      +(vv.photo?'<div class="thumbs"><div class="th"><img src="'+vv.photo+'"></div></div>':'')+'</div>';});}
+  if(r.photos&&r.photos.length){h+='<h2 style="margin-top:10px">Fotos da peça</h2><div class="thumbs">'+r.photos.map(p=>'<div class="th"><img src="'+p+'"></div>').join('')+'</div>';}
+  h+='<div class="btns" style="margin-top:12px"><button class="btn ghost" onclick="$(\'histDetail\').classList.add(\'hidden\')">Fechar</button></div>';
+  d.innerHTML=h;d.classList.remove('hidden');d.scrollIntoView({behavior:'smooth'});
 }
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
-onModeChange();
+/* ============================ Import / Export ============================ */
+function exportData(which){
+  const data=which==='specs'?loadSpecs():loadInsp();
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=(which==='specs'?'padroes':'inspecoes')+'-pu.json';a.click();
+}
+function importSpecs(arr){if(!Array.isArray(arr))return alert('Inválido.');const all=loadSpecs(),ids=new Set(all.map(x=>x.id));arr.forEach(s=>{if(!ids.has(s.id))all.push(s);});saveSpecs(all);renderSpecList();alert('Importado: '+arr.length+' padrão(ões).');}
+function importInsp(arr){if(!Array.isArray(arr))return alert('Inválido.');const all=loadInsp(),ids=new Set(all.map(x=>x.id));arr.forEach(s=>{if(!ids.has(s.id))all.push(s);});saveInspAll(all);renderHistList();alert('Importado: '+arr.length+' inspeção(ões).');}
+
+/* init */
+populateInspSpec();
 </script>
 </body>
 </html>
