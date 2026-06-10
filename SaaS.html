@@ -757,7 +757,7 @@ function viewProposta(){
     fld('Data base do reajuste','<input id="pDataBase" type="date" '+inp+'>')+
     fld('Data do 1º reajuste','<input id="pPrimReaj" type="date" '+inp+'>')+
     '</div>'+
-    '<div style="margin-top:16px;display:flex;gap:8px;align-items:center"><button class="btn btn-primary" id="pCreate" style="justify-content:center">Criar proposta + gerar PDF</button><span style="color:#64748b;font-size:11px">Ao criar, abre o PDF estruturado para enviar ao cliente. Ao aprovar, vira operação completa no portfólio.</span></div>'+
+    '<div style="margin-top:16px;display:flex;gap:8px;align-items:center"><button class="btn btn-primary" id="pCreate" style="justify-content:center">Criar proposta</button><span style="color:#64748b;font-size:11px">A proposta entra na lista abaixo. Em cada uma você pode baixar o PDF, aprovar (vira operação) ou excluir.</span></div>'+
     '<div id="pErr" class="err" style="display:none"></div></div>';
   h+='<div class="section-header"><span class="section-title">Propostas em Aberto ('+props.length+')</span></div>';
   if(!props.length){ return h+'<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma proposta em aberto. Crie uma acima — ao aprovar, vira operação no portfólio; ao excluir, some daqui.</div></div>'; }
@@ -769,7 +769,7 @@ function viewProposta(){
       '<span class="badge badge-gray">'+esc(p.submercado)+'</span>'+
       '<span class="badge badge-purple">'+esc(p.fonte)+'</span>'+
       '<span style="color:#94a3b8;font-size:12px">'+esc(p.empresa)+'</span>'+
-      '<span style="margin-left:auto;display:flex;gap:8px"><button class="btn btn-ghost" data-pdf="'+p.id+'">PDF</button><button class="btn btn-primary" data-approve="'+p.id+'" style="background:#16a34a">Aprovar → vira operação</button><button class="btn btn-ghost" data-del="'+p.id+'" style="color:#f87171;border-color:#5c2020">Excluir</button></span></div>'+
+      '<span style="margin-left:auto;display:flex;gap:8px"><button class="btn btn-ghost" data-pdf="'+p.id+'">Baixar PDF</button><button class="btn btn-primary" data-approve="'+p.id+'" style="background:#16a34a">Aprovar → vira operação</button><button class="btn btn-ghost" data-del="'+p.id+'" style="color:#f87171;border-color:#5c2020">Excluir</button></span></div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">'+
       '<div><div class="ficha-label">Volume</div><div class="ficha-value">'+fmtMW(p.vol)+'</div></div>'+
       '<div><div class="ficha-label">Preço</div><div class="ficha-value">R$ '+fmt(p.preco)+'/MWh</div></div>'+
@@ -799,7 +799,7 @@ function bindProposta(){
     if(!v('pIni')||!v('pFim')){ err('Informe início e fim do fornecimento.'); return; }
     var props=loadProps();
     var p={ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:nextPropSeq(), empresa:emp, unidade:v('pUnidade').trim(), negociante:v('pNegoc').trim(), operador:v('pOperador').trim(), origem:v('pOrigem'), tipoOp:v('pTipo'), natureza:v('pNatureza'), classif:v('pClassif'), ccee:v('pCCEE').trim(), submercado:v('pSub'), fonte:v('pFonte'), ret:v('pRet'), vol:vol, preco:preco, inicio:v('pIni'), fim:v('pFim'), sazTipo:v('pSazTipo'), sazSup:parseFloat(v('pSazSup'))||0, sazInf:parseFloat(v('pSazInf'))||0, flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, condPag:v('pCondPag').trim(), tipoSpread:v('pTipoSpread'), indicePreco:v('pIndicePreco').trim(), spread:parseFloat(v('pSpread'))||0, piso:parseFloat(v('pPiso'))||0, teto:parseFloat(v('pTeto'))||0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() };
-    props.push(p); saveProps(props); proposalPDF(p); render();
+    props.push(p); saveProps(props); render();
   };
   Array.prototype.forEach.call(document.querySelectorAll('[data-pdf]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-pdf'); var p=loadProps().filter(function(x){return x.id===id;})[0]; if(p) proposalPDF(p); }; });
   Array.prototype.forEach.call(document.querySelectorAll('[data-approve]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-approve'); var props=loadProps(); var p=null; props=props.filter(function(x){ if(x.id===id){ p=x; return false; } return true; }); if(p){ STATE.contracts.push(contractFromProposal(p)); saveContracts(); saveProps(props); STATE.tab='portfolio'; render(); } }; });
