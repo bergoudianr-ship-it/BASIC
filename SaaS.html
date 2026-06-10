@@ -239,7 +239,7 @@ function volMWh(c){ return c.volAjMWh||c.volPrevMWh; }
 
 // ── State ────────────────────────────────────────────────────────────────
 var STATE = { contracts: [], tab: 'dashboard' };
-var NAV = [['dashboard','Dashboard'],['alertas','Alertas'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['posicao','Posição Mensal'],['recomendacoes','Recomendações']];
+var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['posicao','Posição Mensal']];
 var MARKET_PRICE = null;
 function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\b(sa|ltda|me|epp|eireli|energia|comercializadora|geracao)\b/g,'').replace(/[^a-z0-9]/g,''); }
 function onlyDigits(s){ return (s||'').replace(/\D/g,''); }
@@ -826,13 +826,12 @@ function render(){
 function renderView(){
   switch(STATE.tab){
     case 'dashboard': return viewDashboard();
-    case 'alertas': return viewAlertas();
+    case 'alertas': return viewAlertas()+'<div style="height:8px"></div>'+viewRecomendacoes();
     case 'contratos': return viewContratos();
     case 'portfolio': return viewPortfolio();
     case 'mtm': return viewMtM();
     case 'proposta': return viewProposta();
     case 'posicao': return viewPosicao();
-    case 'recomendacoes': return viewRecomendacoes();
     default: return viewDashboard();
   }
 }
