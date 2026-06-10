@@ -139,7 +139,8 @@ function normFonte(raw){
   if(l.indexOf('cogera')>=0||l.indexOf('cogeração')>=0||l.indexOf('cqualif')>=0||l==='cq'||l.indexOf('cq ')>=0){ return 'Cogeração Qualificada '+(pct()||'50%'); }
   if(l.indexOf('convenc')>=0||l==='con'||l==='cv') return 'Convencional';
   if(l.indexOf('incentiv')>=0||l.indexOf('especial')>=0){ return 'Incentivada '+(pct()||'50%'); }
-  if(/eol|e[oó]lic|vento|ufv|solar|fotovolt|pch|cgh|biomass|biog[aá]s|baga[çc]o|pequena central|hidr[oá]ulic/.test(l)){ return 'Incentivada '+(pct()||'50%'); }
+  if(/eol|e[oó]lic|vento|ufv|solar|fotovolt|\bpch\b|\bcgh\b|biomass|biog[aá]s|baga[çc]o|pequena central|mini ?central|res[ií]duo/.test(l)){ return 'Incentivada '+(pct()||'50%'); }
+  if(/\buhe\b|\bute\b|usina hidr|hidrel[eé]tr|termel|t[eé]rmic|g[aá]s natural|carv[aã]o|[oó]leo|nuclear|f[oó]ssil/.test(l)){ return 'Convencional'; }
   return s;
 }
 
@@ -613,7 +614,7 @@ function viewMtM(){
 // ── Fator de Alavancagem (CCEE) ──────────────────────────────────────────
 // ── Persistência de contratos/operações ─────────────────────────────────
 function saveContracts(){ try{ localStorage.setItem('saas_contracts', JSON.stringify(STATE.contracts)); }catch(e){} }
-function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datFimCondPag','dataPrimReaj','dataBase'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); return c; }
+function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datFimCondPag','dataPrimReaj','dataBase'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); c.fonte=normFonte(c.fonte); return c; }
 function loadContracts(){ try{ var s=localStorage.getItem('saas_contracts'); if(!s) return null; var a=JSON.parse(s); return a&&a.length?a.map(reviveContract):null; }catch(e){ return null; } }
 function clearStored(){ try{ localStorage.removeItem('saas_contracts'); }catch(e){} }
 
