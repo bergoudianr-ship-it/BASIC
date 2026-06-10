@@ -239,7 +239,7 @@ function volMWh(c){ return c.volAjMWh||c.volPrevMWh; }
 
 // ── State ────────────────────────────────────────────────────────────────
 var STATE = { contracts: [], tab: 'dashboard' };
-var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['posicao','Posição Mensal']];
+var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes']];
 var MARKET_PRICE = null;
 function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\b(sa|ltda|me|epp|eireli|energia|comercializadora|geracao)\b/g,'').replace(/[^a-z0-9]/g,''); }
 function onlyDigits(s){ return (s||'').replace(/\D/g,''); }
@@ -831,7 +831,6 @@ function renderView(){
     case 'portfolio': return viewPortfolio();
     case 'mtm': return viewMtM();
     case 'proposta': return viewProposta();
-    case 'posicao': return viewPosicao();
     default: return viewDashboard();
   }
 }
