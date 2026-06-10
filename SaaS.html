@@ -435,7 +435,7 @@ function fichaHTML(c){
   h+=fld('Preço Ajustado','R$ '+fmt(c.precAj)+'/MWh');
   h+=fld('Exposição Financeira','<span style="color:#fbbf24">'+fmtR(exf)+'</span>');
   h+=fld('Índice Reajuste',esc(c.indiceReaj||'—')+(c.dataBase?' · base: '+c.dataBase.toLocaleDateString('pt-BR'):'')+(c.dataPrimReaj?' · 1º: '+c.dataPrimReaj.toLocaleDateString('pt-BR'):''));
-  h+=fld('Sazonalidade / Flex',esc(c.modulacao||'Flat')+((c.flexSup>0||c.flexInf>0)?' · +'+fmt(c.flexSup||0,0)+'% / −'+fmt(c.flexInf||0,0)+'%':''));
+  h+=fld('Sazonalidade / Flex',esc(c.modulacao||'Flat')+((c.sazSup>0||c.sazInf>0)?' ('+fmt(c.sazInf||0,0)+'%–'+fmt(c.sazSup||0,0)+'%)':'')+((c.flexSup>0||c.flexInf>0)?' · flex +'+fmt(c.flexSup||0,0)+'% / −'+fmt(c.flexInf||0,0)+'%':''));
   h+=fld('Condição Pgto',esc(c.condPag||'—'));
   h+=fld('Valor NF','<span style="color:'+((c.valorNF===0&&st.code==='ativo')?'#ef4444':'#e2e8f0')+'">'+fmtR(c.valorNF)+'</span>');
   h+='</div>';
@@ -589,6 +589,50 @@ function clearStored(){ try{ localStorage.removeItem('saas_contracts'); }catch(e
 // ── Propostas ────────────────────────────────────────────────────────────
 function loadProps(){ try{ return JSON.parse(localStorage.getItem('saas_proposals')||'[]'); }catch(e){ return []; } }
 function saveProps(p){ try{ localStorage.setItem('saas_proposals', JSON.stringify(p)); }catch(e){} }
+function peekPropSeq(){ var n=0; try{ n=parseInt(localStorage.getItem('saas_prop_seq')||'0',10)||0; }catch(e){} return 'PROP-'+String(n+1).padStart(4,'0'); }
+function nextPropSeq(){ var n=0; try{ n=parseInt(localStorage.getItem('saas_prop_seq')||'0',10)||0; }catch(e){} n++; try{ localStorage.setItem('saas_prop_seq', String(n)); }catch(e){} return 'PROP-'+String(n).padStart(4,'0'); }
+function proposalPDF(p){
+  var ini=p.inicio?new Date(p.inicio).toLocaleDateString('pt-BR'):'—', fim=p.fim?new Date(p.fim).toLocaleDateString('pt-BR'):'—';
+  var db=p.dataBase?new Date(p.dataBase).toLocaleDateString('pt-BR'):'—', pr=p.primReaj?new Date(p.primReaj).toLocaleDateString('pt-BR'):'—';
+  var exp=propExposure(p), hoje=new Date().toLocaleDateString('pt-BR');
+  var saz=esc(p.sazTipo||'Flat')+((p.sazSup||p.sazInf)?' · limites '+fmt(p.sazInf||0,0)+'% a '+fmt(p.sazSup||0,0)+'%':'');
+  function row(l,v){ return '<tr><td class="l">'+l+'</td><td class="v">'+v+'</td></tr>'; }
+  var doc='<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>'+esc(p.negocio)+'</title><style>'+
+    '*{box-sizing:border-box;margin:0;padding:0} body{font-family:Arial,Helvetica,sans-serif;color:#1a2233;padding:40px;font-size:13px}'+
+    '.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1d4ed8;padding-bottom:14px;margin-bottom:6px}'+
+    '.hd h1{font-size:20px;color:#0f172a} .hd .sub{color:#64748b;font-size:12px;margin-top:3px}'+
+    '.hd .num{text-align:right} .hd .num b{font-size:16px;color:#1d4ed8} .hd .num div{color:#64748b;font-size:11px;margin-top:3px}'+
+    '.tag{display:inline-block;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:bold;color:#fff;margin:14px 0}'+
+    'table{width:100%;border-collapse:collapse;margin-top:8px} td{padding:8px 10px;border-bottom:1px solid #e5e9f0;vertical-align:top}'+
+    'td.l{color:#64748b;width:38%;font-size:12px} td.v{color:#0f172a;font-weight:600}'+
+    '.sec{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#1d4ed8;font-weight:bold;margin:22px 0 4px;border-bottom:1px solid #dbe3f0;padding-bottom:4px}'+
+    '.foot{margin-top:34px;color:#94a3b8;font-size:11px;border-top:1px solid #e5e9f0;padding-top:12px;line-height:1.6}'+
+    '.exp{background:#f0f6ff;border:1px solid #c7dbff;border-radius:8px;padding:12px 14px;margin-top:8px;display:flex;justify-content:space-between;align-items:center}'+
+    '.exp b{font-size:18px;color:#1d4ed8} @media print{body{padding:20px}}</style></head><body>'+
+    '<div class="hd"><div><h1>Proposta Comercial de Energia</h1><div class="sub">Mercado Livre de Energia · ACL</div></div>'+
+    '<div class="num"><b>'+esc(p.negocio)+'</b><div>Emitida em '+hoje+'</div></div></div>'+
+    '<span class="tag" style="background:'+(p.tipoOp==='Venda'?'#16a34a':'#1d4ed8')+'">'+esc(p.tipoOp)+' de energia</span>'+
+    '<div class="sec">Contraparte</div><table>'+
+    row('Cliente / Contraparte',esc(p.empresa))+row('Negociante responsável',esc(p.negociante||'—'))+'</table>'+
+    '<div class="sec">Objeto da operação</div><table>'+
+    row('Tipo de operação',esc(p.tipoOp))+row('Submercado',esc(p.submercado))+row('Fonte de energia',esc(p.fonte))+
+    row('Volume',fmtMW(p.vol)+' &nbsp;(aprox. '+fmt(propMWh(p),0)+' MWh no período)')+
+    row('Preço',(p.tipoOp==='Venda'?'R$ ':'R$ ')+fmt(p.preco)+' /MWh')+
+    row('Período de fornecimento',ini+' a '+fim)+'</table>'+
+    '<div class="sec">Sazonalidade e flexibilidade</div><table>'+
+    row('Sazonalidade',saz)+
+    row('Flexibilidade de volume','+'+fmt(p.flexSup||0,0)+'% / −'+fmt(p.flexInf||0,0)+'%')+'</table>'+
+    '<div class="sec">Reajuste</div><table>'+
+    row('Índice de reajuste',esc(p.indReaj&&p.indReaj!=='Nenhum'?p.indReaj:'Preço fixo (sem reajuste)'))+
+    row('Data base',db)+row('Data do 1º reajuste',pr)+'</table>'+
+    '<div class="exp"><span>Valor financeiro estimado da operação no período</span><b>'+fmtR(exp)+'</b></div>'+
+    '<div class="foot">Proposta sujeita à aprovação de crédito e à formalização contratual. Validade da proposta: 5 dias úteis a partir da data de emissão. Preços e condições podem ser revisados conforme variação das condições de mercado. Documento gerado automaticamente pelo Energia SaaS.</div>'+
+    '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body></html>';
+  var w=window.open('','_blank');
+  if(!w){ alert('Permita pop-ups para gerar o PDF da proposta.'); return; }
+  w.document.open(); w.document.write(doc); w.document.close();
+}
+function propMWh(p){ var ini=p.inicio?new Date(p.inicio):null, fim=p.fim?new Date(p.fim):null; var horas=(ini&&fim&&fim>=ini)?((fim-ini)/3600000+24):0; return p.vol*horas; }
 function propExposure(p){ var ini=p.inicio?new Date(p.inicio):null, fim=p.fim?new Date(p.fim):null; var horas=(ini&&fim&&fim>=ini)?((fim-ini)/3600000+24):0; return p.vol*horas*p.preco; }
 function contractFromProposal(p){
   var ini=p.inicio?new Date(p.inicio):null, fim=p.fim?new Date(p.fim):null;
@@ -599,14 +643,14 @@ function contractFromProposal(p){
     dataCriacao:new Date(), contratoCCEE:'', inicioForn:ini, fimForn:fim,
     volPrevMWm:p.vol, volPrevMWh:p.vol*horas, volAjMWm:0, volAjMWh:0, possuiAjVol:'não',
     submercado:p.submercado, possuiAjSub:'não', fonte:p.fonte, retusd:'não', classificacao:'ACL',
-    modulacao:p.saz||'', flexSup:p.flexSup||0, flexInf:p.flexInf||0, condPag:'', datFimCondPag:null, obsFinanceiro:'Operação originada de proposta aprovada',
+    modulacao:p.sazTipo||p.saz||'', sazSup:p.sazSup||0, sazInf:p.sazInf||0, flexSup:p.flexSup||0, flexInf:p.flexInf||0, condPag:'', datFimCondPag:null, obsFinanceiro:'Operação originada de proposta aprovada',
     precPrev:p.preco, precAj:0, possuiAjPreco:'não', tipoSpread:'', indice:'', spread:0, pisoFlex:0, tetoFlex:0,
     indiceReaj:p.indReaj&&p.indReaj!=='Nenhum'?p.indReaj:'', dataBase:p.dataBase?new Date(p.dataBase):null, dataPrimReaj:p.primReaj?new Date(p.primReaj):null, valorNF:0 };
 }
 function viewProposta(){
   var props=loadProps();
   var subs=['SE/CO','S','NE','N'], fontes=['Convencional','Incentivada 50%','Incentivada 100%','PCH','EOL','UFV','CGH','Biomassa'];
-  var sazOpts=['Flat','Sazonalizado','Modulação mensal','Modulação por período'];
+  var sazOpts=['Flat','Modulação','Conforme curva de carga'];
   var reajOpts=['Nenhum','IPCA','IGP-M','IGP-DI','IPCA cheio','Pré-fixado'];
   function opt(arr){ return arr.map(function(x){return '<option>'+esc(x)+'</option>';}).join(''); }
   function fld(label,inner){ return '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">'+label+'</span>'+inner+'</label>'; }
@@ -615,7 +659,7 @@ function viewProposta(){
   h+='<div class="card" style="margin-bottom:20px">'+
     '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Identificação e volume</div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'+
-    fld('Identificação / Negócio','<input id="pNeg" type="text" placeholder="ex.: PROP-2026-010" '+inp+'>')+
+    fld('Número da proposta','<div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;color:#60a5fa;padding:7px 9px;font-size:12px;font-weight:600">'+esc(peekPropSeq())+' <span style="color:#475569;font-weight:400">(gerado automaticamente)</span></div>')+
     fld('Contraparte','<input id="pEmp" type="text" placeholder="Nome da empresa" '+inp+'>')+
     fld('Negociante','<input id="pNegoc" type="text" placeholder="Responsável" '+inp+'>')+
     fld('Tipo de operação','<select id="pTipo" '+inp+'><option>Compra</option><option>Venda</option></select>')+
@@ -623,10 +667,16 @@ function viewProposta(){
     fld('Fonte de energia','<select id="pFonte" '+inp+'>'+opt(fontes)+'</select>')+
     fld('Volume (MWm)','<input id="pVol" type="number" min="0" step="0.1" '+inp+'>')+
     fld('Preço (R$/MWh)','<input id="pPreco" type="number" min="0" step="1" '+inp+'>')+
-    fld('Sazonalidade / modulação','<select id="pSaz" '+inp+'>'+opt(sazOpts)+'</select>')+
+    '<div></div>'+
     fld('Início do fornecimento','<input id="pIni" type="date" '+inp+'>')+
     fld('Fim do fornecimento','<input id="pFim" type="date" '+inp+'>')+
     '<div></div>'+
+    '</div>'+
+    '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">Sazonalidade</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'+
+    fld('Tipo de sazonalidade','<select id="pSazTipo" '+inp+'>'+opt(sazOpts)+'</select>')+
+    fld('Sazonalidade superior (%)','<input id="pSazSup" type="number" min="0" step="1" placeholder="ex.: 110" '+inp+'>')+
+    fld('Sazonalidade inferior (%)','<input id="pSazInf" type="number" min="0" step="1" placeholder="ex.: 90" '+inp+'>')+
     '</div>'+
     '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">Flexibilidade e reajuste</div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'+
@@ -637,7 +687,7 @@ function viewProposta(){
     fld('Data do 1º reajuste','<input id="pPrimReaj" type="date" '+inp+'>')+
     '<div></div>'+
     '</div>'+
-    '<div style="margin-top:16px"><button class="btn btn-primary" id="pCreate" style="justify-content:center">Criar proposta</button></div>'+
+    '<div style="margin-top:16px;display:flex;gap:8px;align-items:center"><button class="btn btn-primary" id="pCreate" style="justify-content:center">Criar proposta + gerar PDF</button><span style="color:#64748b;font-size:11px">Ao criar, abre o PDF estruturado para enviar ao cliente.</span></div>'+
     '<div id="pErr" class="err" style="display:none"></div></div>';
   h+='<div class="section-header"><span class="section-title">Propostas em Aberto ('+props.length+')</span></div>';
   if(!props.length){ return h+'<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma proposta em aberto. Crie uma acima — ao aprovar, vira operação no portfólio; ao excluir, some daqui.</div></div>'; }
@@ -649,7 +699,7 @@ function viewProposta(){
       '<span class="badge badge-gray">'+esc(p.submercado)+'</span>'+
       '<span class="badge badge-purple">'+esc(p.fonte)+'</span>'+
       '<span style="color:#94a3b8;font-size:12px">'+esc(p.empresa)+'</span>'+
-      '<span style="margin-left:auto;display:flex;gap:8px"><button class="btn btn-primary" data-approve="'+p.id+'" style="background:#16a34a">Aprovar → vira operação</button><button class="btn btn-ghost" data-del="'+p.id+'" style="color:#f87171;border-color:#5c2020">Excluir</button></span></div>'+
+      '<span style="margin-left:auto;display:flex;gap:8px"><button class="btn btn-ghost" data-pdf="'+p.id+'">PDF</button><button class="btn btn-primary" data-approve="'+p.id+'" style="background:#16a34a">Aprovar → vira operação</button><button class="btn btn-ghost" data-del="'+p.id+'" style="color:#f87171;border-color:#5c2020">Excluir</button></span></div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">'+
       '<div><div class="ficha-label">Volume</div><div class="ficha-value">'+fmtMW(p.vol)+'</div></div>'+
       '<div><div class="ficha-label">Preço</div><div class="ficha-value">R$ '+fmt(p.preco)+'/MWh</div></div>'+
@@ -658,7 +708,7 @@ function viewProposta(){
       '<div><div class="ficha-label">Exposição estimada</div><div class="ficha-value" style="color:#fbbf24">'+fmtR(exp)+'</div></div>'+
       '</div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">'+
-      '<div><div class="ficha-label">Sazonalidade</div><div class="ficha-value">'+esc(p.saz||'Flat')+'</div></div>'+
+      '<div><div class="ficha-label">Sazonalidade</div><div class="ficha-value">'+esc(p.sazTipo||p.saz||'Flat')+((p.sazSup||p.sazInf)?' ('+fmt(p.sazInf||0,0)+'%–'+fmt(p.sazSup||0,0)+'%)':'')+'</div></div>'+
       '<div><div class="ficha-label">Flexibilidade</div><div class="ficha-value">+'+fmt(p.flexSup||0,0)+'% / −'+fmt(p.flexInf||0,0)+'%</div></div>'+
       '<div><div class="ficha-label">Índice de reajuste</div><div class="ficha-value">'+esc(p.indReaj&&p.indReaj!=='Nenhum'?p.indReaj:'—')+'</div></div>'+
       '<div><div class="ficha-label">Data base</div><div class="ficha-value">'+(p.dataBase?new Date(p.dataBase).toLocaleDateString('pt-BR'):'—')+'</div></div>'+
@@ -678,9 +728,10 @@ function bindProposta(){
     if(isNaN(preco)||preco<=0){ err('Informe um preço válido (R$/MWh).'); return; }
     if(!v('pIni')||!v('pFim')){ err('Informe início e fim do fornecimento.'); return; }
     var props=loadProps();
-    props.push({ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:v('pNeg').trim()||('PROP-'+(props.length+1)), empresa:emp, negociante:v('pNegoc').trim(), tipoOp:v('pTipo'), submercado:v('pSub'), fonte:v('pFonte'), vol:vol, preco:preco, inicio:v('pIni'), fim:v('pFim'), saz:v('pSaz'), flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() });
-    saveProps(props); render();
+    var p={ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:nextPropSeq(), empresa:emp, negociante:v('pNegoc').trim(), tipoOp:v('pTipo'), submercado:v('pSub'), fonte:v('pFonte'), vol:vol, preco:preco, inicio:v('pIni'), fim:v('pFim'), sazTipo:v('pSazTipo'), sazSup:parseFloat(v('pSazSup'))||0, sazInf:parseFloat(v('pSazInf'))||0, flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() };
+    props.push(p); saveProps(props); proposalPDF(p); render();
   };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-pdf]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-pdf'); var p=loadProps().filter(function(x){return x.id===id;})[0]; if(p) proposalPDF(p); }; });
   Array.prototype.forEach.call(document.querySelectorAll('[data-approve]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-approve'); var props=loadProps(); var p=null; props=props.filter(function(x){ if(x.id===id){ p=x; return false; } return true; }); if(p){ STATE.contracts.push(contractFromProposal(p)); saveContracts(); saveProps(props); STATE.tab='portfolio'; render(); } }; });
   Array.prototype.forEach.call(document.querySelectorAll('[data-del]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-del'); var props=loadProps().filter(function(x){return x.id!==id;}); saveProps(props); render(); }; });
 }
