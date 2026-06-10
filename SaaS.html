@@ -434,7 +434,8 @@ function fichaHTML(c){
   h+=fld('Preço Previsto','R$ '+fmt(c.precPrev)+'/MWh');
   h+=fld('Preço Ajustado','R$ '+fmt(c.precAj)+'/MWh');
   h+=fld('Exposição Financeira','<span style="color:#fbbf24">'+fmtR(exf)+'</span>');
-  h+=fld('Índice Reajuste',esc(c.indiceReaj||'—')+(c.dataPrimReaj?' · 1º: '+c.dataPrimReaj.toLocaleDateString('pt-BR'):''));
+  h+=fld('Índice Reajuste',esc(c.indiceReaj||'—')+(c.dataBase?' · base: '+c.dataBase.toLocaleDateString('pt-BR'):'')+(c.dataPrimReaj?' · 1º: '+c.dataPrimReaj.toLocaleDateString('pt-BR'):''));
+  h+=fld('Sazonalidade / Flex',esc(c.modulacao||'Flat')+((c.flexSup>0||c.flexInf>0)?' · +'+fmt(c.flexSup||0,0)+'% / −'+fmt(c.flexInf||0,0)+'%':''));
   h+=fld('Condição Pgto',esc(c.condPag||'—'));
   h+=fld('Valor NF','<span style="color:'+((c.valorNF===0&&st.code==='ativo')?'#ef4444':'#e2e8f0')+'">'+fmtR(c.valorNF)+'</span>');
   h+='</div>';
@@ -569,7 +570,7 @@ function viewMtM(){
 // ── Fator de Alavancagem (CCEE) ──────────────────────────────────────────
 // ── Persistência de contratos/operações ─────────────────────────────────
 function saveContracts(){ try{ localStorage.setItem('saas_contracts', JSON.stringify(STATE.contracts)); }catch(e){} }
-function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datFimCondPag','dataPrimReaj'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); return c; }
+function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datFimCondPag','dataPrimReaj','dataBase'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); return c; }
 function loadContracts(){ try{ var s=localStorage.getItem('saas_contracts'); if(!s) return null; var a=JSON.parse(s); return a&&a.length?a.map(reviveContract):null; }catch(e){ return null; } }
 function clearStored(){ try{ localStorage.removeItem('saas_contracts'); }catch(e){} }
 
@@ -586,18 +587,22 @@ function contractFromProposal(p){
     dataCriacao:new Date(), contratoCCEE:'', inicioForn:ini, fimForn:fim,
     volPrevMWm:p.vol, volPrevMWh:p.vol*horas, volAjMWm:0, volAjMWh:0, possuiAjVol:'não',
     submercado:p.submercado, possuiAjSub:'não', fonte:p.fonte, retusd:'não', classificacao:'ACL',
-    flexSup:0, flexInf:0, condPag:'', datFimCondPag:null, obsFinanceiro:'Operação originada de proposta aprovada',
+    modulacao:p.saz||'', flexSup:p.flexSup||0, flexInf:p.flexInf||0, condPag:'', datFimCondPag:null, obsFinanceiro:'Operação originada de proposta aprovada',
     precPrev:p.preco, precAj:0, possuiAjPreco:'não', tipoSpread:'', indice:'', spread:0, pisoFlex:0, tetoFlex:0,
-    indiceReaj:'', dataPrimReaj:null, valorNF:0 };
+    indiceReaj:p.indReaj&&p.indReaj!=='Nenhum'?p.indReaj:'', dataBase:p.dataBase?new Date(p.dataBase):null, dataPrimReaj:p.primReaj?new Date(p.primReaj):null, valorNF:0 };
 }
 function viewProposta(){
   var props=loadProps();
   var subs=['SE/CO','S','NE','N'], fontes=['Convencional','Incentivada 50%','Incentivada 100%','PCH','EOL','UFV','CGH','Biomassa'];
+  var sazOpts=['Flat','Sazonalizado','Modulação mensal','Modulação por período'];
+  var reajOpts=['Nenhum','IPCA','IGP-M','IGP-DI','IPCA cheio','Pré-fixado'];
   function opt(arr){ return arr.map(function(x){return '<option>'+esc(x)+'</option>';}).join(''); }
   function fld(label,inner){ return '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">'+label+'</span>'+inner+'</label>'; }
   var inp='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
   var h='<div class="section-header"><span class="section-title">Nova Proposta Comercial</span></div>';
-  h+='<div class="card" style="margin-bottom:20px"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'+
+  h+='<div class="card" style="margin-bottom:20px">'+
+    '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Identificação e volume</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'+
     fld('Identificação / Negócio','<input id="pNeg" type="text" placeholder="ex.: PROP-2026-010" '+inp+'>')+
     fld('Contraparte','<input id="pEmp" type="text" placeholder="Nome da empresa" '+inp+'>')+
     fld('Negociante','<input id="pNegoc" type="text" placeholder="Responsável" '+inp+'>')+
@@ -606,11 +611,22 @@ function viewProposta(){
     fld('Fonte de energia','<select id="pFonte" '+inp+'>'+opt(fontes)+'</select>')+
     fld('Volume (MWm)','<input id="pVol" type="number" min="0" step="0.1" '+inp+'>')+
     fld('Preço (R$/MWh)','<input id="pPreco" type="number" min="0" step="1" '+inp+'>')+
-    fld('&nbsp;','<button class="btn btn-primary" id="pCreate" style="width:100%;justify-content:center">Criar proposta</button>')+
+    fld('Sazonalidade / modulação','<select id="pSaz" '+inp+'>'+opt(sazOpts)+'</select>')+
     fld('Início do fornecimento','<input id="pIni" type="date" '+inp+'>')+
     fld('Fim do fornecimento','<input id="pFim" type="date" '+inp+'>')+
     '<div></div>'+
-    '</div><div id="pErr" class="err" style="display:none"></div></div>';
+    '</div>'+
+    '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">Flexibilidade e reajuste</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'+
+    fld('Flexibilidade superior (%)','<input id="pFlexSup" type="number" min="0" step="1" placeholder="ex.: 10" '+inp+'>')+
+    fld('Flexibilidade inferior (%)','<input id="pFlexInf" type="number" min="0" step="1" placeholder="ex.: 10" '+inp+'>')+
+    fld('Índice de reajuste','<select id="pIndReaj" '+inp+'>'+opt(reajOpts)+'</select>')+
+    fld('Data base do reajuste','<input id="pDataBase" type="date" '+inp+'>')+
+    fld('Data do 1º reajuste','<input id="pPrimReaj" type="date" '+inp+'>')+
+    '<div></div>'+
+    '</div>'+
+    '<div style="margin-top:16px"><button class="btn btn-primary" id="pCreate" style="justify-content:center">Criar proposta</button></div>'+
+    '<div id="pErr" class="err" style="display:none"></div></div>';
   h+='<div class="section-header"><span class="section-title">Propostas em Aberto ('+props.length+')</span></div>';
   if(!props.length){ return h+'<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma proposta em aberto. Crie uma acima — ao aprovar, vira operação no portfólio; ao excluir, some daqui.</div></div>'; }
   props.forEach(function(p){
@@ -628,6 +644,13 @@ function viewProposta(){
       '<div><div class="ficha-label">Período</div><div class="ficha-value">'+(p.inicio?new Date(p.inicio).toLocaleDateString('pt-BR'):'—')+' → '+(p.fim?new Date(p.fim).toLocaleDateString('pt-BR'):'—')+'</div></div>'+
       '<div><div class="ficha-label">Negociante</div><div class="ficha-value">'+esc(p.negociante||'—')+'</div></div>'+
       '<div><div class="ficha-label">Exposição estimada</div><div class="ficha-value" style="color:#fbbf24">'+fmtR(exp)+'</div></div>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">'+
+      '<div><div class="ficha-label">Sazonalidade</div><div class="ficha-value">'+esc(p.saz||'Flat')+'</div></div>'+
+      '<div><div class="ficha-label">Flexibilidade</div><div class="ficha-value">+'+fmt(p.flexSup||0,0)+'% / −'+fmt(p.flexInf||0,0)+'%</div></div>'+
+      '<div><div class="ficha-label">Índice de reajuste</div><div class="ficha-value">'+esc(p.indReaj&&p.indReaj!=='Nenhum'?p.indReaj:'—')+'</div></div>'+
+      '<div><div class="ficha-label">Data base</div><div class="ficha-value">'+(p.dataBase?new Date(p.dataBase).toLocaleDateString('pt-BR'):'—')+'</div></div>'+
+      '<div><div class="ficha-label">1º reajuste</div><div class="ficha-value">'+(p.primReaj?new Date(p.primReaj).toLocaleDateString('pt-BR'):'—')+'</div></div>'+
       '</div></div>';
   });
   return h;
@@ -643,7 +666,7 @@ function bindProposta(){
     if(isNaN(preco)||preco<=0){ err('Informe um preço válido (R$/MWh).'); return; }
     if(!v('pIni')||!v('pFim')){ err('Informe início e fim do fornecimento.'); return; }
     var props=loadProps();
-    props.push({ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:v('pNeg').trim()||('PROP-'+(props.length+1)), empresa:emp, negociante:v('pNegoc').trim(), tipoOp:v('pTipo'), submercado:v('pSub'), fonte:v('pFonte'), vol:vol, preco:preco, inicio:v('pIni'), fim:v('pFim'), criadoEm:new Date().toISOString() });
+    props.push({ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:v('pNeg').trim()||('PROP-'+(props.length+1)), empresa:emp, negociante:v('pNegoc').trim(), tipoOp:v('pTipo'), submercado:v('pSub'), fonte:v('pFonte'), vol:vol, preco:preco, inicio:v('pIni'), fim:v('pFim'), saz:v('pSaz'), flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() });
     saveProps(props); render();
   };
   Array.prototype.forEach.call(document.querySelectorAll('[data-approve]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-approve'); var props=loadProps(); var p=null; props=props.filter(function(x){ if(x.id===id){ p=x; return false; } return true; }); if(p){ STATE.contracts.push(contractFromProposal(p)); saveContracts(); saveProps(props); STATE.tab='portfolio'; render(); } }; });
