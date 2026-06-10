@@ -131,6 +131,17 @@ function esc(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').r
 function lc(s){ return (s||'').toLowerCase(); }
 function isCompra(c){ return lc(c.tipoOp).indexOf('compra')>=0; }
 function isVenda(c){ return lc(c.tipoOp).indexOf('venda')>=0; }
+// Padroniza a fonte de energia conforme os produtos da BBCE
+function normFonte(raw){
+  var s=(raw||'').toString().trim(); if(!s) return 'N/D';
+  var l=s.toLowerCase();
+  function pct(){ if(l.indexOf('100')>=0) return '100%'; if(l.indexOf('80')>=0) return '80%'; if(l.indexOf('50')>=0) return '50%'; if(/(^|[^0-9])0\s*%/.test(l)||l.indexOf('incentivada 0')>=0||/\bi-?0\b/.test(l)||l.indexOf('i zero')>=0||l.indexOf('izero')>=0) return '0%'; return ''; }
+  if(l.indexOf('cogera')>=0||l.indexOf('cogeração')>=0||l.indexOf('cqualif')>=0||l==='cq'||l.indexOf('cq ')>=0){ return 'Cogeração Qualificada '+(pct()||'50%'); }
+  if(l.indexOf('convenc')>=0||l==='con'||l==='cv') return 'Convencional';
+  if(l.indexOf('incentiv')>=0||l.indexOf('especial')>=0){ return 'Incentivada '+(pct()||'50%'); }
+  if(/eol|e[oó]lic|vento|ufv|solar|fotovolt|pch|cgh|biomass|biog[aá]s|baga[çc]o|pequena central|hidr[oá]ulic/.test(l)){ return 'Incentivada '+(pct()||'50%'); }
+  return s;
+}
 
 // ── CSV parser (zero deps) ───────────────────────────────────────────────
 function detectDelim(line){ var c=['\t','|',';',','].map(function(d){return {d:d,n:line.split(d).length};}); c.sort(function(a,b){return b.n-a.n;}); return c[0].d; }
@@ -178,7 +189,7 @@ function parseContracts(raw){
       possuiAjVol: lc(g(r,['Possui ajuste de volume'])),
       submercado: g(r,['Submercado']),
       possuiAjSub: lc(g(r,['Possui ajuste de submercado'])),
-      fonte: g(r,['Fonte de energia']),
+      fonte: normFonte(g(r,['Fonte de energia'])),
       retusd: lc(g(r,['RETUSD'])),
       classificacao: g(r,['Classificação','Classificacao']),
       flexSup: num(g(r,['Flexibilidade superior'])),
@@ -642,7 +653,7 @@ function contractFromProposal(p){
     empresa:p.empresa, negociante:p.negociante||'', operador:'', origem:'Proposta aprovada',
     dataCriacao:new Date(), contratoCCEE:'', inicioForn:ini, fimForn:fim,
     volPrevMWm:p.vol, volPrevMWh:p.vol*horas, volAjMWm:0, volAjMWh:0, possuiAjVol:'não',
-    submercado:p.submercado, possuiAjSub:'não', fonte:p.fonte, retusd:'não', classificacao:'ACL',
+    submercado:p.submercado, possuiAjSub:'não', fonte:normFonte(p.fonte), retusd:'não', classificacao:'ACL',
     modulacao:p.sazTipo||p.saz||'', sazSup:p.sazSup||0, sazInf:p.sazInf||0, flexSup:p.flexSup||0, flexInf:p.flexInf||0, condPag:'', datFimCondPag:null, obsFinanceiro:'Operação originada de proposta aprovada',
     precPrev:p.preco, precAj:0, possuiAjPreco:'não', tipoSpread:'', indice:'', spread:0, pisoFlex:0, tetoFlex:0,
     indiceReaj:p.indReaj&&p.indReaj!=='Nenhum'?p.indReaj:'', dataBase:p.dataBase?new Date(p.dataBase):null, dataPrimReaj:p.primReaj?new Date(p.primReaj):null, valorNF:0 };
