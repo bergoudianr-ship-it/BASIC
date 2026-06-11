@@ -30,8 +30,15 @@ Crie um padrão digitando:
    **OK / FORA**, o desvio e a **causa provável** se estiver fora.
 4. **Inspeção visual**: marque **OK / Problema** em cada item; se houver problema, escreva
    uma observação e **anexe a foto do defeito**.
-5. **Finalizar** → veredito **APROVADA / REPROVADA** com o diagnóstico do que saiu fora.
-6. **Salvar no histórico** para guardar o registro da peça.
+5. **Comparação (referência × peça atual)**: coloque a foto da peça nova/correta e a da
+   peça usada lado a lado e use o **controle deslizante (antes/depois)** para enxergar o
+   desgaste e localizar os problemas.
+6. **Finalizar** → veredito **APROVADA / REPROVADA** com o diagnóstico do que saiu fora.
+7. **Relatório (PDF)**: gera um relatório com veredito, **quais medidas estão fora**
+   (destacadas) + diagnóstico, achados visuais com fotos e as fotos comparativas. Use o
+   "Salvar em PDF" da impressão do próprio celular — pronto para anexar no PCP/Qualidade.
+8. **Salvar no histórico** para guardar o registro da peça (com a comparação e as fotos);
+   o relatório pode ser reimpresso depois pela aba Histórico.
 
 ## Histórico (aba "Histórico")
 Lista das inspeções salvas (peça, padrão, data, veredito). Abra para ver o relatório

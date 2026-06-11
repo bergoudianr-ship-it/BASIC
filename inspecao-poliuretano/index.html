@@ -79,6 +79,44 @@
   .hidden{display:none!important}
   .filein{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
   footer{padding:20px 16px;text-align:center;color:var(--muted);font-size:.72rem}
+  /* comparação nova x usada */
+  .cmp{display:flex;gap:8px}
+  .cmp .slot{flex:1}
+  .cmp .slot .ph{width:100%;height:120px;border:1px dashed var(--line);border-radius:9px;background:#000;display:grid;place-items:center;overflow:hidden}
+  .cmp .slot .ph img{width:100%;height:100%;object-fit:contain}
+  .cmp .slot .lab{font-size:.72rem;color:var(--muted);text-align:center;margin:4px 0}
+  .cmp .slot .btns{margin-top:4px}
+  .cmp .slot .btns button{min-width:0}
+  .ba{position:relative;width:100%;height:260px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#000;margin-top:10px}
+  .ba .base,.ba .top{position:absolute;top:0;left:0;height:100%}
+  .ba .base{width:100%}
+  .ba .top{overflow:hidden}
+  .ba img{height:260px;width:100vw;max-width:880px;object-fit:contain;display:block}
+  .ba .handle{position:absolute;top:0;bottom:0;width:3px;background:var(--accent);transform:translateX(-50%)}
+  .ba .tag2{position:absolute;top:6px;padding:2px 8px;border-radius:8px;background:rgba(0,0,0,.65);font-size:.68rem}
+  .ba .tag2.l{left:6px;color:var(--accent)} .ba .tag2.r{right:6px;color:#fff}
+  /* relatório */
+  #reportPrint{display:none}
+  .report{padding:6px}
+  .report h1{font-size:1.25rem;margin:0 0 2px}
+  .report .sub{color:#555;font-size:.8rem;margin:0 0 10px}
+  .report h3{font-size:.95rem;margin:14px 0 4px;border-bottom:1px solid #ccc;padding-bottom:3px}
+  .report table{width:100%;border-collapse:collapse;font-size:.78rem;margin:6px 0}
+  .report th,.report td{border:1px solid #aaa;padding:5px 6px;text-align:left}
+  .report td.out{background:#ffe3e6;font-weight:700}
+  .report .imgs{display:flex;gap:10px}
+  .report .imgs figure{flex:1;margin:0;text-align:center;font-size:.7rem;color:#555}
+  .report .imgs img{width:100%;border:1px solid #aaa;border-radius:6px}
+  .report .vsign{font-weight:800;font-size:1.05rem}
+  .report .gallery{display:flex;flex-wrap:wrap;gap:6px}
+  .report .gallery img{width:120px;height:120px;object-fit:cover;border:1px solid #aaa;border-radius:6px}
+  @media print{
+    header,.tabs,footer,.modal,main>section:not(#reportPrint){display:none!important}
+    body{background:#fff}
+    #reportPrint{display:block!important;color:#000}
+    #reportPrint *{color:#000}
+    .report td.out{background:#ffd0d6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
   /* modal câmera */
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:none;flex-direction:column;padding:14px}
   .modal.on{display:flex}
@@ -137,6 +175,34 @@
       <div id="visRows"></div>
     </div>
 
+    <div class="card" id="compareCard">
+      <h2>5 · Comparação (referência × peça atual)</h2>
+      <p class="hint">Coloque a foto da <b>peça nova/correta</b> e a da <b>peça atual/usada</b> para enxergar o desgaste. Use o controle deslizante para "passar" de uma para a outra.</p>
+      <div class="cmp">
+        <div class="slot">
+          <div class="lab">Referência (nova/correta)</div>
+          <div class="ph" id="cmpRef"></div>
+          <div class="btns"><button class="btn sec sm" onclick="capturePhoto(d=>{insp.comparison.ref=d;renderCompare()})">📷</button>
+          <button class="btn ghost sm" onclick="pickFile(d=>{insp.comparison.ref=d;renderCompare()})">🖼️</button></div>
+        </div>
+        <div class="slot">
+          <div class="lab">Peça atual/usada</div>
+          <div class="ph" id="cmpCur"></div>
+          <div class="btns"><button class="btn sec sm" onclick="capturePhoto(d=>{insp.comparison.cur=d;renderCompare()})">📷</button>
+          <button class="btn ghost sm" onclick="pickFile(d=>{insp.comparison.cur=d;renderCompare()})">🖼️</button></div>
+        </div>
+      </div>
+      <div id="baWrap" class="hidden">
+        <div class="ba">
+          <div class="base"><img id="baBase" src=""></div>
+          <div class="top" id="baTop"><img id="baTopImg" src=""></div>
+          <div class="handle" id="baHandle"></div>
+          <span class="tag2 l">Referência</span><span class="tag2 r">Atual</span>
+        </div>
+        <input class="barange" type="range" min="0" max="100" value="50" oninput="setWipe(this.value)"/>
+      </div>
+    </div>
+
     <div class="card" id="finishCard">
       <button class="btn" onclick="finishInspection()">✅ Finalizar inspeção</button>
     </div>
@@ -146,11 +212,15 @@
       <div id="verdict" class="verdict ok">—</div>
       <ul class="diaglist" id="diagList"></ul>
       <div class="btns">
-        <button class="btn" onclick="saveInspection()">💾 Salvar no histórico</button>
-        <button class="btn sec" onclick="startInspection()">Nova inspeção (mesma peça)</button>
+        <button class="btn" onclick="printReport()">🖨️ Relatório (PDF)</button>
+        <button class="btn sec" onclick="saveInspection()">💾 Salvar no histórico</button>
+        <button class="btn ghost" onclick="startInspection()">Nova inspeção</button>
       </div>
     </div>
   </section>
+
+  <!-- relatório imprimível / PDF -->
+  <section id="reportPrint" class="report"></section>
 
   <!-- ===================== PADRÕES ===================== -->
   <section id="viewSpecs" class="hidden">
@@ -386,13 +456,23 @@ function startInspection(){
   const spec=loadSpecs().find(s=>s.id===$('inspSpec').value);if(!spec)return;
   insp={specId:spec.id,spec,pieceId:$('pieceId')?$('pieceId').value:'',photos:[],
     dims:spec.dims.map(d=>({...d,measured:''})),
-    visual:spec.visualItems.map(l=>({label:l,status:'',photo:null,note:''}))};
-  ['photosCard','measCard','visCard','finishCard'].forEach(id=>$(id).classList.remove('hidden'));
+    visual:spec.visualItems.map(l=>({label:l,status:'',photo:null,note:''})),
+    comparison:{ref:spec.refPhoto||null,cur:null}};
+  ['photosCard','measCard','visCard','compareCard','finishCard'].forEach(id=>$(id).classList.remove('hidden'));
   $('resultCard').classList.add('hidden');
   $('refPhotoWrap').classList.toggle('hidden',!spec.refPhoto);
   if(spec.refPhoto)$('refPhotoImg').src=spec.refPhoto;
-  renderPartPhotos();renderMeasRows();renderVisRows();
+  renderPartPhotos();renderMeasRows();renderVisRows();renderCompare();
 }
+function renderCompare(){
+  const c=insp.comparison;
+  $('cmpRef').innerHTML=c.ref?'<img src="'+c.ref+'">':'<span style="color:var(--muted);font-size:.7rem">sem foto</span>';
+  $('cmpCur').innerHTML=c.cur?'<img src="'+c.cur+'">':'<span style="color:var(--muted);font-size:.7rem">sem foto</span>';
+  const ba=$('baWrap');
+  if(c.ref&&c.cur){ba.classList.remove('hidden');$('baBase').src=c.cur;$('baTopImg').src=c.ref;setWipe(50);}
+  else ba.classList.add('hidden');
+}
+function setWipe(v){$('baTop').style.width=v+'%';$('baHandle').style.left=v+'%';}
 function addPartPhoto(d){insp.photos.push(d);renderPartPhotos();}
 function renderPartPhotos(){
   const w=$('partPhotos');w.innerHTML='';
@@ -486,12 +566,60 @@ function saveInspection(){
   const fail=insp.dims.some(d=>{const s=dimStatus(d);return s&&!s.pass;})||insp.visual.some(v=>v.status==='problema');
   const rec={id:'insp_'+Date.now(),date:new Date().toISOString(),specName:insp.spec.name,
     pieceId:insp.pieceId,verdict:fail?'REPROVADA':'APROVADA',
-    photos:insp.photos,
+    photos:insp.photos,comparison:insp.comparison,
     dims:insp.dims.map(d=>({name:d.name,type:d.type,nominal:d.nominal,varPlus:d.varPlus,measured:num(d.measured)})),
     visual:insp.visual.map(v=>({label:v.label,status:v.status,note:v.note,photo:v.photo}))};
   const all=loadInsp();all.unshift(rec);
   try{saveInspAll(all);alert('Inspeção salva no histórico.');}
   catch(e){alert('Não foi possível salvar (memória do navegador cheia). Tente exportar e apagar inspeções antigas.');}
+}
+
+/* ============================ RELATÓRIO (PDF) ============================ */
+function buildReport(){
+  if(!insp)return'';
+  const c=insp.comparison;
+  const fail=insp.dims.some(d=>{const s=dimStatus(d);return s&&!s.pass;})||insp.visual.some(v=>v.status==='problema');
+  const pieceId=$('pieceId').value||'(sem identificação)';
+  let h='<h1>Relatório de Inspeção — '+escapeHtml(insp.spec.name)+'</h1>';
+  h+='<p class="sub">Peça/lote: <b>'+escapeHtml(pieceId)+'</b> · '+new Date().toLocaleString('pt-BR')+'</p>';
+  h+='<p class="vsign" style="color:'+(fail?'#c0203a':'#1f9d63')+'">'+(fail?'❌ REPROVADA':'✅ APROVADA')+'</p>';
+
+  if(c.ref&&c.cur){
+    h+='<h3>Comparação visual</h3><div class="imgs">'
+      +'<figure><img src="'+c.ref+'"><figcaption>Referência (nova/correta)</figcaption></figure>'
+      +'<figure><img src="'+c.cur+'"><figcaption>Peça atual/usada</figcaption></figure></div>';
+  }
+
+  if(insp.dims.length){
+    h+='<h3>Medidas</h3><table><tr><th>Medida</th><th>Tipo</th><th>Limites (mm)</th><th>Medido</th><th>Desvio</th><th>Status / Diagnóstico</th></tr>';
+    insp.dims.forEach(d=>{
+      const st=dimStatus(d);
+      const lo=fmt(d.nominal-d.varPlus),hi=fmt(d.nominal+d.varPlus);
+      let med='—',dev='—',stt='não medido',out='';
+      if(st){med=fmt(num(d.measured));dev=(st.dev>=0?'+':'')+fmt(st.dev);
+        if(st.pass){stt='OK';}else{stt='FORA — '+defectHint(d.type,st.dev>0);out=' class="out"';}}
+      h+='<tr><td>'+escapeHtml(d.name)+'</td><td>'+DIM_TYPES[d.type]+'</td><td>'+lo+' a '+hi+'</td><td'+out+'>'+med+'</td><td'+out+'>'+dev+'</td><td'+out+'>'+stt+'</td></tr>';
+    });
+    h+='</table>';
+  }
+
+  const visProb=insp.visual.filter(v=>v.status==='problema');
+  if(insp.visual.length){
+    h+='<h3>Inspeção visual</h3><table><tr><th>Item</th><th>Status</th><th>Observação</th></tr>';
+    insp.visual.forEach(v=>{const s=v.status==='problema'?'PROBLEMA':v.status==='ok'?'OK':'—';
+      h+='<tr><td>'+escapeHtml(v.label)+'</td><td'+(v.status==='problema'?' class="out"':'')+'>'+s+'</td><td>'+escapeHtml(v.note||'')+'</td></tr>';});
+    h+='</table>';
+    const fotos=visProb.filter(v=>v.photo);
+    if(fotos.length){h+='<div class="gallery">'+fotos.map(v=>'<img src="'+v.photo+'" title="'+escapeHtml(v.label)+'">').join('')+'</div>';}
+  }
+
+  if(insp.photos.length){h+='<h3>Fotos da peça</h3><div class="gallery">'+insp.photos.map(p=>'<img src="'+p+'">').join('')+'</div>';}
+  return h;
+}
+function printReport(){
+  const html=buildReport();if(!html)return;
+  $('reportPrint').innerHTML=html;
+  setTimeout(()=>window.print(),120); // dá tempo de as imagens entrarem no layout
 }
 
 /* ============================ HISTÓRICO ============================ */
@@ -523,10 +651,39 @@ function showHistDetail(id){
     r.visual.forEach(vv=>{h+='<div class="visrow"><div class="top"><div class="nm">'+escapeHtml(vv.label)+(vv.note?' — '+escapeHtml(vv.note):'')
       +'</div><span class="pill '+(vv.status==='ok'?'ok':vv.status==='problema'?'bad':'muted')+'">'+(vv.status==='problema'?'PROBLEMA':vv.status==='ok'?'OK':'—')+'</span></div>'
       +(vv.photo?'<div class="thumbs"><div class="th"><img src="'+vv.photo+'"></div></div>':'')+'</div>';});}
+  if(r.comparison&&r.comparison.ref&&r.comparison.cur){h+='<h2 style="margin-top:10px">Comparação</h2><div class="cmp">'
+    +'<div class="slot"><div class="lab">Referência</div><div class="ph"><img src="'+r.comparison.ref+'"></div></div>'
+    +'<div class="slot"><div class="lab">Atual</div><div class="ph"><img src="'+r.comparison.cur+'"></div></div></div>';}
   if(r.photos&&r.photos.length){h+='<h2 style="margin-top:10px">Fotos da peça</h2><div class="thumbs">'+r.photos.map(p=>'<div class="th"><img src="'+p+'"></div>').join('')+'</div>';}
-  h+='<div class="btns" style="margin-top:12px"><button class="btn ghost" onclick="$(\'histDetail\').classList.add(\'hidden\')">Fechar</button></div>';
+  h+='<div class="btns" style="margin-top:12px"><button class="btn" onclick="printHistReport(\''+r.id+'\')">🖨️ Relatório (PDF)</button>'
+    +'<button class="btn ghost" onclick="$(\'histDetail\').classList.add(\'hidden\')">Fechar</button></div>';
   d.innerHTML=h;d.classList.remove('hidden');d.scrollIntoView({behavior:'smooth'});
 }
+function buildReportFromRecord(r){
+  let h='<h1>Relatório de Inspeção — '+escapeHtml(r.specName)+'</h1>';
+  h+='<p class="sub">Peça/lote: <b>'+escapeHtml(r.pieceId||'(sem identificação)')+'</b> · '+new Date(r.date).toLocaleString('pt-BR')+'</p>';
+  h+='<p class="vsign" style="color:'+(r.verdict==='REPROVADA'?'#c0203a':'#1f9d63')+'">'+(r.verdict==='REPROVADA'?'❌ REPROVADA':'✅ APROVADA')+'</p>';
+  if(r.comparison&&r.comparison.ref&&r.comparison.cur){h+='<h3>Comparação visual</h3><div class="imgs">'
+    +'<figure><img src="'+r.comparison.ref+'"><figcaption>Referência (nova/correta)</figcaption></figure>'
+    +'<figure><img src="'+r.comparison.cur+'"><figcaption>Peça atual/usada</figcaption></figure></div>';}
+  if(r.dims&&r.dims.length){h+='<h3>Medidas</h3><table><tr><th>Medida</th><th>Tipo</th><th>Limites (mm)</th><th>Medido</th><th>Desvio</th><th>Status / Diagnóstico</th></tr>';
+    r.dims.forEach(d=>{const lo=d.nominal-d.varPlus,hi=d.nominal+d.varPlus;
+      let med='—',dev='—',stt='não medido',out='';
+      if(d.measured!=null){const pass=d.measured>=lo-1e-9&&d.measured<=hi+1e-9;const dv=d.measured-d.nominal;
+        med=fmt(d.measured);dev=(dv>=0?'+':'')+fmt(dv);
+        if(pass)stt='OK';else{stt='FORA — '+defectHint(d.type,dv>0);out=' class="out"';}}
+      h+='<tr><td>'+escapeHtml(d.name)+'</td><td>'+DIM_TYPES[d.type]+'</td><td>'+fmt(lo)+' a '+fmt(hi)+'</td><td'+out+'>'+med+'</td><td'+out+'>'+dev+'</td><td'+out+'>'+stt+'</td></tr>';});
+    h+='</table>';}
+  if(r.visual&&r.visual.length){h+='<h3>Inspeção visual</h3><table><tr><th>Item</th><th>Status</th><th>Observação</th></tr>';
+    r.visual.forEach(v=>{const s=v.status==='problema'?'PROBLEMA':v.status==='ok'?'OK':'—';
+      h+='<tr><td>'+escapeHtml(v.label)+'</td><td'+(v.status==='problema'?' class="out"':'')+'>'+s+'</td><td>'+escapeHtml(v.note||'')+'</td></tr>';});
+    h+='</table>';
+    const fotos=r.visual.filter(v=>v.status==='problema'&&v.photo);
+    if(fotos.length)h+='<div class="gallery">'+fotos.map(v=>'<img src="'+v.photo+'">').join('')+'</div>';}
+  if(r.photos&&r.photos.length)h+='<h3>Fotos da peça</h3><div class="gallery">'+r.photos.map(p=>'<img src="'+p+'">').join('')+'</div>';
+  return h;
+}
+function printHistReport(id){const r=loadInsp().find(x=>x.id===id);if(!r)return;$('reportPrint').innerHTML=buildReportFromRecord(r);setTimeout(()=>window.print(),120);}
 
 /* ============================ Import / Export ============================ */
 function exportData(which){
