@@ -666,34 +666,82 @@ function viewImport(){
 }
 
 // ── MtM Contrapartes ─────────────────────────────────────────────────────
-function marketDefault(cs){ var v=0,val=0; cs.forEach(function(c){ v+=volMWh(c); val+=expFin(c); }); return v>0?val/v:0; }
-function mtmContract(c,M){ var P=c.precAj||c.precPrev, vol=volMWh(c); if(isCompra(c)) return (M-P)*vol; if(isVenda(c)) return (P-M)*vol; return 0; }
+var SUBS_STD=['SE/CO','S','NE','N'];
 function mtmBars(arr){
   var max=Math.max.apply(null,arr.map(function(x){return Math.abs(x.mtm);}).concat([1]));
   var h='';
-  arr.forEach(function(x){ var pct=Math.abs(x.mtm)/max*100, col=x.mtm>=0?'#22c55e':'#ef4444';
-    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><div style="width:180px;font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.nome)+'</div><div style="flex:1;background:#0f1117;border-radius:4px;height:18px"><div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:4px"></div></div><div style="width:130px;text-align:right;font-size:12px;color:'+col+'">'+fmtR(x.mtm)+'</div></div>';
+  arr.forEach(function(x){ var pct=Math.abs(x.mtm)/max*100, col=x.mtm>=0?'#34d399':'#f87171';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><div style="width:180px;font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.nome)+'</div><div style="flex:1;background:#0a0c10;border-radius:5px;height:18px"><div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:5px"></div></div><div style="width:130px;text-align:right;font-size:12px;color:'+col+'">'+fmtR(x.mtm)+'</div></div>';
   });
   return h;
 }
+// ── Curva de MtM por produto (submercado × fonte × mês) + PLD do mês fechado ──
+function defaultRefMonth(){ var d=new Date(TODAY); d.setMonth(d.getMonth()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function loadMtM(){ try{ var s=JSON.parse(localStorage.getItem('saas_mtm')||'null'); if(s){ if(!s.pld)s.pld={}; if(!s.fwd)s.fwd={}; if(!s.refMonth)s.refMonth=defaultRefMonth(); return s; } }catch(e){} return {refMonth:defaultRefMonth(),pld:{},fwd:{}}; }
+function saveMtM(m){ try{ localStorage.setItem('saas_mtm',JSON.stringify(m)); }catch(e){} }
+function mKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function mKeyToDate(k){ var p=String(k).split('-'); return new Date(+p[0],(+p[1]||1)-1,1); }
+function mLabel(k){ return mKeyToDate(k).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}); }
+function portfolioEnd(cs){ var max=null; cs.forEach(function(c){ if(c.fimForn&&(!max||c.fimForn>max))max=c.fimForn; }); return max; }
+function productKey(c){ return (c.submercado||'N/D')+'|'+(c.fonte||'N/D'); }
+function curvePrice(M,sub,fonte,k){
+  if(k===M.refMonth){ var p=M.pld[sub]; if(p!=null&&p!=='') return +p; }
+  var fk=sub+'|'+fonte; if(M.fwd[fk]&&M.fwd[fk][k]!=null&&M.fwd[fk][k]!=='') return +M.fwd[fk][k];
+  if(M.pld[sub]!=null&&M.pld[sub]!=='') return +M.pld[sub];
+  return null;
+}
+function monthsForContract(c,M){ if(!c.inicioForn||!c.fimForn) return []; var start=mKeyToDate(M.refMonth); var cs2=new Date(c.inicioForn.getFullYear(),c.inicioForn.getMonth(),1); if(cs2>start) start=cs2; var arr=[],d=new Date(start),end=new Date(c.fimForn.getFullYear(),c.fimForn.getMonth(),1),g=0; while(d<=end&&g<60){ arr.push(new Date(d)); d.setMonth(d.getMonth()+1); g++; } return arr; }
+function hoursOverlap(c,md){ var ms=new Date(md.getFullYear(),md.getMonth(),1), me=new Date(md.getFullYear(),md.getMonth()+1,0); var s=c.inicioForn>ms?c.inicioForn:ms, e=c.fimForn<me?c.fimForn:me; if(e<s) return 0; var days=Math.round((e-s)/86400000)+1; return days*24; }
+function mtmContractCurve(c,M){ var P=c.precAj||c.precPrev, total=0; monthsForContract(c,M).forEach(function(md){ var price=curvePrice(M,c.submercado,c.fonte,mKey(md)); if(price==null) return; var mwh=volMWm(c)*hoursOverlap(c,md); total += isCompra(c)?(price-P)*mwh : isVenda(c)?(P-price)*mwh : 0; }); return total; }
+function fwdMonths(cs,M){ var pend=portfolioEnd(cs); var months=[]; if(pend){ var d=mKeyToDate(M.refMonth); d.setMonth(d.getMonth()+1); var end=new Date(pend.getFullYear(),pend.getMonth(),1),g=0; while(d<=end&&g<18){ months.push(mKey(d)); d.setMonth(d.getMonth()+1); g++; } } return months; }
+function MTM_PRODUCTS(cs){ var p=[]; cs.forEach(function(c){ var k=productKey(c); if(p.indexOf(k)<0)p.push(k); }); p.sort(); return p; }
 function viewMtM(){
-  var cs=STATE.contracts;
-  if(MARKET_PRICE==null) MARKET_PRICE=Math.round(marketDefault(cs)*100)/100;
-  var M=MARKET_PRICE;
-  var by={}; cs.forEach(function(c){ var k=c.empresa||'N/D'; if(!by[k])by[k]={mtm:0,vol:0,count:0,exp:0}; by[k].mtm+=mtmContract(c,M); by[k].vol+=volMWm(c); by[k].exp+=expFin(c); by[k].count++; });
-  var arr=Object.keys(by).map(function(k){return {nome:k,mtm:by[k].mtm,vol:by[k].vol,exp:by[k].exp,count:by[k].count};});
+  var cs=STATE.contracts, M=loadMtM();
+  var prods=MTM_PRODUCTS(cs), months=fwdMonths(cs,M);
+  var ist='background:#0a0c10;border:1px solid #232834;border-radius:6px;color:#e6ebf2;padding:6px 9px;font-size:12px;outline:none;width:100%';
+  var h='<div class="section-header"><span class="section-title">Curva de Preços — Curto prazo (PLD) e Forward por Produto</span></div>';
+  // ── Bloco PLD ──
+  h+='<div class="card" style="margin-bottom:14px"><div class="card-title">PLD do mês fechado (curto prazo) · por submercado</div>'+
+    '<div style="color:#97a3b6;font-size:12px;line-height:1.6;margin-bottom:12px">A CCEE bloqueia acesso automático (403/anti-bot), então informe ou cole o PLD do <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>. O PLD do mês de referência marca os contratos ativos no curto prazo; os meses futuros usam a curva forward abaixo.</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:end">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de referência</span><input id="mtmRef" type="month" value="'+esc(M.refMonth)+'" style="'+ist+'"></label>';
+  SUBS_STD.forEach(function(s,i){ h+='<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">PLD '+esc(s)+'</span><input id="pld_'+i+'" type="number" step="0.01" value="'+(M.pld[s]!=null?esc(M.pld[s]):'')+'" placeholder="R$/MWh" style="'+ist+'"></label>'; });
+  h+='</div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center"><button class="btn btn-primary" id="mtmApply">Salvar PLD e recalcular</button><button class="btn btn-ghost" id="pldFetch">Tentar buscar na CCEE</button><button class="btn btn-ghost" id="fwdFill">Preencher curva vazia com PLD</button><span id="mtmErr" class="err" style="display:none"></span></div></div>';
+  // ── Matriz forward ──
+  if(prods.length && months.length){
+    h+='<div class="card" style="margin-bottom:16px"><div class="card-title">Curva forward por produto (submercado × fonte) · R$/MWh por mês</div>'+
+      '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Cada produto = submercado + fonte. Submercados podem descolar entre si e fontes podem ter ágio/deságio — preencha a curva e o MtM é marcado mês a mês por produto. Vazio usa o PLD do submercado.</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Submercado</th><th>Fonte</th>';
+    months.forEach(function(k){ h+='<th class="td-num">'+esc(mLabel(k))+'</th>'; });
+    h+='</tr></thead><tbody>';
+    prods.forEach(function(pk,pi){ var parts=pk.split('|'); h+='<tr><td><span class="badge badge-blue">'+esc(parts[0])+'</span></td><td><span class="badge badge-purple">'+esc(parts[1])+'</span></td>';
+      months.forEach(function(k,mi){ var v=(M.fwd[pk]&&M.fwd[pk][k]!=null)?M.fwd[pk][k]:''; var ph=(M.pld[parts[0]]!=null&&M.pld[parts[0]]!=='')?String(M.pld[parts[0]]):'—'; h+='<td><input id="fwd_'+pi+'_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="'+esc(ph)+'" style="'+ist+';min-width:78px;padding:4px 6px"></td>'; });
+      h+='</tr>'; });
+    h+='</tbody></table></div><div style="margin-top:12px"><button class="btn btn-primary" id="fwdSave">Salvar curva e recalcular</button></div></div>';
+  } else {
+    h+='<div class="card" style="margin-bottom:16px;padding:18px;color:#64748b;text-align:center">Importe contratos com submercado, fonte e datas para montar a curva forward por produto.</div>';
+  }
+  // ── Resultados MtM ──
+  var by={}; cs.forEach(function(c){ var k=c.empresa||'N/D'; if(!by[k])by[k]={mtm:0,vol:0,count:0}; by[k].mtm+=mtmContractCurve(c,M); by[k].vol+=volMWm(c); by[k].count++; });
+  var arr=Object.keys(by).map(function(k){return {nome:k,mtm:by[k].mtm,vol:by[k].vol,count:by[k].count};});
   arr.sort(function(a,b){return b.mtm-a.mtm;});
   var totalMtM=arr.reduce(function(s,x){return s+x.mtm;},0);
-  var pos=arr.filter(function(x){return x.mtm>0;});
-  var neg=arr.filter(function(x){return x.mtm<0;}).sort(function(a,b){return a.mtm-b.mtm;});
-  var h='';
-  h+='<div class="section-header"><span class="section-title">Marcação a Mercado (MtM) por Contraparte</span></div>';
-  h+='<div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap"><div><div class="ficha-label">Preço de mercado de referência (R$/MWh)</div><input id="mktPrice" type="number" step="1" value="'+M+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:6px 10px;width:140px;font-size:13px;outline:none"></div><button class="btn btn-primary" id="mktApply">Recalcular MtM</button><span style="color:#64748b;font-size:11px">MtM = (Mercado − Preço) × Volume para compras · (Preço − Mercado) × Volume para vendas. Padrão = preço médio do portfólio.</span></div>';
+  var pos=arr.filter(function(x){return x.mtm>0;}), neg=arr.filter(function(x){return x.mtm<0;}).sort(function(a,b){return a.mtm-b.mtm;});
+  h+='<div class="section-header"><span class="section-title">Resultado de Marcação a Mercado (MtM)</span></div>';
   h+='<div class="grid-3" style="margin-bottom:8px">'+
-    metric('MtM Total do Portfólio',fmtR(totalMtM),null,totalMtM>=0?'A favor':'Contra',totalMtM)+
-    metric('Contrapartes com MtM Positivo',pos.length,'ganho marcado a mercado')+
-    metric('Contrapartes com MtM Negativo',neg.length,'perda marcada a mercado',neg.length>0?'Monitorar':'OK',-neg.length)+'</div>';
-  h+='<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">MtM por Contraparte (verde = a favor · vermelho = contra)</div>'+mtmBars(arr)+'</div>';
+    metric('MtM Total do Portfólio',fmtR(totalMtM),'marcado pela curva por produto',totalMtM>=0?'A favor':'Contra',totalMtM)+
+    metric('Contrapartes MtM Positivo',pos.length,'ganho a mercado')+
+    metric('Contrapartes MtM Negativo',neg.length,'perda a mercado',neg.length>0?'Monitorar':'OK',-neg.length)+'</div>';
+  // ── MtM por produto (descolamento) ──
+  var byProd={}; cs.forEach(function(c){ var k=productKey(c); if(!byProd[k])byProd[k]={mtm:0,vol:0,n:0}; byProd[k].mtm+=mtmContractCurve(c,M); byProd[k].vol+=(isVenda(c)?volMWm(c):-volMWm(c)); byProd[k].n++; });
+  var prodArr=Object.keys(byProd).map(function(k){var p=k.split('|');return {sub:p[0],fonte:p[1],mtm:byProd[k].mtm,vol:byProd[k].vol,n:byProd[k].n};});
+  prodArr.sort(function(a,b){ if(a.fonte!==b.fonte) return a.fonte<b.fonte?-1:1; return a.sub<b.sub?-1:1; });
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">MtM por produto — submercado × fonte (evidencia descolamento)</div><div class="table-wrap"><table><thead><tr><th>Fonte (produto)</th><th>Submercado</th><th>Contratos</th><th>Posição líq. MWm</th><th>MtM R$</th></tr></thead><tbody>';
+  prodArr.forEach(function(x){ h+='<tr><td><span class="badge badge-purple">'+esc(x.fonte)+'</span></td><td><span class="badge badge-blue">'+esc(x.sub)+'</span></td><td class="td-num">'+x.n+'</td><td class="td-num '+(x.vol>0?'pos-long':x.vol<0?'pos-short':'pos-zero')+'">'+fmt(x.vol)+'</td><td class="td-num '+(x.mtm>=0?'pos-long':'pos-short')+'">'+fmtR(x.mtm)+'</td></tr>'; });
+  if(!prodArr.length) h+='<tr><td colspan="5" style="text-align:center;color:#64748b">—</td></tr>';
+  h+='</tbody></table></div></div>';
+  h+='<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">MtM por Contraparte (verde = a favor · vermelho = contra)</div>'+(arr.length?mtmBars(arr):'<div style="color:#64748b">Sem contrapartes</div>')+'</div>';
   h+='<div class="grid-2">';
   h+='<div class="card"><div class="card-title">Maiores MtM (favoráveis)</div><table><thead><tr><th>Contraparte</th><th>Contratos</th><th>Vol MWm</th><th>MtM R$</th></tr></thead><tbody>';
   (pos.length?pos.slice(0,10):[{nome:'—',count:'',vol:0,mtm:0}]).forEach(function(x){ h+='<tr><td>'+esc(x.nome)+'</td><td class="td-num">'+x.count+'</td><td class="td-num">'+fmt(x.vol)+'</td><td class="td-num pos-long">'+fmtR(x.mtm)+'</td></tr>'; });
@@ -955,10 +1003,19 @@ function bindApp(){
 }
 function bindExport(){ var e=document.getElementById('exportBtn'); if(e) e.onclick=function(){ downloadFile('operacoes_companhia.csv', contractsToCSV(STATE.contracts)); }; }
 function bindMtM(){
-  var inp=document.getElementById('mktPrice'), btn=document.getElementById('mktApply');
-  function apply(){ var v=parseFloat(inp.value); if(!isNaN(v)){ MARKET_PRICE=v; document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); } }
-  if(btn) btn.onclick=apply;
-  if(inp) inp.onkeydown=function(e){ if(e.key==='Enter') apply(); };
+  var cs=STATE.contracts, M=loadMtM();
+  function val(id){ var e=document.getElementById(id); return e?e.value:''; }
+  function err(m){ var e=document.getElementById('mtmErr'); if(e){ e.textContent=m; e.style.display='inline'; } }
+  function rerender(){ saveMtM(M); document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); }
+  function readPLD(){ M.refMonth=val('mtmRef')||M.refMonth; SUBS_STD.forEach(function(s,i){ var v=val('pld_'+i); if(v!=='') M.pld[s]=parseFloat(String(v).replace(',','.')); else delete M.pld[s]; }); }
+  function readFwd(){ var prods=MTM_PRODUCTS(cs), months=fwdMonths(cs,M); prods.forEach(function(pk,pi){ if(!M.fwd[pk])M.fwd[pk]={}; months.forEach(function(k,mi){ var v=val('fwd_'+pi+'_'+mi); if(v!=='') M.fwd[pk][k]=parseFloat(String(v).replace(',','.')); else delete M.fwd[pk][k]; }); }); }
+  var ap=document.getElementById('mtmApply'); if(ap) ap.onclick=function(){ readPLD(); readFwd(); rerender(); };
+  var fs=document.getElementById('fwdSave'); if(fs) fs.onclick=function(){ readPLD(); readFwd(); rerender(); };
+  var ff=document.getElementById('fwdFill'); if(ff) ff.onclick=function(){ readPLD(); var prods=MTM_PRODUCTS(cs), months=fwdMonths(cs,M); prods.forEach(function(pk){ var sub=pk.split('|')[0]; if(M.pld[sub]==null) return; if(!M.fwd[pk])M.fwd[pk]={}; months.forEach(function(k){ if(M.fwd[pk][k]==null) M.fwd[pk][k]=M.pld[sub]; }); }); rerender(); };
+  var pf=document.getElementById('pldFetch'); if(pf) pf.onclick=function(){
+    err('Conectando à CCEE...');
+    fetch('https://www.ccee.org.br/web/guest/precos/painel-precos',{mode:'cors'}).then(function(r){return r.text();}).then(function(){ err('Conexão respondeu, mas o painel CCEE exige sessão/JS e bloqueia leitura externa — informe o PLD manualmente acima.'); }).catch(function(){ err('A CCEE bloqueia acesso automático (CORS/anti-bot). Copie o PLD do Painel de Preços e informe nos campos acima.'); });
+  };
 }
 function bindFilters(){ Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindFichas(); bindFilters(); bindExport(); }; }); }
 function bindFichas(){
