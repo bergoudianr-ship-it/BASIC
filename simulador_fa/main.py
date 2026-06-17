@@ -236,9 +236,14 @@ class Handler(BaseHTTPRequestHandler):
 # ─── Entry point ─────────────────────────────────────────────────────────────
 def run(port=8765):
     os.makedirs(DATA, exist_ok=True)
+    # Garante stdout em UTF-8 para nao quebrar em consoles cp1252 (Windows)
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     server = ThreadedHTTPServer(("", port), Handler)
-    print(f"\n  ✔ Simulador FA CCEE rodando em http://localhost:{port}")
-    print(f"  ✔ Dados em: {DATA}")
+    print(f"\n  Simulador FA CCEE rodando em http://localhost:{port}")
+    print(f"  Dados em: {DATA}")
     print("  Pressione Ctrl+C para encerrar.\n", flush=True)
     try:
         server.serve_forever()
