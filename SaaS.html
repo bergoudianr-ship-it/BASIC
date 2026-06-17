@@ -677,17 +677,26 @@ function mtmBars(arr){
 }
 // ── Curva de MtM por produto (submercado × fonte × mês) + PLD do mês fechado ──
 function defaultRefMonth(){ var d=new Date(TODAY); d.setMonth(d.getMonth()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-function loadMtM(){ try{ var s=JSON.parse(localStorage.getItem('saas_mtm')||'null'); if(s){ if(!s.pld)s.pld={}; if(!s.fwd)s.fwd={}; if(!s.refMonth)s.refMonth=defaultRefMonth(); return s; } }catch(e){} return {refMonth:defaultRefMonth(),pld:{},fwd:{}}; }
+function loadMtM(){ try{ var s=JSON.parse(localStorage.getItem('saas_mtm')||'null'); if(s){ if(!s.conv)s.conv={}; if(!s.spread)s.spread={}; if(!s.refMonth)s.refMonth=defaultRefMonth(); return s; } }catch(e){} return {refMonth:defaultRefMonth(),conv:{},spread:{}}; }
+function isConvencional(fonte){ return (fonte||'').toLowerCase().indexOf('convenc')>=0; }
 function saveMtM(m){ try{ localStorage.setItem('saas_mtm',JSON.stringify(m)); }catch(e){} }
 function mKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function mKeyToDate(k){ var p=String(k).split('-'); return new Date(+p[0],(+p[1]||1)-1,1); }
 function mLabel(k){ return mKeyToDate(k).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}); }
 function portfolioEnd(cs){ var max=null; cs.forEach(function(c){ if(c.fimForn&&(!max||c.fimForn>max))max=c.fimForn; }); return max; }
 function productKey(c){ return (c.submercado||'N/D')+'|'+(c.fonte||'N/D'); }
+function convPrice(M,sub,k){ if(M.conv[sub]&&M.conv[sub][k]!=null&&M.conv[sub][k]!=='') return +M.conv[sub][k]; return null; }
 function curvePrice(M,sub,fonte,k){
-  var fk=sub+'|'+fonte; if(M.fwd[fk]&&M.fwd[fk][k]!=null&&M.fwd[fk][k]!=='') return +M.fwd[fk][k];
-  if(M.pld[sub]!=null&&M.pld[sub]!=='') return +M.pld[sub];
-  return null;
+  var base=convPrice(M,sub,k); if(base==null) return null;
+  if(isConvencional(fonte)) return base;
+  var sp=M.spread[fonte]; return base + (sp!=null&&sp!==''?+sp:0);
+}
+// média ponderada da convencional entre submercados, ponderada pelo volume convencional do portfólio no mês
+function wavgConv(cs,M,k){ var num=0,den=0,simpleN=0,simpleD=0; var ms=mKeyToDate(k), me=new Date(ms.getFullYear(),ms.getMonth()+1,0);
+  SUBS_STD.forEach(function(sub){ var p=convPrice(M,sub,k); if(p==null) return; simpleN+=p; simpleD++;
+    var vol=0; cs.forEach(function(c){ if(isConvencional(c.fonte)&&c.submercado===sub&&c.inicioForn&&c.fimForn&&c.inicioForn<=me&&c.fimForn>=ms) vol+=volMWm(c); });
+    num+=p*vol; den+=vol; });
+  if(den>0) return num/den; if(simpleD>0) return simpleN/simpleD; return null;
 }
 function monthsForContract(c,M){ if(!c.inicioForn||!c.fimForn) return []; var start=mKeyToDate(M.refMonth); var cs2=new Date(c.inicioForn.getFullYear(),c.inicioForn.getMonth(),1); if(cs2>start) start=cs2; var arr=[],d=new Date(start),end=new Date(c.fimForn.getFullYear(),c.fimForn.getMonth(),1),g=0; while(d<=end&&g<60){ arr.push(new Date(d)); d.setMonth(d.getMonth()+1); g++; } return arr; }
 function hoursOverlap(c,md){ var ms=new Date(md.getFullYear(),md.getMonth(),1), me=new Date(md.getFullYear(),md.getMonth()+1,0); var s=c.inicioForn>ms?c.inicioForn:ms, e=c.fimForn<me?c.fimForn:me; if(e<s) return 0; var days=Math.round((e-s)/86400000)+1; return days*24; }
@@ -699,29 +708,40 @@ function viewMtM(){
   var cs=STATE.contracts, M=loadMtM();
   var prods=MTM_PRODUCTS(cs), months=curveMonths(cs,M);
   var ist='background:#0a0c10;border:1px solid #232834;border-radius:6px;color:#e6ebf2;padding:6px 9px;font-size:12px;outline:none;width:100%';
-  var h='<div class="section-header"><span class="section-title">Curva de Preços — Curto prazo (PLD) e Forward por Produto</span></div>';
-  // ── Bloco PLD ──
-  h+='<div class="card" style="margin-bottom:14px"><div class="card-title">PLD-base do mês fechado por submercado (curto prazo)</div>'+
-    '<div style="color:#97a3b6;font-size:12px;line-height:1.6;margin-bottom:12px">PLD-base por submercado, usado como referência e preenchimento rápido. O preço de curto prazo <b>por produto</b> (com ágio/deságio de cada fonte) é ajustado na 1ª coluna da matriz abaixo. A CCEE bloqueia acesso automático (403/anti-bot) — informe ou cole o PLD do <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:end">'+
-    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de referência</span><input id="mtmRef" type="month" value="'+esc(M.refMonth)+'" style="'+ist+'"></label>';
-  SUBS_STD.forEach(function(s,i){ h+='<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">PLD '+esc(s)+'</span><input id="pld_'+i+'" type="number" step="0.01" value="'+(M.pld[s]!=null?esc(M.pld[s]):'')+'" placeholder="R$/MWh" style="'+ist+'"></label>'; });
-  h+='</div>'+
-    '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center"><button class="btn btn-primary" id="mtmApply">Salvar PLD e recalcular</button><button class="btn btn-ghost" id="pldFetch">Tentar buscar na CCEE</button><button class="btn btn-ghost" id="fwdFill">Preencher curva vazia com PLD</button><span id="mtmErr" class="err" style="display:none"></span></div></div>';
-  // ── Matriz forward ──
-  if(prods.length && months.length){
-    h+='<div class="card" style="margin-bottom:16px"><div class="card-title">Curva de preços por produto (submercado × fonte) · R$/MWh por mês</div>'+
-      '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Cada produto = submercado + fonte. A 1ª coluna (destacada) é o <b>curto prazo / PLD do mês fechado</b> por produto; as demais são a <b>curva forward</b>. Submercados descolam entre si e cada fonte tem seu ágio/deságio — preencha por produto. Vazio usa o PLD-base do submercado.</div>'+
-      '<div class="table-wrap"><table><thead><tr><th>Submercado</th><th>Fonte</th>';
-    months.forEach(function(k,mi){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+(isRef?'PLD ':'')+esc(mLabel(k))+'</th>'; });
+  var h='<div class="section-header"><span class="section-title">Curva de Preços — Convencional por Submercado + Spread de Incentivada</span></div>';
+  h+='<div class="card" style="margin-bottom:14px;display:flex;gap:14px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de referência (PLD fechado)</span><input id="mtmRef" type="month" value="'+esc(M.refMonth)+'" style="'+ist+';width:170px"></label>'+
+    '<button class="btn btn-primary" id="mtmApply">Salvar tudo e recalcular</button>'+
+    '<button class="btn btn-ghost" id="pldFetch">Tentar buscar PLD na CCEE</button>'+
+    '<span style="color:#97a3b6;font-size:11px;max-width:560px;line-height:1.5">A 1ª coluna (destacada) é o <b>PLD do mês fechado</b> (curto prazo); as demais são a <b>curva forward convencional</b>. A CCEE bloqueia acesso automático — informe os preços do <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
+    '<span id="mtmErr" class="err" style="display:none"></span></div>';
+  // ── Curva convencional por submercado ──
+  if(months.length){
+    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">Curva Convencional por submercado · R$/MWh por mês (descolam entre si)</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Submercado</th>';
+    months.forEach(function(k){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+(isRef?'PLD ':'')+esc(mLabel(k))+'</th>'; });
     h+='</tr></thead><tbody>';
-    prods.forEach(function(pk,pi){ var parts=pk.split('|'); h+='<tr><td><span class="badge badge-blue">'+esc(parts[0])+'</span></td><td><span class="badge badge-purple">'+esc(parts[1])+'</span></td>';
-      months.forEach(function(k,mi){ var isRef=(k===M.refMonth); var v=(M.fwd[pk]&&M.fwd[pk][k]!=null)?M.fwd[pk][k]:''; var ph=(M.pld[parts[0]]!=null&&M.pld[parts[0]]!=='')?String(M.pld[parts[0]]):'—'; h+='<td><input id="fwd_'+pi+'_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="'+esc(ph)+'" style="'+ist+';min-width:78px;padding:4px 6px'+(isRef?';border-color:#5c4a10;background:#1a160a':'')+'"></td>'; });
+    SUBS_STD.forEach(function(sub,si){ h+='<tr><td><span class="badge badge-blue">'+esc(sub)+'</span></td>';
+      months.forEach(function(k,mi){ var isRef=(k===M.refMonth); var v=(M.conv[sub]&&M.conv[sub][k]!=null)?M.conv[sub][k]:''; h+='<td><input id="conv_'+si+'_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="R$/MWh" style="'+ist+';min-width:82px;padding:4px 6px'+(isRef?';border-color:#5c4a10;background:#1a160a':'')+'"></td>'; });
       h+='</tr>'; });
-    h+='</tbody></table></div><div style="margin-top:12px"><button class="btn btn-primary" id="fwdSave">Salvar curva e recalcular</button></div></div>';
+    h+='<tr style="border-top:2px solid #232834"><td><span class="badge badge-gray">Média ponderada</span></td>';
+    months.forEach(function(k){ var w=wavgConv(cs,M,k); h+='<td class="td-num" style="color:#93b4ff;font-weight:700">'+(w!=null?fmt(w):'—')+'</td>'; });
+    h+='</tr></tbody></table></div>'+
+      '<div style="color:#5b6678;font-size:11px;margin-top:8px">Média ponderada = preço convencional de cada submercado ponderado pelo volume convencional do portfólio naquele mês.</div>'+
+      '<div style="margin-top:10px"><button class="btn btn-primary" id="convSave">Salvar curva convencional</button></div></div>';
   } else {
-    h+='<div class="card" style="margin-bottom:16px;padding:18px;color:#64748b;text-align:center">Importe contratos com submercado, fonte e datas para montar a curva forward por produto.</div>';
+    h+='<div class="card" style="margin-bottom:14px;padding:18px;color:#64748b;text-align:center">Importe contratos com datas e submercado para montar a curva.</div>';
   }
+  // ── Spread por fonte incentivada ──
+  var incFontes=[]; cs.forEach(function(c){ if(!isConvencional(c.fonte)&&incFontes.indexOf(c.fonte)<0) incFontes.push(c.fonte); }); incFontes.sort();
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">Spread por fonte incentivada (R$/MWh sobre a convencional do submercado)</div>'+
+    '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Preço da incentivada = convencional do submercado + spread da fonte. A convencional é a referência (spread zero). O spread é aplicado em todos os submercados, herdando o descolamento da convencional.</div>';
+  if(incFontes.length){
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">';
+    incFontes.forEach(function(f,fi){ var v=(M.spread[f]!=null?M.spread[f]:''); h+='<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">'+esc(f)+'</span><input id="sp_'+fi+'" data-fonte="'+esc(f)+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="+ / − R$/MWh" style="'+ist+'"></label>'; });
+    h+='</div><div style="margin-top:12px"><button class="btn btn-primary" id="spSave">Salvar spreads e recalcular</button></div>';
+  } else { h+='<div style="color:#64748b">Nenhuma fonte incentivada no portfólio.</div>'; }
+  h+='</div>';
   // ── Resultados MtM ──
   var by={}; cs.forEach(function(c){ var k=c.empresa||'N/D'; if(!by[k])by[k]={mtm:0,vol:0,count:0}; by[k].mtm+=mtmContractCurve(c,M); by[k].vol+=volMWm(c); by[k].count++; });
   var arr=Object.keys(by).map(function(k){return {nome:k,mtm:by[k].mtm,vol:by[k].vol,count:by[k].count};});
@@ -1007,14 +1027,17 @@ function bindMtM(){
   function val(id){ var e=document.getElementById(id); return e?e.value:''; }
   function err(m){ var e=document.getElementById('mtmErr'); if(e){ e.textContent=m; e.style.display='inline'; } }
   function rerender(){ saveMtM(M); document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); }
-  function readPLD(){ M.refMonth=val('mtmRef')||M.refMonth; SUBS_STD.forEach(function(s,i){ var v=val('pld_'+i); if(v!=='') M.pld[s]=parseFloat(String(v).replace(',','.')); else delete M.pld[s]; }); }
-  function readFwd(){ var prods=MTM_PRODUCTS(cs), months=curveMonths(cs,M); prods.forEach(function(pk,pi){ if(!M.fwd[pk])M.fwd[pk]={}; months.forEach(function(k,mi){ var v=val('fwd_'+pi+'_'+mi); if(v!=='') M.fwd[pk][k]=parseFloat(String(v).replace(',','.')); else delete M.fwd[pk][k]; }); }); }
-  var ap=document.getElementById('mtmApply'); if(ap) ap.onclick=function(){ readPLD(); readFwd(); rerender(); };
-  var fs=document.getElementById('fwdSave'); if(fs) fs.onclick=function(){ readPLD(); readFwd(); rerender(); };
-  var ff=document.getElementById('fwdFill'); if(ff) ff.onclick=function(){ readPLD(); readFwd(); var prods=MTM_PRODUCTS(cs), months=curveMonths(cs,M); prods.forEach(function(pk){ var sub=pk.split('|')[0]; if(M.pld[sub]==null) return; if(!M.fwd[pk])M.fwd[pk]={}; months.forEach(function(k){ if(M.fwd[pk][k]==null) M.fwd[pk][k]=M.pld[sub]; }); }); rerender(); };
+  function num2(v){ return parseFloat(String(v).replace(',','.')); }
+  function readRef(){ M.refMonth=val('mtmRef')||M.refMonth; }
+  function readConv(){ var months=curveMonths(cs,M); SUBS_STD.forEach(function(sub,si){ if(!M.conv[sub])M.conv[sub]={}; months.forEach(function(k,mi){ var v=val('conv_'+si+'_'+mi); if(v!=='') M.conv[sub][k]=num2(v); else delete M.conv[sub][k]; }); }); }
+  function readSpread(){ Array.prototype.forEach.call(document.querySelectorAll('[data-fonte]'),function(el){ var f=el.getAttribute('data-fonte'), v=el.value; if(v!=='') M.spread[f]=num2(v); else delete M.spread[f]; }); }
+  function readAll(){ readRef(); readConv(); readSpread(); }
+  var ap=document.getElementById('mtmApply'); if(ap) ap.onclick=function(){ readAll(); rerender(); };
+  var cv=document.getElementById('convSave'); if(cv) cv.onclick=function(){ readAll(); rerender(); };
+  var sp=document.getElementById('spSave'); if(sp) sp.onclick=function(){ readAll(); rerender(); };
   var pf=document.getElementById('pldFetch'); if(pf) pf.onclick=function(){
     err('Conectando à CCEE...');
-    fetch('https://www.ccee.org.br/web/guest/precos/painel-precos',{mode:'cors'}).then(function(r){return r.text();}).then(function(){ err('Conexão respondeu, mas o painel CCEE exige sessão/JS e bloqueia leitura externa — informe o PLD manualmente acima.'); }).catch(function(){ err('A CCEE bloqueia acesso automático (CORS/anti-bot). Copie o PLD do Painel de Preços e informe nos campos acima.'); });
+    fetch('https://www.ccee.org.br/web/guest/precos/painel-precos',{mode:'cors'}).then(function(r){return r.text();}).then(function(){ err('Conexão respondeu, mas o painel CCEE exige sessão/JS e bloqueia leitura externa — informe o PLD manualmente na curva.'); }).catch(function(){ err('A CCEE bloqueia acesso automático (CORS/anti-bot). Copie o PLD do Painel de Preços e informe na 1ª coluna da curva.'); });
   };
 }
 function bindFilters(){ Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindFichas(); bindFilters(); bindExport(); }; }); }
