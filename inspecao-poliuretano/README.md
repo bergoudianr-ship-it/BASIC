@@ -40,6 +40,16 @@ Crie um padrão digitando:
 8. **Salvar no histórico** para guardar o registro da peça (com a comparação e as fotos);
    o relatório pode ser reimpresso depois pela aba Histórico.
 
+## Inspeção em lote (50 peças)
+Preencha o campo **Lote / NF** e um **nº de peça**. Ao finalizar cada peça, use
+**"💾 Salvar e próxima peça ▶"**: ela é salva no histórico e o nº avança automaticamente,
+mantendo o padrão carregado. O card do topo mostra a **contagem do lote** (aprovadas /
+reprovadas) e o botão **"Relatório do lote (PDF)"** gera um laudo consolidado com todas as
+peças, destacando as reprovadas e o que ficou fora.
+
+> Observação: as medidas continuam **digitadas** (do seu instrumento). Para validação
+> automática por foto em volume, veja o protótipo de IA em `../inspecao-ia/`.
+
 ## Histórico (aba "Histórico")
 Lista das inspeções salvas (peça, padrão, data, veredito). Abra para ver o relatório
 completo com medidas, itens visuais e fotos. Exporte/importe `.json` para backup ou para

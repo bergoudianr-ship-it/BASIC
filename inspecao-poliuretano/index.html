@@ -128,7 +128,7 @@
 <body>
 <header>
   <h1>🔍 Inspeção PU</h1>
-  <span class="tag">rolamentos revestidos · v3</span>
+  <span class="tag">rolamentos revestidos · v4</span>
 </header>
 
 <main>
@@ -149,8 +149,12 @@
         <label>Foto de referência (peça correta)</label>
         <div class="thumbs"><div class="th"><img id="refPhotoImg" src=""></div></div>
       </div>
-      <label>Identificação da peça / lote (opcional)</label>
-      <input id="pieceId" placeholder="ex: NF 1234 — peça 3"/>
+      <div class="row">
+        <div><label>Lote / NF (opcional)</label><input id="loteId" placeholder="ex: NF 1234" oninput="updateLoteTally()"/></div>
+        <div><label>Peça nº (opcional)</label><input id="pieceId" placeholder="ex: 3"/></div>
+      </div>
+      <div id="loteTally" class="hint" style="margin-top:8px"></div>
+      <button class="btn sec sm" id="loteReportBtn" style="margin-top:4px;display:none" onclick="printLoteReport()">🖨️ Relatório do lote (PDF)</button>
     </div>
 
     <div class="card" id="photosCard">
@@ -212,9 +216,9 @@
       <div id="verdict" class="verdict ok">—</div>
       <ul class="diaglist" id="diagList"></ul>
       <div class="btns">
-        <button class="btn" onclick="printReport()">🖨️ Relatório (PDF)</button>
-        <button class="btn sec" onclick="saveInspection()">💾 Salvar no histórico</button>
-        <button class="btn ghost" onclick="startInspection()">Nova inspeção</button>
+        <button class="btn" onclick="saveAndNext()">💾 Salvar e próxima peça ▶</button>
+        <button class="btn sec" onclick="printReport()">🖨️ Relatório (PDF)</button>
+        <button class="btn ghost" onclick="saveInspection()">Só salvar</button>
       </div>
     </div>
   </section>
@@ -462,7 +466,7 @@ function startInspection(){
   $('resultCard').classList.add('hidden');
   $('refPhotoWrap').classList.toggle('hidden',!spec.refPhoto);
   if(spec.refPhoto)$('refPhotoImg').src=spec.refPhoto;
-  renderPartPhotos();renderMeasRows();renderVisRows();renderCompare();
+  renderPartPhotos();renderMeasRows();renderVisRows();renderCompare();updateLoteTally();
 }
 function renderCompare(){
   const c=insp.comparison;
@@ -560,18 +564,53 @@ function finishInspection(){
   $('resultCard').classList.remove('hidden');
   $('resultCard').scrollIntoView({behavior:'smooth'});
 }
-function saveInspection(){
-  if(!insp)return;
+function saveInspection(silent){
+  if(!insp)return false;
   insp.pieceId=$('pieceId').value;
+  const loteId=$('loteId').value;
   const fail=insp.dims.some(d=>{const s=dimStatus(d);return s&&!s.pass;})||insp.visual.some(v=>v.status==='problema');
   const rec={id:'insp_'+Date.now(),date:new Date().toISOString(),specName:insp.spec.name,
-    pieceId:insp.pieceId,verdict:fail?'REPROVADA':'APROVADA',
+    pieceId:insp.pieceId,loteId,verdict:fail?'REPROVADA':'APROVADA',
     photos:insp.photos,comparison:insp.comparison,
     dims:insp.dims.map(d=>({name:d.name,type:d.type,nominal:d.nominal,varPlus:d.varPlus,measured:num(d.measured)})),
     visual:insp.visual.map(v=>({label:v.label,status:v.status,note:v.note,photo:v.photo}))};
   const all=loadInsp();all.unshift(rec);
-  try{saveInspAll(all);alert('Inspeção salva no histórico.');}
-  catch(e){alert('Não foi possível salvar (memória do navegador cheia). Tente exportar e apagar inspeções antigas.');}
+  try{saveInspAll(all);if(!silent)alert('Inspeção salva no histórico.');updateLoteTally();return true;}
+  catch(e){alert('Não foi possível salvar (memória do navegador cheia). Exporte e apague inspeções antigas.');return false;}
+}
+function saveAndNext(){
+  if(!saveInspection(true))return;
+  // sugere o próximo número de peça
+  const cur=$('pieceId').value.trim();
+  const m=cur.match(/(\d+)\s*$/);
+  $('pieceId').value=m?cur.replace(/(\d+)\s*$/,(parseInt(m[1],10)+1)):(cur?cur+' 2':'2');
+  startInspection();
+  $('viewInspect').scrollIntoView({behavior:'smooth'});
+}
+function loteRecords(){const lote=($('loteId').value||'').trim();return lote?loadInsp().filter(r=>(r.loteId||'').trim()===lote):[];}
+function updateLoteTally(){
+  const recs=loteRecords(),el=$('loteTally'),btn=$('loteReportBtn');
+  if(recs.length===0){el.textContent='';btn.style.display='none';return;}
+  const ap=recs.filter(r=>r.verdict==='APROVADA').length, rp=recs.length-ap;
+  el.innerHTML='Lote: <b>'+recs.length+'</b> peça(s) · <span style="color:var(--ok)">'+ap+' aprovadas</span> · <span style="color:var(--bad)">'+rp+' reprovadas</span>';
+  btn.style.display='block';
+}
+function printLoteReport(){
+  const recs=loteRecords();if(recs.length===0){alert('Sem peças salvas neste lote.');return;}
+  const lote=($('loteId').value||'').trim();
+  const ap=recs.filter(r=>r.verdict==='APROVADA').length, rp=recs.length-ap;
+  let h='<h1>Relatório do Lote — '+escapeHtml(lote)+'</h1>';
+  h+='<p class="sub">'+recs.length+' peça(s) · '+ap+' aprovadas · '+rp+' reprovadas · '+new Date().toLocaleString('pt-BR')+'</p>';
+  h+='<p class="vsign" style="color:'+(rp?'#c0203a':'#1f9d63')+'">'+(rp?('❌ '+rp+' PEÇA(S) REPROVADA(S)'):'✅ LOTE APROVADO')+'</p>';
+  h+='<table><tr><th>Peça</th><th>Padrão</th><th>Veredito</th><th>Medidas fora</th><th>Itens visuais c/ problema</th></tr>';
+  recs.slice().reverse().forEach(r=>{
+    const fora=(r.dims||[]).filter(d=>d.measured!=null&&!(d.measured>=d.nominal-d.varPlus-1e-9&&d.measured<=d.nominal+d.varPlus+1e-9)).map(d=>d.name);
+    const vis=(r.visual||[]).filter(v=>v.status==='problema').map(v=>v.label);
+    const out=r.verdict==='REPROVADA'?' class="out"':'';
+    h+='<tr><td>'+escapeHtml(r.pieceId||'-')+'</td><td>'+escapeHtml(r.specName)+'</td><td'+out+'>'+r.verdict+'</td><td'+out+'>'+(fora.join(', ')||'—')+'</td><td'+out+'>'+(vis.join(', ')||'—')+'</td></tr>';
+  });
+  h+='</table>';
+  $('reportPrint').innerHTML=h;setTimeout(()=>window.print(),120);
 }
 
 /* ============================ RELATÓRIO (PDF) ============================ */
