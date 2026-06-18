@@ -3,28 +3,24 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Inspeção PU — Rolamentos revestidos</title>
+<title>Inspeção PU — medida por foto + referência</title>
 <style>
-  :root{
-    --bg:#0f1512;--panel:#16201b;--panel2:#1d2a23;--line:#2c3c33;
-    --txt:#e7efe9;--muted:#90a399;--accent:#39d98a;--accent2:#1f9d63;
-    --ok:#39d98a;--warn:#f5b945;--bad:#ff5b6e;
-  }
+  :root{--bg:#0f1512;--panel:#16201b;--panel2:#1d2a23;--line:#2c3c33;--txt:#e7efe9;--muted:#90a399;
+    --accent:#39d98a;--accent2:#1f9d63;--ok:#39d98a;--warn:#f5b945;--bad:#ff5b6e}
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--txt);font-family:"Segoe UI",system-ui,Arial,sans-serif;-webkit-text-size-adjust:100%}
   header{padding:14px 16px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
   header h1{font-size:1.05rem;margin:0;font-weight:600}
   header .tag{font-size:.7rem;color:var(--muted);border:1px solid var(--line);padding:2px 7px;border-radius:20px}
   main{max-width:880px;margin:0 auto;padding:14px}
-  .tabs{display:flex;gap:6px;margin-bottom:12px}
-  .tabs button{flex:1;padding:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:9px;font-size:.82rem;font-weight:600}
+  .tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+  .tabs button{flex:1;min-width:90px;padding:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:9px;font-size:.8rem;font-weight:600}
   .tabs button.active{background:var(--panel2);color:var(--accent);border-color:var(--accent2)}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
-  .card h2{font-size:.92rem;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .card h2{font-size:.92rem;margin:0 0 6px}
   .card p.hint{margin:2px 0 10px;color:var(--muted);font-size:.78rem;line-height:1.45}
   label{display:block;font-size:.74rem;color:var(--muted);margin:8px 0 4px}
-  input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:.95rem;font-family:inherit}
-  textarea{min-height:54px;resize:vertical}
+  input,select{width:100%;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:.95rem}
   .row{display:flex;gap:8px}.row>*{flex:1}
   button.btn{width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent);color:#04130c;font-weight:700;font-size:.92rem}
   button.btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
@@ -32,37 +28,24 @@
   button.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--bad)}
   button.btn.sm{padding:8px 10px;font-size:.78rem;width:auto}
   button:disabled{opacity:.45}
-  .btns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.btns>*{flex:1;min-width:120px}
+  .btns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.btns>*{flex:1;min-width:110px}
+  .stage{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#000;touch-action:none}
+  canvas#cv{display:block;width:100%;height:auto;touch-action:none}
+  .stage .empty{padding:40px 16px;text-align:center;color:var(--muted);font-size:.85rem}
+  #loupe{position:absolute;top:8px;right:8px;width:120px;height:120px;border-radius:50%;border:2px solid var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.5);display:none;background:#000;overflow:hidden;z-index:3}
+  #loupe canvas{width:120px;height:120px;display:block}
+  .toolbar{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
+  .toolbar button{flex:1;min-width:84px;padding:9px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:.76rem;font-weight:600}
+  .toolbar button.active{color:var(--accent);border-color:var(--accent2);background:var(--panel2)}
+  .scalebox{font-size:.78rem;color:var(--muted);margin-top:6px}.scalebox b{color:var(--accent)}
   .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.72rem;font-weight:700}
-  .pill.ok{background:rgba(57,217,138,.15);color:var(--ok)}
-  .pill.bad{background:rgba(255,91,110,.15);color:var(--bad)}
-  .pill.warn{background:rgba(245,185,69,.15);color:var(--warn)}
+  .pill.ok{background:rgba(57,217,138,.15);color:var(--ok)}.pill.bad{background:rgba(255,91,110,.15);color:var(--bad)}
   .pill.muted{background:rgba(144,163,153,.15);color:var(--muted)}
-  /* linha de dimensão (padrão) */
-  .dimrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
-  .dimrow .lim{font-size:.72rem;color:var(--muted);margin-top:6px}
-  .dimrow .lim b{color:var(--accent)}
-  /* dimensão na inspeção */
-  .measrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
-  .measrow .top{display:flex;align-items:center;gap:8px}
-  .measrow .top .nm{flex:1;font-size:.86rem;font-weight:600}
-  .measrow .top .nm small{display:block;color:var(--muted);font-weight:400;font-size:.72rem}
-  .measrow input.meas{width:110px;flex:none}
-  .measrow .fb{font-size:.74rem;margin-top:6px;min-height:1em}
-  /* item visual */
-  .visrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
-  .visrow .top{display:flex;align-items:center;gap:8px}
-  .visrow .top .nm{flex:1;font-size:.86rem}
-  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none}
-  .seg button{border:none;background:var(--bg);color:var(--muted);padding:7px 11px;font-size:.76rem;font-weight:700}
-  .seg button.ok.on{background:var(--accent);color:#04130c}
-  .seg button.bad.on{background:var(--bad);color:#fff}
-  .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-  .thumbs .th{position:relative;width:74px;height:74px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#000}
-  .thumbs .th img{width:100%;height:100%;object-fit:cover}
-  .thumbs .th button{position:absolute;top:2px;right:2px;width:auto;padding:1px 6px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:6px;font-size:.7rem}
-  .suggest{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
-  .suggest button{width:auto;flex:none;padding:6px 10px;font-size:.74rem;border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:20px}
+  .mlist{list-style:none;margin:8px 0 0;padding:0}
+  .mlist li{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;font-size:.82rem}
+  .mlist li .name{flex:1}.mlist li .name small{color:var(--muted)}
+  .mlist li .val{font-variant-numeric:tabular-nums;color:var(--accent)}
+  .mlist li button{flex:none;width:auto;padding:5px 9px;font-size:.72rem}
   .savedlist{list-style:none;margin:0;padding:0}
   .savedlist li{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
   .savedlist li img{width:46px;height:46px;object-fit:cover;border-radius:8px;background:#000;flex:none}
@@ -71,671 +54,415 @@
   .verdict{text-align:center;padding:16px;border-radius:12px;font-size:1.05rem;font-weight:800;margin-bottom:12px}
   .verdict.ok{background:rgba(57,217,138,.12);color:var(--ok);border:1px solid var(--accent2)}
   .verdict.bad{background:rgba(255,91,110,.12);color:var(--bad);border:1px solid var(--bad)}
-  .diaglist{list-style:none;margin:10px 0 0;padding:0}
-  .diaglist li{padding:9px 10px;border-radius:9px;margin-bottom:6px;font-size:.8rem}
-  .diaglist li.bad{border:1px solid var(--bad);background:rgba(255,91,110,.07)}
-  .diaglist li.warn{border:1px solid var(--warn);background:rgba(245,185,69,.07)}
-  .diaglist li b{color:inherit}
+  table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:8px}
+  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-size:.7rem;text-transform:uppercase}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .sidebyside{display:flex;gap:8px;margin-top:8px}
+  .sidebyside figure{flex:1;margin:0;text-align:center;font-size:.7rem;color:var(--muted)}
+  .sidebyside img{width:100%;border:1px solid var(--line);border-radius:8px}
+  .inlineform{border:1px dashed var(--accent2);border-radius:10px;padding:10px;margin-top:8px;background:var(--panel2)}
   .hidden{display:none!important}
-  .filein{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+  .filein{position:absolute;width:1px;height:1px;opacity:0}
   footer{padding:20px 16px;text-align:center;color:var(--muted);font-size:.72rem}
-  /* comparação nova x usada */
-  .cmp{display:flex;gap:8px}
-  .cmp .slot{flex:1}
-  .cmp .slot .ph{width:100%;height:120px;border:1px dashed var(--line);border-radius:9px;background:#000;display:grid;place-items:center;overflow:hidden}
-  .cmp .slot .ph img{width:100%;height:100%;object-fit:contain}
-  .cmp .slot .lab{font-size:.72rem;color:var(--muted);text-align:center;margin:4px 0}
-  .cmp .slot .btns{margin-top:4px}
-  .cmp .slot .btns button{min-width:0}
-  .ba{position:relative;width:100%;height:260px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#000;margin-top:10px}
-  .ba .base,.ba .top{position:absolute;top:0;left:0;height:100%}
-  .ba .base{width:100%}
-  .ba .top{overflow:hidden}
-  .ba img{height:260px;width:100vw;max-width:880px;object-fit:contain;display:block}
-  .ba .handle{position:absolute;top:0;bottom:0;width:3px;background:var(--accent);transform:translateX(-50%)}
-  .ba .tag2{position:absolute;top:6px;padding:2px 8px;border-radius:8px;background:rgba(0,0,0,.65);font-size:.68rem}
-  .ba .tag2.l{left:6px;color:var(--accent)} .ba .tag2.r{right:6px;color:#fff}
-  /* relatório */
+  .step-note{font-size:.75rem;color:var(--warn);margin-top:6px;min-height:1em}
   #reportPrint{display:none}
-  .report{padding:6px}
-  .report h1{font-size:1.25rem;margin:0 0 2px}
-  .report .sub{color:#555;font-size:.8rem;margin:0 0 10px}
-  .report h3{font-size:.95rem;margin:14px 0 4px;border-bottom:1px solid #ccc;padding-bottom:3px}
-  .report table{width:100%;border-collapse:collapse;font-size:.78rem;margin:6px 0}
-  .report th,.report td{border:1px solid #aaa;padding:5px 6px;text-align:left}
+  .report{padding:6px;color:#000}.report h1{font-size:1.2rem;margin:0 0 4px}
+  .report .sub{color:#555;font-size:.8rem}.report table{font-size:.78rem}
+  .report th,.report td{border:1px solid #aaa;padding:5px}
   .report td.out{background:#ffe3e6;font-weight:700}
-  .report .imgs{display:flex;gap:10px}
-  .report .imgs figure{flex:1;margin:0;text-align:center;font-size:.7rem;color:#555}
-  .report .imgs img{width:100%;border:1px solid #aaa;border-radius:6px}
-  .report .vsign{font-weight:800;font-size:1.05rem}
-  .report .gallery{display:flex;flex-wrap:wrap;gap:6px}
-  .report .gallery img{width:120px;height:120px;object-fit:cover;border:1px solid #aaa;border-radius:6px}
-  @media print{
-    header,.tabs,footer,.modal,main>section:not(#reportPrint){display:none!important}
-    body{background:#fff}
-    #reportPrint{display:block!important;color:#000}
-    #reportPrint *{color:#000}
-    .report td.out{background:#ffd0d6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  }
-  /* modal câmera */
-  .modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:none;flex-direction:column;padding:14px}
-  .modal.on{display:flex}
-  .modal video{width:100%;flex:1;object-fit:contain;border-radius:12px;background:#000}
-  .modal .mbtns{display:flex;gap:8px;margin-top:10px}
-  .modal .mbtns button{flex:1}
+  .report .imgs{display:flex;gap:10px;margin-top:8px}.report .imgs figure{flex:1;margin:0;text-align:center;font-size:.7rem}
+  .report .imgs img{width:100%;border:1px solid #aaa}
+  @media print{header,.tabs,footer,#loupe,main>section:not(#reportPrint){display:none!important}
+    body{background:#fff}#reportPrint{display:block!important}
+    .report td.out{background:#ffd0d6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style>
 </head>
 <body>
-<header>
-  <h1>🔍 Inspeção PU</h1>
-  <span class="tag">rolamentos revestidos · v4</span>
-</header>
-
+<header><h1>🔍 Inspeção PU</h1><span class="tag">medida por foto · v5</span></header>
 <main>
   <div class="tabs">
-    <button id="tabInspect" class="active" onclick="showTab('inspect')">Inspecionar</button>
+    <button id="tabRefs" onclick="showTab('refs')">Referências</button>
     <button id="tabSpecs" onclick="showTab('specs')">Padrões</button>
+    <button id="tabInsp" class="active" onclick="showTab('insp')">Inspecionar</button>
     <button id="tabHist" onclick="showTab('hist')">Histórico</button>
   </div>
 
-  <!-- ===================== INSPECIONAR ===================== -->
-  <section id="viewInspect">
+  <!-- ===================== REFERÊNCIAS ===================== -->
+  <section id="viewRefs" class="hidden">
     <div class="card">
-      <h2>1 · Padrão e peça</h2>
-      <label>Padrão (peça correta)</label>
-      <select id="inspSpec" onchange="startInspection()"></select>
-      <p class="hint" id="noSpecMsg"></p>
-      <div id="refPhotoWrap" class="hidden">
-        <label>Foto de referência (peça correta)</label>
-        <div class="thumbs"><div class="th"><img id="refPhotoImg" src=""></div></div>
-      </div>
+      <h2>Referências de escala</h2>
+      <p class="hint">Cadastre objetos de tamanho conhecido (moeda, tampa redonda, etc.). Você escolhe uma delas na foto para a ferramenta saber quantos mm tem cada pixel.</p>
+      <ul class="savedlist" id="refList"></ul>
+    </div>
+    <div class="card">
+      <h2>Nova referência</h2>
+      <label>Nome</label><input id="refName" placeholder="ex: Tampa redonda 80mm"/>
       <div class="row">
-        <div><label>Lote / NF (opcional)</label><input id="loteId" placeholder="ex: NF 1234" oninput="updateLoteTally()"/></div>
-        <div><label>Peça nº (opcional)</label><input id="pieceId" placeholder="ex: 3"/></div>
+        <div><label>Formato</label><select id="refShape">
+          <option value="circle">Redondo (diâmetro)</option>
+          <option value="reta">Reto (comprimento)</option>
+        </select></div>
+        <div><label>Tamanho real (mm)</label><input id="refMm" type="number" inputmode="decimal" placeholder="ex: 27"/></div>
       </div>
-      <div id="loteTally" class="hint" style="margin-top:8px"></div>
-      <button class="btn sec sm" id="loteReportBtn" style="margin-top:4px;display:none" onclick="printLoteReport()">🖨️ Relatório do lote (PDF)</button>
-    </div>
-
-    <div class="card" id="photosCard">
-      <h2>2 · Fotos da peça</h2>
-      <p class="hint">Passe a câmera pela peça e capture os pontos importantes. As fotos ficam no relatório (documentação), não são usadas para medir.</p>
-      <div class="btns">
-        <button class="btn" onclick="capturePhoto(d=>addPartPhoto(d))">📷 Câmera</button>
-        <button class="btn sec" onclick="pickFile(d=>addPartPhoto(d))">🖼️ Minhas fotos</button>
-      </div>
-      <div class="thumbs" id="partPhotos"></div>
-    </div>
-
-    <div class="card" id="measCard">
-      <h2>3 · Medidas (digitar em mm)</h2>
-      <p class="hint">Meça com paquímetro/instrumento e digite. A ferramenta compara com os limites na hora.</p>
-      <div id="measRows"></div>
-    </div>
-
-    <div class="card" id="visCard">
-      <h2>4 · Inspeção visual</h2>
-      <p class="hint">Marque cada item e, se houver problema, anexe a foto do defeito.</p>
-      <div id="visRows"></div>
-    </div>
-
-    <div class="card" id="compareCard">
-      <h2>5 · Comparação (referência × peça atual)</h2>
-      <p class="hint">Coloque a foto da <b>peça nova/correta</b> e a da <b>peça atual/usada</b> para enxergar o desgaste. Use o controle deslizante para "passar" de uma para a outra.</p>
-      <div class="cmp">
-        <div class="slot">
-          <div class="lab">Referência (nova/correta)</div>
-          <div class="ph" id="cmpRef"></div>
-          <div class="btns"><button class="btn sec sm" onclick="capturePhoto(d=>{insp.comparison.ref=d;renderCompare()})">📷</button>
-          <button class="btn ghost sm" onclick="pickFile(d=>{insp.comparison.ref=d;renderCompare()})">🖼️</button></div>
-        </div>
-        <div class="slot">
-          <div class="lab">Peça atual/usada</div>
-          <div class="ph" id="cmpCur"></div>
-          <div class="btns"><button class="btn sec sm" onclick="capturePhoto(d=>{insp.comparison.cur=d;renderCompare()})">📷</button>
-          <button class="btn ghost sm" onclick="pickFile(d=>{insp.comparison.cur=d;renderCompare()})">🖼️</button></div>
-        </div>
-      </div>
-      <div id="baWrap" class="hidden">
-        <div class="ba">
-          <div class="base"><img id="baBase" src=""></div>
-          <div class="top" id="baTop"><img id="baTopImg" src=""></div>
-          <div class="handle" id="baHandle"></div>
-          <span class="tag2 l">Referência</span><span class="tag2 r">Atual</span>
-        </div>
-        <input class="barange" type="range" min="0" max="100" value="50" oninput="setWipe(this.value)"/>
-      </div>
-    </div>
-
-    <div class="card" id="finishCard">
-      <button class="btn" onclick="finishInspection()">✅ Finalizar inspeção</button>
-    </div>
-
-    <div class="card hidden" id="resultCard">
-      <h2>Resultado</h2>
-      <div id="verdict" class="verdict ok">—</div>
-      <ul class="diaglist" id="diagList"></ul>
-      <div class="btns">
-        <button class="btn" onclick="saveAndNext()">💾 Salvar e próxima peça ▶</button>
-        <button class="btn sec" onclick="printReport()">🖨️ Relatório (PDF)</button>
-        <button class="btn ghost" onclick="saveInspection()">Só salvar</button>
-      </div>
+      <button class="btn" style="margin-top:10px" onclick="addRef()">➕ Adicionar referência</button>
     </div>
   </section>
-
-  <!-- relatório imprimível / PDF -->
-  <section id="reportPrint" class="report"></section>
 
   <!-- ===================== PADRÕES ===================== -->
   <section id="viewSpecs" class="hidden">
     <div class="card" id="specListCard">
-      <h2>Padrões salvos</h2>
+      <h2>Padrões (peça correta)</h2>
       <ul class="savedlist" id="specList"></ul>
+      <button class="btn" onclick="newSpec()">➕ Cadastrar padrão por foto</button>
+    </div>
+  </section>
+
+  <!-- ===================== TELA DE MEDIÇÃO (padrão OU inspeção) ===================== -->
+  <section id="viewMeasure" class="hidden">
+    <div class="card">
+      <h2 id="measTitle">Medição</h2>
+      <p class="hint" id="measLead"></p>
+
+      <label>Referência de escala</label>
+      <select id="useRef" onchange="onUseRefChange()"></select>
+
+      <div class="btns" style="margin-top:8px">
+        <button class="btn" onclick="capturePhoto(setStageImage)">📷 Câmera</button>
+        <button class="btn sec" onclick="pickFile(setStageImage)">🖼️ Foto</button>
+      </div>
+
+      <div class="toolbar" style="margin-top:10px">
+        <button id="tCal" class="active" onclick="setTool('cal')">📏 Calibrar</button>
+        <button id="tLine" onclick="setTool('line')">✏️ Distância</button>
+        <button id="tDiam" onclick="setTool('diam')">⭕ Diâmetro</button>
+        <button onclick="undo()">↶ Desfazer</button>
+      </div>
+      <div class="stage" id="stage">
+        <div class="empty" id="stageEmpty">Adicione a foto da peça (com a referência no quadro).</div>
+        <canvas id="cv" class="hidden"></canvas>
+        <div id="loupe"><canvas id="loupeCv" width="120" height="120"></canvas></div>
+      </div>
+      <div class="scalebox" id="scaleBox">Escala: <b>não calibrada</b></div>
+      <p class="step-note" id="measHint2"></p>
+    </div>
+
+    <!-- medidas no modo PADRÃO -->
+    <div class="card hidden" id="specMeasCard">
+      <h2>Medidas do padrão</h2>
+      <div id="newMeasForm" class="inlineform hidden">
+        <div class="row">
+          <div><label>Nome</label><input id="mName" placeholder="ex: Ø externo"/></div>
+          <div><label>Tipo</label><select id="mType">
+            <option value="diametro">Diâmetro</option><option value="largura">Largura</option>
+            <option value="altura">Altura</option><option value="comprimento">Comprimento</option>
+            <option value="espessura">Espessura</option><option value="outro">Outro</option>
+          </select></div>
+        </div>
+        <div class="btns"><button class="btn" onclick="confirmMeas()">Adicionar (<span id="mVal">0</span> mm)</button>
+        <button class="btn ghost" onclick="cancelMeas()">Descartar</button></div>
+      </div>
+      <ul class="mlist" id="specMeasList"></ul>
+      <label>Tolerância padrão (±)</label>
+      <div class="row"><input id="tolValue" type="number" inputmode="decimal" value="2"/>
+        <select id="tolType"><option value="pct">%</option><option value="mm">mm</option></select></div>
+      <label>Nome do padrão</label><input id="specName" placeholder="ex: Bucha Ø60 — Cliente X"/>
+      <button class="btn" style="margin-top:10px" onclick="saveSpec()">💾 Salvar padrão</button>
+    </div>
+
+    <!-- medição no modo INSPEÇÃO -->
+    <div class="card hidden" id="inspMeasCard">
+      <h2>Conferência das medidas</h2>
+      <p class="hint" id="inspGuide"></p>
+      <ul class="mlist" id="inspMeasList"></ul>
+    </div>
+
+    <div class="card hidden" id="resultCard">
+      <div id="verdict" class="verdict ok">—</div>
+      <table id="resTable"><thead><tr><th>Medida</th><th class="num">Padrão</th><th class="num">Peça</th><th class="num">Desvio</th><th>Status</th></tr></thead><tbody></tbody></table>
+      <div class="sidebyside" id="sbs"></div>
       <div class="btns">
-        <button class="btn" onclick="newSpec()">➕ Novo padrão</button>
-        <button class="btn sec" onclick="exportData('specs')">⬇️ Exportar</button>
-        <button class="btn ghost" onclick="pickJson(importSpecs)">⬆️ Importar</button>
+        <button class="btn" onclick="printResult()">🖨️ Relatório (PDF)</button>
+        <button class="btn sec" onclick="saveResult()">💾 Salvar</button>
       </div>
     </div>
 
-    <div class="card hidden" id="specFormCard">
-      <h2 id="specFormTitle">Novo padrão</h2>
-      <label>Nome da peça</label>
-      <input id="specName" placeholder="ex: Rolamento revestido Ø700 — Cliente X"/>
+    <div class="card"><button class="btn ghost" onclick="leaveMeasure()">‹ Voltar</button></div>
+  </section>
 
-      <label>Foto de referência (opcional)</label>
-      <div class="btns">
-        <button class="btn sec sm" onclick="capturePhoto(d=>{editRef=d;renderEditRef();})">📷 Câmera</button>
-        <button class="btn ghost sm" onclick="pickFile(d=>{editRef=d;renderEditRef();})">🖼️ Foto</button>
-      </div>
-      <div class="thumbs" id="editRefWrap"></div>
-
-      <h2 style="margin-top:16px">Medidas (nominal ± variação, em mm)</h2>
-      <div id="dimRows"></div>
-      <button class="btn sec sm" style="margin-top:6px" onclick="addDimRow()">➕ Adicionar medida</button>
-
-      <h2 style="margin-top:16px">Itens de inspeção visual</h2>
-      <div class="suggest" id="visSuggest"></div>
-      <div id="visItemRows"></div>
-      <button class="btn sec sm" style="margin-top:6px" onclick="addVisItem('')">➕ Adicionar item</button>
-
-      <div class="btns" style="margin-top:14px">
-        <button class="btn" onclick="saveSpec()">💾 Salvar padrão</button>
-        <button class="btn ghost" onclick="showTab('specs')">Cancelar</button>
-      </div>
+  <!-- ===================== INSPECIONAR ===================== -->
+  <section id="viewInsp">
+    <div class="card">
+      <h2>Inspecionar peça</h2>
+      <p class="hint">Escolha o padrão da peça correta. Depois fotografe a peça nova (com a referência no quadro) e a ferramenta compara as medidas.</p>
+      <label>Padrão</label><select id="inspSpec"></select>
+      <p class="hint" id="noSpec"></p>
+      <label>Identificação peça / lote (opcional)</label><input id="pieceId" placeholder="ex: NF 1234 — peça 3"/>
+      <button class="btn" style="margin-top:10px" id="startInspBtn" onclick="startInspect()">▶ Iniciar inspeção</button>
     </div>
   </section>
 
   <!-- ===================== HISTÓRICO ===================== -->
   <section id="viewHist" class="hidden">
-    <div class="card">
-      <h2>Histórico de inspeções</h2>
-      <ul class="savedlist" id="histList"></ul>
-      <div class="btns">
-        <button class="btn sec" onclick="exportData('insp')">⬇️ Exportar</button>
-        <button class="btn ghost" onclick="pickJson(importInsp)">⬆️ Importar</button>
-      </div>
-    </div>
-    <div class="card hidden" id="histDetail"></div>
+    <div class="card"><h2>Histórico</h2><ul class="savedlist" id="histList"></ul></div>
   </section>
+
+  <section id="reportPrint" class="report"></section>
 </main>
+<footer>Funciona offline · peças ≤200mm · referência no mesmo plano da peça e foto reta = mais precisão</footer>
 
-<footer>Funciona offline · dados só neste aparelho · medidas digitadas (precisão do seu instrumento) · câmera = documentação</footer>
-
-<!-- modal câmera -->
-<div class="modal" id="camModal">
-  <video id="video" playsinline autoplay muted></video>
-  <div class="mbtns">
-    <button class="btn" onclick="snap()">⚪ Capturar</button>
-    <button class="btn ghost" onclick="closeCamera()">Cancelar</button>
-  </div>
+<div class="modal" id="camModal" style="position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:50;display:none;flex-direction:column;padding:14px">
+  <video id="video" playsinline autoplay muted style="width:100%;flex:1;object-fit:contain;border-radius:12px;background:#000"></video>
+  <div class="btns"><button class="btn" onclick="snap()">⚪ Capturar</button><button class="btn ghost" onclick="closeCam()">Cancelar</button></div>
 </div>
-
-<!-- inputs ocultos -->
-<input id="fileInput" class="filein" type="file" accept="image/*" onchange="onFilePicked(event)"/>
-<input id="jsonInput" class="filein" type="file" accept="application/json" onchange="onJsonPicked(event)"/>
+<input id="fileInput" class="filein" type="file" accept="image/*" onchange="onFile(event)"/>
 
 <script>
-/* ============================ Persistência ============================ */
-const K_SPECS='inspecao_pu_specs_v3', K_INSP='inspecao_pu_insp_v3';
-const loadSpecs=()=>{try{return JSON.parse(localStorage.getItem(K_SPECS)||'[]')}catch(e){return[]}};
-const saveSpecs=a=>localStorage.setItem(K_SPECS,JSON.stringify(a));
-const loadInsp=()=>{try{return JSON.parse(localStorage.getItem(K_INSP)||'[]')}catch(e){return[]}};
-const saveInspAll=a=>localStorage.setItem(K_INSP,JSON.stringify(a));
-
-const DIM_TYPES={diametro:'Diâmetro',largura:'Largura',altura:'Altura',profundidade:'Profundidade',espessura:'Espessura do revestimento',outro:'Outro'};
-const VIS_SUGGESTIONS=['Trinca / fissura','Falha ou bolha no revestimento','Descolamento do revestimento','Desgaste / marca de atrito','Oxidação / corrosão','Ovalização aparente','Riscos / marcas','Folga ou ruído ao girar'];
-
-/* ============================ util ============================ */
+/* ===================== armazenamento ===================== */
+const K_REFS='pu_refs_v5',K_SPECS='pu_specs_v5',K_HIST='pu_hist_v5';
+const lo=k=>{try{return JSON.parse(localStorage.getItem(k)||'[]')}catch(e){return[]}};
+const sv=(k,a)=>localStorage.setItem(k,JSON.stringify(a));
+const DIM={diametro:'Diâmetro',largura:'Largura',altura:'Altura',comprimento:'Comprimento',espessura:'Espessura',outro:'Outro'};
 const $=id=>document.getElementById(id);
-const num=v=>{const n=parseFloat(String(v).replace(',','.'));return isNaN(n)?null:n;};
+const num=v=>{const n=parseFloat(String(v).replace(',','.'));return isNaN(n)?null:n};
 const fmt=n=>(Math.round(n*100)/100).toFixed(2);
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function seedRefs(){if(lo(K_REFS).length)return;sv(K_REFS,[
+  {id:'r1',name:'Moeda R$ 1,00',shape:'circle',mm:27},{id:'r2',name:'Moeda R$ 0,50',shape:'circle',mm:23},
+  {id:'r3',name:'Moeda R$ 0,25',shape:'circle',mm:25},{id:'r4',name:'Moeda R$ 0,10',shape:'circle',mm:20},
+  {id:'r5',name:'Cartão (lado maior)',shape:'reta',mm:85.6}]);}
 
-/* downscale + compressão para caber no armazenamento */
-function compress(dataUrl,maxW,cb){
-  const im=new Image();
-  im.onload=()=>{
-    const sc=Math.min(1,maxW/im.naturalWidth);
-    const c=document.createElement('canvas');
-    c.width=Math.round(im.naturalWidth*sc); c.height=Math.round(im.naturalHeight*sc);
-    c.getContext('2d').drawImage(im,0,0,c.width,c.height);
-    cb(c.toDataURL('image/jpeg',0.7));
-  };
-  im.src=dataUrl;
-}
-
-/* ============================ Abas ============================ */
+/* ===================== abas ===================== */
 function showTab(t){
-  $('viewInspect').classList.toggle('hidden',t!=='inspect');
-  $('viewSpecs').classList.toggle('hidden',t!=='specs');
-  $('viewHist').classList.toggle('hidden',t!=='hist');
-  $('tabInspect').classList.toggle('active',t==='inspect');
-  $('tabSpecs').classList.toggle('active',t==='specs');
-  $('tabHist').classList.toggle('active',t==='hist');
-  if(t==='specs'){renderSpecList();$('specFormCard').classList.add('hidden');$('specListCard').classList.remove('hidden');}
-  if(t==='hist'){renderHistList();$('histDetail').classList.add('hidden');}
-  if(t==='inspect')populateInspSpec();
+  const map={refs:'viewRefs',specs:'viewSpecs',insp:'viewInsp',hist:'viewHist'};
+  Object.values(map).forEach(v=>$(v).classList.add('hidden'));
+  $('viewMeasure').classList.add('hidden');
+  $(map[t]).classList.remove('hidden');
+  $('tabRefs').classList.toggle('active',t==='refs');$('tabSpecs').classList.toggle('active',t==='specs');
+  $('tabInsp').classList.toggle('active',t==='insp');$('tabHist').classList.toggle('active',t==='hist');
+  if(t==='refs')renderRefs();
+  if(t==='specs')renderSpecs();
+  if(t==='insp')populateInspSpec();
+  if(t==='hist')renderHist();
 }
 
-/* ============================ Câmera / arquivos ============================ */
-let stream=null, captureCb=null, fileCb=null, jsonCb=null;
-async function capturePhoto(cb){
-  captureCb=cb;
+/* ===================== referências ===================== */
+function renderRefs(){
+  const ul=$('refList');ul.innerHTML='';const all=lo(K_REFS);
+  if(!all.length){ul.innerHTML='<li style="color:var(--muted)">Nenhuma referência.</li>';return;}
+  all.forEach(r=>{const li=document.createElement('li');
+    li.innerHTML='<div class="meta"><b>'+esc(r.name)+'</b><small>'+(r.shape==='circle'?'redondo':'reto')+' · '+fmt(r.mm)+' mm</small></div>';
+    const d=document.createElement('button');d.className='btn danger sm';d.textContent='Excluir';
+    d.onclick=()=>{sv(K_REFS,lo(K_REFS).filter(x=>x.id!==r.id));renderRefs();};
+    li.appendChild(d);ul.appendChild(li);});
+}
+function addRef(){
+  const name=$('refName').value.trim(),mm=num($('refMm').value),shape=$('refShape').value;
+  if(!name||!(mm>0)){alert('Informe nome e tamanho em mm.');return;}
+  const all=lo(K_REFS);all.push({id:'r'+Date.now(),name,shape,mm});sv(K_REFS,all);
+  $('refName').value='';$('refMm').value='';renderRefs();
+}
+
+/* ===================== câmera / arquivos ===================== */
+let stream=null,capCb=null,fileCb=null;
+async function capturePhoto(cb){capCb=cb;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){pickFile(cb);return;}
   try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});}
   catch(e){try{stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});}
-    catch(e2){alert('Câmera ao vivo indisponível ('+e2.name+'). Usando câmera do sistema.');pickFile(cb);return;}}
-  const v=$('video');v.srcObject=stream;v.muted=true;try{await v.play();}catch(_){}
-  $('camModal').classList.add('on');
+    catch(e2){pickFile(cb);return;}}
+  const v=$('video');v.srcObject=stream;v.muted=true;try{await v.play();}catch(_){}$('camModal').style.display='flex';
 }
-function closeCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}$('camModal').classList.remove('on');}
-function snap(){
-  const v=$('video'); if(!v.videoWidth){alert('Aguarde a câmera carregar.');return;}
-  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
-  c.getContext('2d').drawImage(v,0,0);
-  const raw=c.toDataURL('image/jpeg',0.9); closeCamera();
-  compress(raw,1280,d=>{if(captureCb)captureCb(d);});
-}
+function closeCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}$('camModal').style.display='none';}
+function snap(){const v=$('video');if(!v.videoWidth){alert('Aguarde a câmera.');return;}
+  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
+  const raw=c.toDataURL('image/jpeg',0.92);closeCam();if(capCb)capCb(raw);}
 function pickFile(cb){fileCb=cb;$('fileInput').click();}
-function onFilePicked(ev){const f=ev.target.files&&ev.target.files[0];if(!f){return;}const r=new FileReader();r.onload=()=>compress(r.result,1280,d=>{if(fileCb)fileCb(d);});r.readAsDataURL(f);ev.target.value='';}
-function pickJson(cb){jsonCb=cb;$('jsonInput').click();}
-function onJsonPicked(ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{jsonCb&&jsonCb(JSON.parse(r.result));}catch(e){alert('Arquivo inválido.');}};r.readAsText(f);ev.target.value='';}
+function onFile(ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{if(fileCb)fileCb(r.result);};r.readAsDataURL(f);ev.target.value='';}
 
-/* ============================ EDITOR DE PADRÃO ============================ */
-let editId=null, editDims=[], editVisual=[], editRef=null;
-function newSpec(){editId=null;editDims=[];editVisual=[];editRef=null;
-  $('specName').value='';$('specFormTitle').textContent='Novo padrão';
-  addDimRow(); VIS_SUGGESTIONS.slice(0,4).forEach(addVisItem);
-  openSpecForm();}
-function editSpec(id){
-  const s=loadSpecs().find(x=>x.id===id);if(!s)return;
-  editId=s.id;editDims=s.dims.map(d=>({...d}));editVisual=s.visualItems.slice();editRef=s.refPhoto||null;
-  $('specName').value=s.name;$('specFormTitle').textContent='Editar padrão';
-  openSpecForm();
+/* ===================== motor de medição (canvas) ===================== */
+const cv=$('cv'),ctx=cv.getContext('2d'),loupe=$('loupe'),lcv=$('loupeCv'),lctx=lcv.getContext('2d');
+const M={img:null,scale:null,tool:'cal',pending:[],prov:null,
+  mode:null,        // 'spec' | 'inspect'
+  ref:null,         // referência selecionada
+  measures:[],      // padrão: [{name,type,mm,pts,shape}]
+  pendingMeas:null, // {mm,pts,shape}
+  spec:null,        // inspeção: padrão carregado
+  idx:0,results:[], // inspeção
+  photo:null};
+function reqPoints(){if(M.tool==='cal')return M.ref&&M.ref.shape==='circle'?3:2;return M.tool==='diam'?3:2;}
+function setStageImage(dataUrl){
+  const im=new Image();im.onload=()=>{M.img=im;M.photo=dataUrl;M.scale=null;M.pending=[];M.prov=null;
+    if(M.mode==='spec'){M.measures=[];M.pendingMeas=null;}
+    if(M.mode==='inspect'){M.idx=0;M.results=[];}
+    $('stageEmpty').classList.add('hidden');cv.classList.remove('hidden');
+    cv.width=im.naturalWidth;cv.height=im.naturalHeight;setTool('cal');draw();updateScale();refreshMeasUI();};
+  im.src=dataUrl;}
+function ptFromEvent(ev){const r=cv.getBoundingClientRect();return{x:(ev.clientX-r.left)*(cv.width/r.width),y:(ev.clientY-r.top)*(cv.height/r.height)};}
+cv.addEventListener('pointerdown',e=>{if(!M.img)return;e.preventDefault();cv.setPointerCapture&&cv.setPointerCapture(e.pointerId);M.prov=ptFromEvent(e);showLoupe(e);draw();});
+cv.addEventListener('pointermove',e=>{if(!M.prov)return;e.preventDefault();M.prov=ptFromEvent(e);showLoupe(e);draw();});
+cv.addEventListener('pointerup',e=>{if(!M.prov)return;e.preventDefault();const p=M.prov;M.prov=null;loupe.style.display='none';M.pending.push(p);if(M.pending.length>=reqPoints()){commit();}draw();});
+function showLoupe(ev){if(!M.img)return;const L=120,z=4,s=L/z;lctx.clearRect(0,0,L,L);
+  lctx.drawImage(M.img,M.prov.x-s/2,M.prov.y-s/2,s,s,0,0,L,L);
+  lctx.strokeStyle='#39d98a';lctx.lineWidth=1.5;lctx.beginPath();lctx.moveTo(L/2,0);lctx.lineTo(L/2,L);lctx.moveTo(0,L/2);lctx.lineTo(L,L/2);lctx.stroke();
+  const r=cv.getBoundingClientRect();const left=(ev.clientX-r.left)<r.width/2;loupe.style.left=left?'auto':'8px';loupe.style.right=left?'8px':'auto';loupe.style.display='block';}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function circle3(A,B,C){const d=2*(A.x*(B.y-C.y)+B.x*(C.y-A.y)+C.x*(A.y-B.y));if(Math.abs(d)<1e-9)return null;
+  const ax2=A.x*A.x+A.y*A.y,bx2=B.x*B.x+B.y*B.y,cx2=C.x*C.x+C.y*C.y;
+  const ux=(ax2*(B.y-C.y)+bx2*(C.y-A.y)+cx2*(A.y-B.y))/d,uy=(ax2*(C.x-B.x)+bx2*(A.x-C.x)+cx2*(B.x-A.x))/d;
+  return{x:ux,y:uy,r:Math.hypot(A.x-ux,A.y-uy)};}
+function commit(){
+  const pts=M.pending.slice();M.pending=[];
+  if(M.tool==='cal'){
+    let px;
+    if(M.ref&&M.ref.shape==='circle'){const c=circle3(pts[0],pts[1],pts[2]);if(!c){alert('Pontos inválidos, tente de novo.');return;}px=c.r*2;M.calCircle=c;}
+    else{px=dist(pts[0],pts[1]);M.calCircle=null;}
+    M.calPts=pts;M.scale=M.ref.mm/px;updateScale();setTool(M.tool==='cal'?'line':'line');draw();refreshMeasUI();return;
+  }
+  if(!M.scale){alert('Calibre a escala primeiro.');M.pending=[];return;}
+  let mm,shape;
+  if(M.tool==='diam'){const c=circle3(pts[0],pts[1],pts[2]);if(!c)return;mm=c.r*2*M.scale;shape={c};}
+  else{mm=dist(pts[0],pts[1])*M.scale;shape=null;}
+  if(M.mode==='spec'){
+    M.pendingMeas={mm,pts,shape};$('mVal').textContent=fmt(mm);$('mName').value='';
+    $('newMeasForm').classList.remove('hidden');$('mName').focus();
+  }else{
+    const t=M.spec.dims[M.idx];M.results[M.idx]={name:t.name,type:t.type,nominal:t.mm,tolType:M.spec.tolType,tolValue:t.tolValue??M.spec.tolValue,measured:mm,pts,shape};
+    M.idx++;if(M.idx>=M.spec.dims.length)finishInspect();else refreshMeasUI();
+  }
+  draw();
 }
-function openSpecForm(){
-  $('specListCard').classList.add('hidden');$('specFormCard').classList.remove('hidden');
-  renderEditRef();renderDimRows();renderVisItems();renderVisSuggest();
-}
-function renderEditRef(){$('editRefWrap').innerHTML=editRef?'<div class="th"><img src="'+editRef+'"><button onclick="editRef=null;renderEditRef()">✕</button></div>':'';}
-function addDimRow(){editDims.push({name:'',type:'diametro',nominal:'',varPlus:''});renderDimRows();}
-function renderDimRows(){
-  const wrap=$('dimRows');wrap.innerHTML='';
-  editDims.forEach((d,i)=>{
-    const div=document.createElement('div');div.className='dimrow';
-    div.innerHTML=
-      '<div class="row"><div style="flex:1.4"><label>Nome</label><input value="'+escapeHtml(d.name)+'" oninput="editDims['+i+'].name=this.value"/></div>'
-      +'<div><label>Tipo</label><select onchange="editDims['+i+'].type=this.value;renderDimRows()">'
-      +Object.entries(DIM_TYPES).map(([k,v])=>'<option value="'+k+'"'+(d.type===k?' selected':'')+'>'+v+'</option>').join('')+'</select></div></div>'
-      +'<div class="row" style="margin-top:6px"><div><label>Nominal (mm)</label><input type="number" inputmode="decimal" value="'+escapeHtml(d.nominal)+'" oninput="editDims['+i+'].nominal=this.value;updLim('+i+')"/></div>'
-      +'<div><label>Variação ± (mm)</label><input type="number" inputmode="decimal" value="'+escapeHtml(d.varPlus)+'" oninput="editDims['+i+'].varPlus=this.value;updLim('+i+')"/></div>'
-      +'<div style="flex:.4;display:flex;align-items:flex-end"><button class="btn danger sm" style="width:100%" onclick="editDims.splice('+i+',1);renderDimRows()">✕</button></div></div>'
-      +'<div class="lim" id="lim'+i+'"></div>';
-    wrap.appendChild(div);
-    updLim(i);
-  });
-}
-function updLim(i){
-  const d=editDims[i],el=$('lim'+i);if(!el)return;
-  const nom=num(d.nominal),vp=num(d.varPlus);
-  el.innerHTML=(nom!=null&&vp!=null)?'Limites: <b>'+fmt(nom-vp)+'</b> a <b>'+fmt(nom+vp)+'</b> mm':'Informe nominal e variação.';
-}
-function renderVisSuggest(){
-  $('visSuggest').innerHTML='';
-  VIS_SUGGESTIONS.forEach(s=>{
-    if(editVisual.includes(s))return;
-    const b=document.createElement('button');b.textContent='+ '+s;b.onclick=()=>{addVisItem(s);renderVisSuggest();};
-    $('visSuggest').appendChild(b);
-  });
-}
-function addVisItem(txt){editVisual.push(txt||'');renderVisItems();renderVisSuggest();}
-function renderVisItems(){
-  const wrap=$('visItemRows');wrap.innerHTML='';
-  editVisual.forEach((t,i)=>{
-    const div=document.createElement('div');div.className='row';div.style.marginBottom='6px';
-    div.innerHTML='<input value="'+escapeHtml(t)+'" oninput="editVisual['+i+']=this.value" placeholder="descrição do item"/>'
-      +'<button class="btn danger sm" style="flex:.3" onclick="editVisual.splice('+i+',1);renderVisItems();renderVisSuggest()">✕</button>';
-    wrap.appendChild(div);
-  });
-}
-function saveSpec(){
-  const name=$('specName').value.trim();if(!name){alert('Dê um nome ao padrão.');return;}
-  const dims=editDims.filter(d=>d.name.trim()&&num(d.nominal)!=null&&num(d.varPlus)!=null)
-    .map(d=>({name:d.name.trim(),type:d.type,nominal:num(d.nominal),varPlus:num(d.varPlus)}));
-  const visualItems=editVisual.map(t=>t.trim()).filter(Boolean);
-  if(dims.length===0&&visualItems.length===0){alert('Adicione ao menos uma medida ou item visual.');return;}
-  const all=loadSpecs();
-  const spec={id:editId||('spec_'+Date.now()),name,refPhoto:editRef,dims,visualItems,createdAt:new Date().toISOString()};
-  const idx=all.findIndex(x=>x.id===spec.id);
-  if(idx>=0)all[idx]=spec;else all.push(spec);
-  saveSpecs(all);showTab('specs');
-}
-function renderSpecList(){
-  const ul=$('specList');ul.innerHTML='';const all=loadSpecs();
-  if(all.length===0){ul.innerHTML='<li style="color:var(--muted)">Nenhum padrão. Crie um novo.</li>';return;}
-  all.forEach(s=>{
-    const li=document.createElement('li');
-    li.innerHTML=(s.refPhoto?'<img src="'+s.refPhoto+'">':'<div style="width:46px"></div>')
-      +'<div class="meta"><b>'+escapeHtml(s.name)+'</b><small>'+s.dims.length+' medida(s) · '+s.visualItems.length+' item(ns) visual</small></div>';
-    const e=document.createElement('button');e.className='btn sec sm';e.textContent='Editar';e.onclick=()=>editSpec(s.id);
-    const d=document.createElement('button');d.className='btn danger sm';d.textContent='Excluir';
-    d.onclick=()=>{if(confirm('Excluir "'+s.name+'"?')){saveSpecs(loadSpecs().filter(x=>x.id!==s.id));renderSpecList();}};
-    li.appendChild(e);li.appendChild(d);ul.appendChild(li);
-  });
-}
+function setTool(t){M.tool=t;M.pending=[];M.prov=null;
+  ['cal','line','diam'].forEach(x=>$('t'+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle('active',x===t));draw();updateHint();}
+function undo(){if(M.pending.length){M.pending.pop();draw();return;}
+  if(M.pendingMeas){cancelMeas();return;}
+  if(M.mode==='spec'&&M.tool!=='cal'&&M.measures.length){M.measures.pop();renderSpecMeas();draw();}}
+function updateScale(){$('scaleBox').innerHTML=M.scale?'Escala: <b>'+(1/M.scale).toFixed(2)+' px/mm</b> ✅':'Escala: <b>não calibrada</b>';}
+function updateHint(){
+  let h='';
+  if(M.tool==='cal')h=M.ref?('Calibrar: marque '+(M.ref.shape==='circle'?'3 pontos na borda do '+M.ref.name+' (redondo)':'2 pontos no comprimento do '+M.ref.name)+'.'):'Escolha uma referência de escala acima.';
+  else if(!M.scale)h='⚠️ Calibre a escala antes de medir.';
+  else if(M.tool==='diam')h='Diâmetro: toque 3 pontos na borda do círculo.';
+  else h='Distância: toque 2 pontos.';
+  $('measHint2').textContent=h;}
+function draw(){if(!M.img)return;ctx.clearRect(0,0,cv.width,cv.height);ctx.drawImage(M.img,0,0,cv.width,cv.height);
+  const lw=Math.max(2,cv.width/400),fs=Math.max(14,cv.width/45);ctx.lineWidth=lw;ctx.font='bold '+fs+'px system-ui';ctx.textBaseline='bottom';
+  if(M.calPts){if(M.calCircle)drawCircle(M.calCircle,'#39d98a',M.ref.name,fs);else drawLine(M.calPts[0],M.calPts[1],'#39d98a','ref '+fmt(M.ref.mm)+'mm',fs);}
+  if(M.mode==='spec'){M.measures.forEach(m=>{if(m.shape&&m.shape.c)drawCircle(m.shape.c,'#f5b945',m.name+': '+fmt(m.mm)+'mm',fs);else drawLine(m.pts[0],m.pts[1],'#f5b945',m.name+': '+fmt(m.mm)+'mm',fs);});
+    if(M.pendingMeas){const pm=M.pendingMeas;if(pm.shape&&pm.shape.c)drawCircle(pm.shape.c,'#fff',fmt(pm.mm)+'mm',fs);else drawLine(pm.pts[0],pm.pts[1],'#fff',fmt(pm.mm)+'mm',fs);}}
+  else if(M.mode==='inspect'){M.results.forEach(r=>{if(!r)return;const ok=stOk(r);const col=ok?'#39d98a':'#ff5b6e';
+    if(r.shape&&r.shape.c)drawCircle(r.shape.c,col,r.name+': '+fmt(r.measured)+'mm',fs);else drawLine(r.pts[0],r.pts[1],col,r.name+': '+fmt(r.measured)+'mm',fs);});}
+  ctx.fillStyle='#fff';M.pending.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,lw*2.4,0,7);ctx.fill();});
+  if(M.prov){ctx.beginPath();ctx.arc(M.prov.x,M.prov.y,lw*2.4,0,7);ctx.fill();}}
+function drawLine(a,b,c,lab,fs){ctx.strokeStyle=c;ctx.fillStyle=c;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+  [a,b].forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,ctx.lineWidth*2.2,0,7);ctx.fill();});label(((a.x+b.x)/2),((a.y+b.y)/2),lab,c,fs);}
+function drawCircle(c,col,lab,fs){ctx.strokeStyle=col;ctx.fillStyle=col;ctx.beginPath();ctx.arc(c.x,c.y,c.r,0,7);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(c.x-c.r,c.y);ctx.lineTo(c.x+c.r,c.y);ctx.stroke();label(c.x,c.y-c.r,lab,col,fs);}
+function label(x,y,t,c,fs){if(!t)return;ctx.save();const w=ctx.measureText(t).width+10;ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x+6,y-fs-6,w,fs+8);ctx.fillStyle=c;ctx.fillText(t,x+11,y);ctx.restore();}
 
-/* ============================ INSPEÇÃO ============================ */
-let insp=null; // {specId,spec,pieceId,photos,dims:[{...,measured}],visual:[{label,status,photo,note}]}
-function populateInspSpec(){
-  const sel=$('inspSpec'),all=loadSpecs();sel.innerHTML='';
-  if(all.length===0){$('noSpecMsg').textContent='Nenhum padrão cadastrado. Vá em "Padrões" e crie um.';
-    ['photosCard','measCard','visCard','finishCard'].forEach(id=>$(id).classList.add('hidden'));
-    $('resultCard').classList.add('hidden');return;}
-  $('noSpecMsg').textContent='';
-  all.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;sel.appendChild(o);});
-  startInspection();
+/* ===================== modo PADRÃO ===================== */
+function newSpec(){
+  M.mode='spec';M.img=null;M.photo=null;M.scale=null;M.measures=[];M.pending=[];M.calPts=null;M.calCircle=null;M.pendingMeas=null;
+  $('measTitle').textContent='Cadastrar padrão (peça correta)';
+  $('measLead').textContent='Fotografe a peça correta com a referência de escala no mesmo plano. Calibre e meça cada dimensão.';
+  fillRefSelect();$('specMeasCard').classList.remove('hidden');$('inspMeasCard').classList.add('hidden');$('resultCard').classList.add('hidden');
+  $('stageEmpty').classList.remove('hidden');cv.classList.add('hidden');$('specName').value='';
+  showMeasureScreen();renderSpecMeas();
 }
-function startInspection(){
-  const spec=loadSpecs().find(s=>s.id===$('inspSpec').value);if(!spec)return;
-  insp={specId:spec.id,spec,pieceId:$('pieceId')?$('pieceId').value:'',photos:[],
-    dims:spec.dims.map(d=>({...d,measured:''})),
-    visual:spec.visualItems.map(l=>({label:l,status:'',photo:null,note:''})),
-    comparison:{ref:spec.refPhoto||null,cur:null}};
-  ['photosCard','measCard','visCard','compareCard','finishCard'].forEach(id=>$(id).classList.remove('hidden'));
-  $('resultCard').classList.add('hidden');
-  $('refPhotoWrap').classList.toggle('hidden',!spec.refPhoto);
-  if(spec.refPhoto)$('refPhotoImg').src=spec.refPhoto;
-  renderPartPhotos();renderMeasRows();renderVisRows();renderCompare();updateLoteTally();
-}
-function renderCompare(){
-  const c=insp.comparison;
-  $('cmpRef').innerHTML=c.ref?'<img src="'+c.ref+'">':'<span style="color:var(--muted);font-size:.7rem">sem foto</span>';
-  $('cmpCur').innerHTML=c.cur?'<img src="'+c.cur+'">':'<span style="color:var(--muted);font-size:.7rem">sem foto</span>';
-  const ba=$('baWrap');
-  if(c.ref&&c.cur){ba.classList.remove('hidden');$('baBase').src=c.cur;$('baTopImg').src=c.ref;setWipe(50);}
-  else ba.classList.add('hidden');
-}
-function setWipe(v){$('baTop').style.width=v+'%';$('baHandle').style.left=v+'%';}
-function addPartPhoto(d){insp.photos.push(d);renderPartPhotos();}
-function renderPartPhotos(){
-  const w=$('partPhotos');w.innerHTML='';
-  insp.photos.forEach((p,i)=>{const div=document.createElement('div');div.className='th';
-    div.innerHTML='<img src="'+p+'"><button onclick="insp.photos.splice('+i+',1);renderPartPhotos()">✕</button>';w.appendChild(div);});
-}
-function renderMeasRows(){
-  const w=$('measRows');w.innerHTML='';
-  if(insp.dims.length===0){w.innerHTML='<p class="hint">Sem medidas neste padrão.</p>';return;}
-  insp.dims.forEach((d,i)=>{
-    const div=document.createElement('div');div.className='measrow';
-    div.innerHTML='<div class="top"><div class="nm">'+escapeHtml(d.name)
-      +'<small>'+DIM_TYPES[d.type]+' · '+fmt(d.nominal)+' ±'+fmt(d.varPlus)+' mm ('+fmt(d.nominal-d.varPlus)+'–'+fmt(d.nominal+d.varPlus)+')</small></div>'
-      +'<input class="meas" type="number" inputmode="decimal" placeholder="mm" value="'+escapeHtml(d.measured)+'" oninput="insp.dims['+i+'].measured=this.value;measFeedback('+i+')"/></div>'
-      +'<div class="fb" id="fb'+i+'"></div>';
-    w.appendChild(div);measFeedback(i);
-  });
-}
-function dimStatus(d){
-  const m=num(d.measured);if(m==null)return null;
-  const lo=d.nominal-d.varPlus,hi=d.nominal+d.varPlus,dev=m-d.nominal;
-  return {pass:m>=lo-1e-9&&m<=hi+1e-9,dev,lo,hi};
-}
-function measFeedback(i){
-  const d=insp.dims[i],el=$('fb'+i);if(!el)return;
-  const st=dimStatus(d);
-  if(!st){el.innerHTML='<span class="pill muted">não medido</span>';return;}
-  const sign=st.dev>=0?'+':'';
-  el.innerHTML='<span class="pill '+(st.pass?'ok':'bad')+'">'+(st.pass?'OK':'FORA')+'</span> desvio '+sign+fmt(st.dev)+' mm'
-    +(st.pass?'':' · <i>'+defectHint(d.type,st.dev>0)+'</i>');
-}
-function renderVisRows(){
-  const w=$('visRows');w.innerHTML='';
-  if(insp.visual.length===0){w.innerHTML='<p class="hint">Sem itens visuais neste padrão.</p>';return;}
-  insp.visual.forEach((v,i)=>{
-    const div=document.createElement('div');div.className='visrow';
-    div.innerHTML='<div class="top"><div class="nm">'+escapeHtml(v.label)+'</div>'
-      +'<div class="seg"><button class="ok'+(v.status==='ok'?' on':'')+'" onclick="setVis('+i+',\'ok\')">OK</button>'
-      +'<button class="bad'+(v.status==='problema'?' on':'')+'" onclick="setVis('+i+',\'problema\')">Problema</button></div></div>'
-      +'<div id="visx'+i+'"></div>';
-    w.appendChild(div);renderVisExtra(i);
-  });
-}
-function setVis(i,s){insp.visual[i].status=(insp.visual[i].status===s?'':s);renderVisRows();}
-function renderVisExtra(i){
-  const v=insp.visual[i],el=$('visx'+i);if(!el)return;
-  if(v.status!=='problema'){el.innerHTML='';return;}
-  el.innerHTML='<textarea placeholder="observação (opcional)" oninput="insp.visual['+i+'].note=this.value">'+escapeHtml(v.note||'')+'</textarea>'
-    +'<div class="btns"><button class="btn sec sm" onclick="capturePhoto(d=>{insp.visual['+i+'].photo=d;renderVisRows()})">📷 Foto do defeito</button>'
-    +'<button class="btn ghost sm" onclick="pickFile(d=>{insp.visual['+i+'].photo=d;renderVisRows()})">🖼️ Foto</button></div>'
-    +(v.photo?'<div class="thumbs"><div class="th"><img src="'+v.photo+'"><button onclick="insp.visual['+i+'].photo=null;renderVisRows()">✕</button></div></div>':'');
-}
-function defectHint(type,acima){
-  const M={
-    diametro:['Sobremedida — possível inchamento/excesso de revestimento','Submedida — desgaste ou revestimento fino'],
-    espessura:['Revestimento espesso — excesso/escorrimento','Revestimento fino — desgaste, risco de falha'],
-    profundidade:['Mais profundo que o padrão','Raso — sobra de material'],
-    altura:['Acima do nominal — sobra de material','Abaixo do nominal — desgaste/retração'],
-    largura:['Acima do nominal','Abaixo do nominal — retração'],
-    outro:['Acima do nominal','Abaixo do nominal'],
-  };
-  return (M[type]||M.outro)[acima?0:1];
-}
-function finishInspection(){
-  if(!insp)return;
-  const diag=$('diagList');diag.innerHTML='';
-  let fail=false,warn=false;
-  insp.dims.forEach(d=>{
-    const st=dimStatus(d);
-    if(st===null){warn=true;const li=document.createElement('li');li.className='warn';
-      li.innerHTML='⚠️ <b>'+escapeHtml(d.name)+'</b> não foi medido.';diag.appendChild(li);return;}
-    if(!st.pass){fail=true;const sign=st.dev>=0?'+':'';const li=document.createElement('li');li.className='bad';
-      li.innerHTML='❌ <b>'+escapeHtml(d.name)+'</b> ('+DIM_TYPES[d.type]+'): '+fmt(num(d.measured))+' mm · desvio '+sign+fmt(st.dev)+' mm · <i>'+defectHint(d.type,st.dev>0)+'</i>';
-      diag.appendChild(li);}
-  });
-  insp.visual.forEach(v=>{
-    if(v.status==='problema'){fail=true;const li=document.createElement('li');li.className='bad';
-      li.innerHTML='❌ <b>'+escapeHtml(v.label)+'</b>'+(v.note?': '+escapeHtml(v.note):'')+(v.photo?' 📷':'');diag.appendChild(li);}
-    else if(v.status===''){warn=true;const li=document.createElement('li');li.className='warn';
-      li.innerHTML='⚠️ <b>'+escapeHtml(v.label)+'</b> não verificado.';diag.appendChild(li);}
-  });
-  if(!fail&&!warn){const li=document.createElement('li');li.style.color='var(--muted)';li.textContent='Tudo dentro do padrão.';diag.appendChild(li);}
-  const v=$('verdict');v.className='verdict '+(fail?'bad':'ok');
-  v.textContent=fail?'❌ REPROVADA':(warn?'✅ APROVADA (com pendências de verificação)':'✅ APROVADA');
-  $('resultCard').classList.remove('hidden');
-  $('resultCard').scrollIntoView({behavior:'smooth'});
-}
-function saveInspection(silent){
-  if(!insp)return false;
-  insp.pieceId=$('pieceId').value;
-  const loteId=$('loteId').value;
-  const fail=insp.dims.some(d=>{const s=dimStatus(d);return s&&!s.pass;})||insp.visual.some(v=>v.status==='problema');
-  const rec={id:'insp_'+Date.now(),date:new Date().toISOString(),specName:insp.spec.name,
-    pieceId:insp.pieceId,loteId,verdict:fail?'REPROVADA':'APROVADA',
-    photos:insp.photos,comparison:insp.comparison,
-    dims:insp.dims.map(d=>({name:d.name,type:d.type,nominal:d.nominal,varPlus:d.varPlus,measured:num(d.measured)})),
-    visual:insp.visual.map(v=>({label:v.label,status:v.status,note:v.note,photo:v.photo}))};
-  const all=loadInsp();all.unshift(rec);
-  try{saveInspAll(all);if(!silent)alert('Inspeção salva no histórico.');updateLoteTally();return true;}
-  catch(e){alert('Não foi possível salvar (memória do navegador cheia). Exporte e apague inspeções antigas.');return false;}
-}
-function saveAndNext(){
-  if(!saveInspection(true))return;
-  // sugere o próximo número de peça
-  const cur=$('pieceId').value.trim();
-  const m=cur.match(/(\d+)\s*$/);
-  $('pieceId').value=m?cur.replace(/(\d+)\s*$/,(parseInt(m[1],10)+1)):(cur?cur+' 2':'2');
-  startInspection();
-  $('viewInspect').scrollIntoView({behavior:'smooth'});
-}
-function loteRecords(){const lote=($('loteId').value||'').trim();return lote?loadInsp().filter(r=>(r.loteId||'').trim()===lote):[];}
-function updateLoteTally(){
-  const recs=loteRecords(),el=$('loteTally'),btn=$('loteReportBtn');
-  if(recs.length===0){el.textContent='';btn.style.display='none';return;}
-  const ap=recs.filter(r=>r.verdict==='APROVADA').length, rp=recs.length-ap;
-  el.innerHTML='Lote: <b>'+recs.length+'</b> peça(s) · <span style="color:var(--ok)">'+ap+' aprovadas</span> · <span style="color:var(--bad)">'+rp+' reprovadas</span>';
-  btn.style.display='block';
-}
-function printLoteReport(){
-  const recs=loteRecords();if(recs.length===0){alert('Sem peças salvas neste lote.');return;}
-  const lote=($('loteId').value||'').trim();
-  const ap=recs.filter(r=>r.verdict==='APROVADA').length, rp=recs.length-ap;
-  let h='<h1>Relatório do Lote — '+escapeHtml(lote)+'</h1>';
-  h+='<p class="sub">'+recs.length+' peça(s) · '+ap+' aprovadas · '+rp+' reprovadas · '+new Date().toLocaleString('pt-BR')+'</p>';
-  h+='<p class="vsign" style="color:'+(rp?'#c0203a':'#1f9d63')+'">'+(rp?('❌ '+rp+' PEÇA(S) REPROVADA(S)'):'✅ LOTE APROVADO')+'</p>';
-  h+='<table><tr><th>Peça</th><th>Padrão</th><th>Veredito</th><th>Medidas fora</th><th>Itens visuais c/ problema</th></tr>';
-  recs.slice().reverse().forEach(r=>{
-    const fora=(r.dims||[]).filter(d=>d.measured!=null&&!(d.measured>=d.nominal-d.varPlus-1e-9&&d.measured<=d.nominal+d.varPlus+1e-9)).map(d=>d.name);
-    const vis=(r.visual||[]).filter(v=>v.status==='problema').map(v=>v.label);
-    const out=r.verdict==='REPROVADA'?' class="out"':'';
-    h+='<tr><td>'+escapeHtml(r.pieceId||'-')+'</td><td>'+escapeHtml(r.specName)+'</td><td'+out+'>'+r.verdict+'</td><td'+out+'>'+(fora.join(', ')||'—')+'</td><td'+out+'>'+(vis.join(', ')||'—')+'</td></tr>';
-  });
-  h+='</table>';
-  $('reportPrint').innerHTML=h;setTimeout(()=>window.print(),120);
-}
+function confirmMeas(){const pm=M.pendingMeas;if(!pm)return;const name=$('mName').value.trim()||('Medida '+(M.measures.length+1));
+  M.measures.push({name,type:$('mType').value,mm:pm.mm,pts:pm.pts,shape:pm.shape});M.pendingMeas=null;$('newMeasForm').classList.add('hidden');renderSpecMeas();draw();}
+function cancelMeas(){M.pendingMeas=null;$('newMeasForm').classList.add('hidden');draw();}
+function renderSpecMeas(){const ul=$('specMeasList');ul.innerHTML='';
+  M.measures.forEach((m,i)=>{const li=document.createElement('li');
+    li.innerHTML='<span class="name">'+esc(m.name)+' <small>· '+DIM[m.type]+'</small></span><span class="val">'+fmt(m.mm)+' mm</span>';
+    const d=document.createElement('button');d.className='btn danger';d.textContent='✕';d.onclick=()=>{M.measures.splice(i,1);renderSpecMeas();draw();};
+    li.appendChild(d);ul.appendChild(li);});}
+function saveSpec(){const name=$('specName').value.trim();if(!name){alert('Dê um nome ao padrão.');return;}
+  if(!M.scale||!M.measures.length){alert('Calibre e adicione ao menos uma medida.');return;}
+  const tolValue=num($('tolValue').value)||0,tolType=$('tolType').value;
+  const all=lo(K_SPECS);all.push({id:'s'+Date.now(),name,refId:M.ref.id,tolType,tolValue,createdAt:new Date().toISOString(),
+    photo:thumb(),dims:M.measures.map(m=>({name:m.name,type:m.type,mm:m.mm,tolValue}))});
+  sv(K_SPECS,all);alert('Padrão "'+name+'" salvo.');showTab('specs');}
+function thumb(){const w=300,h=Math.round(w*cv.height/cv.width),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(cv,0,0,w,h);return c.toDataURL('image/jpeg',0.7);}
 
-/* ============================ RELATÓRIO (PDF) ============================ */
+/* ===================== modo INSPEÇÃO ===================== */
+function populateInspSpec(){const sel=$('inspSpec'),all=lo(K_SPECS);sel.innerHTML='';
+  if(!all.length){$('noSpec').textContent='Nenhum padrão cadastrado. Crie um na aba Padrões.';$('startInspBtn').disabled=true;return;}
+  $('noSpec').textContent='';$('startInspBtn').disabled=false;
+  all.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;sel.appendChild(o);});}
+function startInspect(){const spec=lo(K_SPECS).find(s=>s.id===$('inspSpec').value);if(!spec)return;
+  M.mode='inspect';M.spec=spec;M.idx=0;M.results=[];M.img=null;M.photo=null;M.scale=null;M.pending=[];M.calPts=null;M.calCircle=null;
+  $('measTitle').textContent='Inspecionar: '+spec.name;
+  $('measLead').textContent='Fotografe a peça nova com a referência no quadro. Calibre e meça as dimensões na ordem indicada.';
+  fillRefSelect(spec.refId);$('specMeasCard').classList.add('hidden');$('inspMeasCard').classList.remove('hidden');$('resultCard').classList.add('hidden');
+  $('stageEmpty').classList.remove('hidden');cv.classList.add('hidden');
+  showMeasureScreen();refreshMeasUI();}
+function refreshMeasUI(){
+  if(M.mode==='spec'){renderSpecMeas();updateHint();return;}
+  if(M.mode==='inspect'){const spec=M.spec;const done=M.idx>=spec.dims.length;
+    $('inspGuide').innerHTML=!M.scale?'⚠️ Calibre a escala primeiro.':(done?'Todas as medidas lidas.':'Meça agora: <b>'+esc(spec.dims[M.idx].name)+'</b> ('+DIM[spec.dims[M.idx].type]+' · alvo '+fmt(spec.dims[M.idx].mm)+' mm). Use ⭕ Diâmetro ou ✏️ Distância.');
+    const ul=$('inspMeasList');ul.innerHTML='';
+    spec.dims.forEach((d,i)=>{const r=M.results[i];const li=document.createElement('li');let val='—',col='var(--muted)';
+      if(r){const ok=stOk(r);val=fmt(r.measured)+' mm';col=ok?'var(--ok)':'var(--bad)';}else if(i===M.idx)val='medindo…';
+      li.innerHTML='<span class="name">'+esc(d.name)+' <small>· '+DIM[d.type]+' ('+fmt(d.mm)+' mm)</small></span><span class="val" style="color:'+col+'">'+val+'</span>';ul.appendChild(li);});
+    updateHint();}
+}
+function tolMm(nom,type,val){return type==='pct'?nom*(val/100):val;}
+function stOk(r){return Math.abs(r.measured-r.nominal)<=tolMm(r.nominal,r.tolType,r.tolValue)+1e-9;}
+function hint(type,acima){const Mh={diametro:['Sobremedida','Submedida / desgaste'],espessura:['Espesso / excesso','Fino / desgaste'],
+  largura:['Acima','Abaixo'],altura:['Acima','Abaixo'],comprimento:['Acima','Abaixo'],outro:['Acima','Abaixo']};return (Mh[type]||Mh.outro)[acima?0:1];}
+function finishInspect(){
+  const tb=$('resTable').querySelector('tbody');tb.innerHTML='';let fail=false;
+  M.results.forEach(r=>{const ok=stOk(r);if(!ok)fail=true;const dev=r.measured-r.nominal;const sign=dev>=0?'+':'';
+    const tr=document.createElement('tr');tr.innerHTML='<td>'+esc(r.name)+'</td><td class="num">'+fmt(r.nominal)+'</td><td class="num">'+fmt(r.measured)+'</td><td class="num">'+sign+fmt(dev)+'</td><td><span class="pill '+(ok?'ok':'bad')+'">'+(ok?'OK':'FORA')+'</span></td>';tb.appendChild(tr);});
+  const v=$('verdict');v.className='verdict '+(fail?'bad':'ok');v.textContent=fail?'❌ REPROVADA':'✅ APROVADA';
+  const sbs=$('sbs');sbs.innerHTML=(M.spec.photo?'<figure><img src="'+M.spec.photo+'"><figcaption>Peça correta (padrão)</figcaption></figure>':'')
+    +'<figure><img src="'+M.photo+'"><figcaption>Peça inspecionada</figcaption></figure>';
+  $('resultCard').classList.remove('hidden');$('resultCard').scrollIntoView({behavior:'smooth'});draw();
+}
+function showMeasureScreen(){['viewRefs','viewSpecs','viewInsp','viewHist'].forEach(v=>$(v).classList.add('hidden'));$('viewMeasure').classList.remove('hidden');}
+function leaveMeasure(){showTab(M.mode==='spec'?'specs':'insp');}
+
+/* selects de referência */
+function fillRefSelect(selId){const sel=$('useRef'),all=lo(K_REFS);sel.innerHTML='';
+  all.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.name+' ('+fmt(r.mm)+'mm)';sel.appendChild(o);});
+  if(selId)sel.value=selId;M.ref=all.find(r=>r.id===sel.value)||all[0]||null;updateHint();}
+function onUseRefChange(){M.ref=lo(K_REFS).find(r=>r.id===$('useRef').value)||null;M.scale=null;M.calPts=null;M.calCircle=null;setTool('cal');updateScale();draw();}
+
+/* ===================== resultado: salvar / relatório ===================== */
+function saveResult(){if(M.mode!=='inspect'||!M.results.length)return;
+  const fail=M.results.some(r=>!stOk(r));
+  const rec={id:'h'+Date.now(),date:new Date().toISOString(),specName:M.spec.name,pieceId:$('pieceId').value,
+    verdict:fail?'REPROVADA':'APROVADA',photo:M.photo,specPhoto:M.spec.photo,
+    rows:M.results.map(r=>({name:r.name,type:r.type,nominal:r.nominal,measured:r.measured,ok:stOk(r)}))};
+  const all=lo(K_HIST);all.unshift(rec);try{sv(K_HIST,all);alert('Salvo no histórico.');}catch(e){alert('Memória cheia — exporte/limpe o histórico.');}}
 function buildReport(){
-  if(!insp)return'';
-  const c=insp.comparison;
-  const fail=insp.dims.some(d=>{const s=dimStatus(d);return s&&!s.pass;})||insp.visual.some(v=>v.status==='problema');
-  const pieceId=$('pieceId').value||'(sem identificação)';
-  let h='<h1>Relatório de Inspeção — '+escapeHtml(insp.spec.name)+'</h1>';
-  h+='<p class="sub">Peça/lote: <b>'+escapeHtml(pieceId)+'</b> · '+new Date().toLocaleString('pt-BR')+'</p>';
-  h+='<p class="vsign" style="color:'+(fail?'#c0203a':'#1f9d63')+'">'+(fail?'❌ REPROVADA':'✅ APROVADA')+'</p>';
+  const fail=M.results.some(r=>!stOk(r));let h='<h1>Relatório de Inspeção — '+esc(M.spec.name)+'</h1>';
+  h+='<p class="sub">Peça/lote: <b>'+esc($('pieceId').value||'(s/ id)')+'</b> · '+new Date().toLocaleString('pt-BR')+'</p>';
+  h+='<p style="font-weight:800;font-size:1.05rem;color:'+(fail?'#c0203a':'#1f9d63')+'">'+(fail?'❌ REPROVADA':'✅ APROVADA')+'</p>';
+  h+='<table><tr><th>Medida</th><th>Tipo</th><th>Padrão (mm)</th><th>Peça (mm)</th><th>Desvio</th><th>Status</th></tr>';
+  M.results.forEach(r=>{const ok=stOk(r);const dev=r.measured-r.nominal;const o=ok?'':' class="out"';
+    h+='<tr><td>'+esc(r.name)+'</td><td>'+DIM[r.type]+'</td><td>'+fmt(r.nominal)+'</td><td'+o+'>'+fmt(r.measured)+'</td><td'+o+'>'+(dev>=0?'+':'')+fmt(dev)+'</td><td'+o+'>'+(ok?'OK':'FORA — '+hint(r.type,dev>0))+'</td></tr>';});
+  h+='</table><div class="imgs">'+(M.spec.photo?'<figure><img src="'+M.spec.photo+'"><figcaption>Peça correta</figcaption></figure>':'')
+    +'<figure><img src="'+M.photo+'"><figcaption>Peça inspecionada</figcaption></figure></div>';
+  return h;}
+function printResult(){$('reportPrint').innerHTML=buildReport();setTimeout(()=>window.print(),150);}
 
-  if(c.ref&&c.cur){
-    h+='<h3>Comparação visual</h3><div class="imgs">'
-      +'<figure><img src="'+c.ref+'"><figcaption>Referência (nova/correta)</figcaption></figure>'
-      +'<figure><img src="'+c.cur+'"><figcaption>Peça atual/usada</figcaption></figure></div>';
-  }
-
-  if(insp.dims.length){
-    h+='<h3>Medidas</h3><table><tr><th>Medida</th><th>Tipo</th><th>Limites (mm)</th><th>Medido</th><th>Desvio</th><th>Status / Diagnóstico</th></tr>';
-    insp.dims.forEach(d=>{
-      const st=dimStatus(d);
-      const lo=fmt(d.nominal-d.varPlus),hi=fmt(d.nominal+d.varPlus);
-      let med='—',dev='—',stt='não medido',out='';
-      if(st){med=fmt(num(d.measured));dev=(st.dev>=0?'+':'')+fmt(st.dev);
-        if(st.pass){stt='OK';}else{stt='FORA — '+defectHint(d.type,st.dev>0);out=' class="out"';}}
-      h+='<tr><td>'+escapeHtml(d.name)+'</td><td>'+DIM_TYPES[d.type]+'</td><td>'+lo+' a '+hi+'</td><td'+out+'>'+med+'</td><td'+out+'>'+dev+'</td><td'+out+'>'+stt+'</td></tr>';
-    });
-    h+='</table>';
-  }
-
-  const visProb=insp.visual.filter(v=>v.status==='problema');
-  if(insp.visual.length){
-    h+='<h3>Inspeção visual</h3><table><tr><th>Item</th><th>Status</th><th>Observação</th></tr>';
-    insp.visual.forEach(v=>{const s=v.status==='problema'?'PROBLEMA':v.status==='ok'?'OK':'—';
-      h+='<tr><td>'+escapeHtml(v.label)+'</td><td'+(v.status==='problema'?' class="out"':'')+'>'+s+'</td><td>'+escapeHtml(v.note||'')+'</td></tr>';});
-    h+='</table>';
-    const fotos=visProb.filter(v=>v.photo);
-    if(fotos.length){h+='<div class="gallery">'+fotos.map(v=>'<img src="'+v.photo+'" title="'+escapeHtml(v.label)+'">').join('')+'</div>';}
-  }
-
-  if(insp.photos.length){h+='<h3>Fotos da peça</h3><div class="gallery">'+insp.photos.map(p=>'<img src="'+p+'">').join('')+'</div>';}
-  return h;
-}
-function printReport(){
-  const html=buildReport();if(!html)return;
-  $('reportPrint').innerHTML=html;
-  setTimeout(()=>window.print(),120); // dá tempo de as imagens entrarem no layout
-}
-
-/* ============================ HISTÓRICO ============================ */
-function renderHistList(){
-  const ul=$('histList');ul.innerHTML='';const all=loadInsp();
-  if(all.length===0){ul.innerHTML='<li style="color:var(--muted)">Nenhuma inspeção salva.</li>';return;}
-  all.forEach(r=>{
-    const li=document.createElement('li');
-    li.innerHTML=(r.photos&&r.photos[0]?'<img src="'+r.photos[0]+'">':'<div style="width:46px"></div>')
-      +'<div class="meta"><b>'+escapeHtml(r.pieceId||r.specName)+'</b><small>'+escapeHtml(r.specName)+' · '+new Date(r.date).toLocaleString('pt-BR')+'</small></div>'
-      +'<span class="pill '+(r.verdict==='APROVADA'?'ok':'bad')+'">'+r.verdict+'</span>';
-    const del=document.createElement('button');del.className='btn danger sm';del.textContent='✕';
-    del.onclick=e=>{e.stopPropagation();if(confirm('Excluir inspeção?')){saveInspAll(loadInsp().filter(x=>x.id!==r.id));renderHistList();}};
-    li.onclick=()=>showHistDetail(r.id);
-    li.appendChild(del);ul.appendChild(li);
-  });
-}
-function showHistDetail(id){
-  const r=loadInsp().find(x=>x.id===id);if(!r)return;
-  const d=$('histDetail');
-  let h='<h2>'+escapeHtml(r.pieceId||r.specName)+' <span class="pill '+(r.verdict==='APROVADA'?'ok':'bad')+'">'+r.verdict+'</span></h2>';
-  h+='<p class="hint">'+escapeHtml(r.specName)+' · '+new Date(r.date).toLocaleString('pt-BR')+'</p>';
-  if(r.dims.length){h+='<h2 style="margin-top:10px">Medidas</h2>';
-    r.dims.forEach(dd=>{const lo=dd.nominal-dd.varPlus,hi=dd.nominal+dd.varPlus;
-      const pass=dd.measured!=null&&dd.measured>=lo-1e-9&&dd.measured<=hi+1e-9;
-      h+='<div class="measrow"><div class="top"><div class="nm">'+escapeHtml(dd.name)+'<small>'+DIM_TYPES[dd.type]+' · '+fmt(lo)+'–'+fmt(hi)+' mm</small></div>'
-        +'<span class="pill '+(dd.measured==null?'muted':pass?'ok':'bad')+'">'+(dd.measured==null?'—':fmt(dd.measured)+' mm')+'</span></div></div>';});}
-  if(r.visual.length){h+='<h2 style="margin-top:10px">Visual</h2>';
-    r.visual.forEach(vv=>{h+='<div class="visrow"><div class="top"><div class="nm">'+escapeHtml(vv.label)+(vv.note?' — '+escapeHtml(vv.note):'')
-      +'</div><span class="pill '+(vv.status==='ok'?'ok':vv.status==='problema'?'bad':'muted')+'">'+(vv.status==='problema'?'PROBLEMA':vv.status==='ok'?'OK':'—')+'</span></div>'
-      +(vv.photo?'<div class="thumbs"><div class="th"><img src="'+vv.photo+'"></div></div>':'')+'</div>';});}
-  if(r.comparison&&r.comparison.ref&&r.comparison.cur){h+='<h2 style="margin-top:10px">Comparação</h2><div class="cmp">'
-    +'<div class="slot"><div class="lab">Referência</div><div class="ph"><img src="'+r.comparison.ref+'"></div></div>'
-    +'<div class="slot"><div class="lab">Atual</div><div class="ph"><img src="'+r.comparison.cur+'"></div></div></div>';}
-  if(r.photos&&r.photos.length){h+='<h2 style="margin-top:10px">Fotos da peça</h2><div class="thumbs">'+r.photos.map(p=>'<div class="th"><img src="'+p+'"></div>').join('')+'</div>';}
-  h+='<div class="btns" style="margin-top:12px"><button class="btn" onclick="printHistReport(\''+r.id+'\')">🖨️ Relatório (PDF)</button>'
-    +'<button class="btn ghost" onclick="$(\'histDetail\').classList.add(\'hidden\')">Fechar</button></div>';
-  d.innerHTML=h;d.classList.remove('hidden');d.scrollIntoView({behavior:'smooth'});
-}
-function buildReportFromRecord(r){
-  let h='<h1>Relatório de Inspeção — '+escapeHtml(r.specName)+'</h1>';
-  h+='<p class="sub">Peça/lote: <b>'+escapeHtml(r.pieceId||'(sem identificação)')+'</b> · '+new Date(r.date).toLocaleString('pt-BR')+'</p>';
-  h+='<p class="vsign" style="color:'+(r.verdict==='REPROVADA'?'#c0203a':'#1f9d63')+'">'+(r.verdict==='REPROVADA'?'❌ REPROVADA':'✅ APROVADA')+'</p>';
-  if(r.comparison&&r.comparison.ref&&r.comparison.cur){h+='<h3>Comparação visual</h3><div class="imgs">'
-    +'<figure><img src="'+r.comparison.ref+'"><figcaption>Referência (nova/correta)</figcaption></figure>'
-    +'<figure><img src="'+r.comparison.cur+'"><figcaption>Peça atual/usada</figcaption></figure></div>';}
-  if(r.dims&&r.dims.length){h+='<h3>Medidas</h3><table><tr><th>Medida</th><th>Tipo</th><th>Limites (mm)</th><th>Medido</th><th>Desvio</th><th>Status / Diagnóstico</th></tr>';
-    r.dims.forEach(d=>{const lo=d.nominal-d.varPlus,hi=d.nominal+d.varPlus;
-      let med='—',dev='—',stt='não medido',out='';
-      if(d.measured!=null){const pass=d.measured>=lo-1e-9&&d.measured<=hi+1e-9;const dv=d.measured-d.nominal;
-        med=fmt(d.measured);dev=(dv>=0?'+':'')+fmt(dv);
-        if(pass)stt='OK';else{stt='FORA — '+defectHint(d.type,dv>0);out=' class="out"';}}
-      h+='<tr><td>'+escapeHtml(d.name)+'</td><td>'+DIM_TYPES[d.type]+'</td><td>'+fmt(lo)+' a '+fmt(hi)+'</td><td'+out+'>'+med+'</td><td'+out+'>'+dev+'</td><td'+out+'>'+stt+'</td></tr>';});
-    h+='</table>';}
-  if(r.visual&&r.visual.length){h+='<h3>Inspeção visual</h3><table><tr><th>Item</th><th>Status</th><th>Observação</th></tr>';
-    r.visual.forEach(v=>{const s=v.status==='problema'?'PROBLEMA':v.status==='ok'?'OK':'—';
-      h+='<tr><td>'+escapeHtml(v.label)+'</td><td'+(v.status==='problema'?' class="out"':'')+'>'+s+'</td><td>'+escapeHtml(v.note||'')+'</td></tr>';});
-    h+='</table>';
-    const fotos=r.visual.filter(v=>v.status==='problema'&&v.photo);
-    if(fotos.length)h+='<div class="gallery">'+fotos.map(v=>'<img src="'+v.photo+'">').join('')+'</div>';}
-  if(r.photos&&r.photos.length)h+='<h3>Fotos da peça</h3><div class="gallery">'+r.photos.map(p=>'<img src="'+p+'">').join('')+'</div>';
-  return h;
-}
-function printHistReport(id){const r=loadInsp().find(x=>x.id===id);if(!r)return;$('reportPrint').innerHTML=buildReportFromRecord(r);setTimeout(()=>window.print(),120);}
-
-/* ============================ Import / Export ============================ */
-function exportData(which){
-  const data=which==='specs'?loadSpecs():loadInsp();
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=(which==='specs'?'padroes':'inspecoes')+'-pu.json';a.click();
-}
-function importSpecs(arr){if(!Array.isArray(arr))return alert('Inválido.');const all=loadSpecs(),ids=new Set(all.map(x=>x.id));arr.forEach(s=>{if(!ids.has(s.id))all.push(s);});saveSpecs(all);renderSpecList();alert('Importado: '+arr.length+' padrão(ões).');}
-function importInsp(arr){if(!Array.isArray(arr))return alert('Inválido.');const all=loadInsp(),ids=new Set(all.map(x=>x.id));arr.forEach(s=>{if(!ids.has(s.id))all.push(s);});saveInspAll(all);renderHistList();alert('Importado: '+arr.length+' inspeção(ões).');}
+/* ===================== padrões / histórico listas ===================== */
+function renderSpecs(){const ul=$('specList');ul.innerHTML='';const all=lo(K_SPECS);
+  if(!all.length){ul.innerHTML='<li style="color:var(--muted)">Nenhum padrão.</li>';return;}
+  all.forEach(s=>{const li=document.createElement('li');
+    li.innerHTML=(s.photo?'<img src="'+s.photo+'">':'<div style="width:46px"></div>')+'<div class="meta"><b>'+esc(s.name)+'</b><small>'+s.dims.length+' medida(s) · tol '+(s.tolType==='pct'?'±'+s.tolValue+'%':'±'+s.tolValue+'mm')+'</small></div>';
+    const d=document.createElement('button');d.className='btn danger sm';d.textContent='Excluir';d.onclick=()=>{if(confirm('Excluir "'+s.name+'"?')){sv(K_SPECS,lo(K_SPECS).filter(x=>x.id!==s.id));renderSpecs();}};
+    li.appendChild(d);ul.appendChild(li);});}
+function renderHist(){const ul=$('histList');ul.innerHTML='';const all=lo(K_HIST);
+  if(!all.length){ul.innerHTML='<li style="color:var(--muted)">Nenhuma inspeção salva.</li>';return;}
+  all.forEach(r=>{const li=document.createElement('li');
+    li.innerHTML=(r.photo?'<img src="'+r.photo+'">':'<div style="width:46px"></div>')+'<div class="meta"><b>'+esc(r.pieceId||r.specName)+'</b><small>'+esc(r.specName)+' · '+new Date(r.date).toLocaleDateString('pt-BR')+'</small></div><span class="pill '+(r.verdict==='APROVADA'?'ok':'bad')+'">'+r.verdict+'</span>';
+    const d=document.createElement('button');d.className='btn danger sm';d.textContent='✕';d.onclick=()=>{sv(K_HIST,lo(K_HIST).filter(x=>x.id!==r.id));renderHist();};
+    li.appendChild(d);ul.appendChild(li);});}
 
 /* init */
-populateInspSpec();
+seedRefs();populateInspSpec();
 </script>
 </body>
 </html>
