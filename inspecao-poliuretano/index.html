@@ -133,8 +133,19 @@
       <h2 id="measTitle">Medição</h2>
       <p class="hint" id="measLead"></p>
 
-      <label>Referência de escala</label>
-      <select id="useRef" onchange="onUseRefChange()"></select>
+      <label>Calibrar a escala por</label>
+      <select id="calMode" onchange="onCalMode()">
+        <option value="ref">Objeto de referência (moeda/tampa)</option>
+        <option value="bore">Furo do rolamento (Ø interno conhecido)</option>
+      </select>
+      <div id="refWrap">
+        <label>Referência de escala</label>
+        <select id="useRef" onchange="onUseRefChange()"></select>
+      </div>
+      <div id="boreWrap" class="hidden">
+        <label>Ø do furo conhecido (mm)</label>
+        <input id="boreMm" type="number" inputmode="decimal" placeholder="ex: 25" oninput="M.boreMm=num(this.value);updateHint()"/>
+      </div>
 
       <div class="btns" style="margin-top:8px">
         <button class="btn" onclick="capturePhoto(setStageImage)">📷 Câmera</button>
@@ -296,12 +307,15 @@ const cv=$('cv'),ctx=cv.getContext('2d'),loupe=$('loupe'),lcv=$('loupeCv'),lctx=
 const M={img:null,scale:null,tool:'cal',pending:[],prov:null,
   mode:null,        // 'spec' | 'inspect'
   ref:null,         // referência selecionada
+  calMode:'ref',    // 'ref' | 'bore'
+  boreMm:null,      // Ø do furo conhecido (mm) quando calMode='bore'
+  calLabel:'',      // rótulo da calibração desenhada
   measures:[],      // padrão: [{name,type,mm,pts,shape}]
   pendingMeas:null, // {mm,pts,shape}
   spec:null,        // inspeção: padrão carregado
   idx:0,results:[], // inspeção
   photo:null};
-function reqPoints(){if(M.tool==='cal')return M.ref&&M.ref.shape==='circle'?3:2;return M.tool==='diam'?3:2;}
+function reqPoints(){if(M.tool==='cal')return (M.calMode==='bore'||(M.ref&&M.ref.shape==='circle'))?3:2;return M.tool==='diam'?3:2;}
 function setStageImage(dataUrl){
   const im=new Image();im.onload=()=>{M.img=im;M.photo=dataUrl;M.scale=null;M.pending=[];M.prov=null;
     if(M.mode==='spec'){M.measures=[];M.pendingMeas=null;}
@@ -325,10 +339,19 @@ function circle3(A,B,C){const d=2*(A.x*(B.y-C.y)+B.x*(C.y-A.y)+C.x*(A.y-B.y));if
 function commit(){
   const pts=M.pending.slice();M.pending=[];
   if(M.tool==='cal'){
-    let px;
-    if(M.ref&&M.ref.shape==='circle'){const c=circle3(pts[0],pts[1],pts[2]);if(!c){alert('Pontos inválidos, tente de novo.');return;}px=c.r*2;M.calCircle=c;}
-    else{px=dist(pts[0],pts[1]);M.calCircle=null;}
-    M.calPts=pts;M.scale=M.ref.mm/px;updateScale();setTool(M.tool==='cal'?'line':'line');draw();refreshMeasUI();return;
+    let px,mmRef;
+    if(M.calMode==='bore'){
+      if(!(M.boreMm>0)){alert('Informe o Ø do furo conhecido em mm.');return;}
+      const c=circle3(pts[0],pts[1],pts[2]);if(!c){alert('Pontos inválidos, tente de novo.');return;}
+      px=c.r*2;M.calCircle=c;mmRef=M.boreMm;M.calLabel='furo '+fmt(M.boreMm)+'mm';
+    } else if(M.ref&&M.ref.shape==='circle'){
+      const c=circle3(pts[0],pts[1],pts[2]);if(!c){alert('Pontos inválidos, tente de novo.');return;}
+      px=c.r*2;M.calCircle=c;mmRef=M.ref.mm;M.calLabel=M.ref.name;
+    } else {
+      if(!M.ref){alert('Escolha uma referência de escala.');return;}
+      px=dist(pts[0],pts[1]);M.calCircle=null;mmRef=M.ref.mm;M.calLabel='ref '+fmt(M.ref.mm)+'mm';
+    }
+    M.calPts=pts;M.scale=mmRef/px;updateScale();setTool('line');draw();refreshMeasUI();return;
   }
   if(!M.scale){alert('Calibre a escala primeiro.');M.pending=[];return;}
   let mm,shape;
@@ -351,14 +374,17 @@ function undo(){if(M.pending.length){M.pending.pop();draw();return;}
 function updateScale(){$('scaleBox').innerHTML=M.scale?'Escala: <b>'+(1/M.scale).toFixed(2)+' px/mm</b> ✅':'Escala: <b>não calibrada</b>';}
 function updateHint(){
   let h='';
-  if(M.tool==='cal')h=M.ref?('Calibrar: marque '+(M.ref.shape==='circle'?'3 pontos na borda do '+M.ref.name+' (redondo)':'2 pontos no comprimento do '+M.ref.name)+'.'):'Escolha uma referência de escala acima.';
+  if(M.tool==='cal'){
+    if(M.calMode==='bore')h=(M.boreMm>0?'Calibrar pelo furo: marque 3 pontos na borda do furo (Ø '+fmt(M.boreMm)+' mm).':'Informe o Ø do furo em mm acima.');
+    else h=M.ref?('Calibrar: marque '+(M.ref.shape==='circle'?'3 pontos na borda do '+M.ref.name+' (redondo)':'2 pontos no comprimento do '+M.ref.name)+'.'):'Escolha uma referência de escala acima.';
+  }
   else if(!M.scale)h='⚠️ Calibre a escala antes de medir.';
   else if(M.tool==='diam')h='Diâmetro: toque 3 pontos na borda do círculo.';
   else h='Distância: toque 2 pontos.';
   $('measHint2').textContent=h;}
 function draw(){if(!M.img)return;ctx.clearRect(0,0,cv.width,cv.height);ctx.drawImage(M.img,0,0,cv.width,cv.height);
   const lw=Math.max(2,cv.width/400),fs=Math.max(14,cv.width/45);ctx.lineWidth=lw;ctx.font='bold '+fs+'px system-ui';ctx.textBaseline='bottom';
-  if(M.calPts){if(M.calCircle)drawCircle(M.calCircle,'#39d98a',M.ref.name,fs);else drawLine(M.calPts[0],M.calPts[1],'#39d98a','ref '+fmt(M.ref.mm)+'mm',fs);}
+  if(M.calPts){if(M.calCircle)drawCircle(M.calCircle,'#39d98a',M.calLabel,fs);else drawLine(M.calPts[0],M.calPts[1],'#39d98a',M.calLabel,fs);}
   if(M.mode==='spec'){M.measures.forEach(m=>{if(m.shape&&m.shape.c)drawCircle(m.shape.c,'#f5b945',m.name+': '+fmt(m.mm)+'mm',fs);else drawLine(m.pts[0],m.pts[1],'#f5b945',m.name+': '+fmt(m.mm)+'mm',fs);});
     if(M.pendingMeas){const pm=M.pendingMeas;if(pm.shape&&pm.shape.c)drawCircle(pm.shape.c,'#fff',fmt(pm.mm)+'mm',fs);else drawLine(pm.pts[0],pm.pts[1],'#fff',fmt(pm.mm)+'mm',fs);}}
   else if(M.mode==='inspect'){M.results.forEach(r=>{if(!r)return;const ok=stOk(r);const col=ok?'#39d98a':'#ff5b6e';
@@ -376,6 +402,7 @@ function newSpec(){
   M.mode='spec';M.img=null;M.photo=null;M.scale=null;M.measures=[];M.pending=[];M.calPts=null;M.calCircle=null;M.pendingMeas=null;
   $('measTitle').textContent='Cadastrar padrão (peça correta)';
   $('measLead').textContent='Fotografe a peça correta com a referência de escala no mesmo plano. Calibre e meça cada dimensão.';
+  M.calMode='ref';M.boreMm=null;$('calMode').value='ref';$('boreWrap').classList.add('hidden');$('refWrap').classList.remove('hidden');$('boreMm').value='';
   fillRefSelect();$('specMeasCard').classList.remove('hidden');$('inspMeasCard').classList.add('hidden');$('resultCard').classList.add('hidden');
   $('stageEmpty').classList.remove('hidden');cv.classList.add('hidden');$('specName').value='';
   showMeasureScreen();renderSpecMeas();
@@ -404,7 +431,9 @@ function populateInspSpec(){const sel=$('inspSpec'),all=lo(K_SPECS);sel.innerHTM
 function startInspect(){const spec=lo(K_SPECS).find(s=>s.id===$('inspSpec').value);if(!spec)return;
   M.mode='inspect';M.spec=spec;M.idx=0;M.results=[];M.img=null;M.photo=null;M.scale=null;M.pending=[];M.calPts=null;M.calCircle=null;
   $('measTitle').textContent='Inspecionar: '+spec.name;
-  $('measLead').textContent='Fotografe a peça nova com a referência no quadro. Calibre e meça as dimensões na ordem indicada.';
+  $('measLead').textContent='Fotografe a peça nova. Calibre pela referência OU pelo furo do rolamento, e meça as dimensões na ordem indicada.';
+  const bore=boreFromSpec(spec);M.boreMm=bore;$('boreMm').value=bore!=null?bore:'';
+  M.calMode='ref';$('calMode').value='ref';$('boreWrap').classList.add('hidden');$('refWrap').classList.remove('hidden');
   fillRefSelect(spec.refId);$('specMeasCard').classList.add('hidden');$('inspMeasCard').classList.remove('hidden');$('resultCard').classList.add('hidden');
   $('stageEmpty').classList.remove('hidden');cv.classList.add('hidden');
   showMeasureScreen();refreshMeasUI();}
@@ -439,6 +468,11 @@ function fillRefSelect(selId){const sel=$('useRef'),all=lo(K_REFS);sel.innerHTML
   all.forEach(r=>{const o=document.createElement('option');o.value=r.id;o.textContent=r.name+' ('+fmt(r.mm)+'mm)';sel.appendChild(o);});
   if(selId)sel.value=selId;M.ref=all.find(r=>r.id===sel.value)||all[0]||null;updateHint();}
 function onUseRefChange(){M.ref=lo(K_REFS).find(r=>r.id===$('useRef').value)||null;M.scale=null;M.calPts=null;M.calCircle=null;setTool('cal');updateScale();draw();}
+function onCalMode(){M.calMode=$('calMode').value;
+  $('boreWrap').classList.toggle('hidden',M.calMode!=='bore');
+  $('refWrap').classList.toggle('hidden',M.calMode==='bore');
+  M.scale=null;M.calPts=null;M.calCircle=null;setTool('cal');updateScale();updateHint();draw();}
+function boreFromSpec(spec){if(!spec)return null;const b=spec.dims.find(d=>/furo|interno/i.test(d.name)||d.type==='diametro'&&/d\)/.test(d.name));return b?b.mm:null;}
 
 /* ===================== resultado: salvar / relatório ===================== */
 function saveResult(){if(M.mode!=='inspect'||!M.results.length)return;

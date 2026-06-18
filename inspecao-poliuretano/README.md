@@ -49,6 +49,11 @@ furo (d), sem precisar fotografar uma peça boa.
 ## 100% no celular, sem papel
 - **Referência de escala** = um objeto que você já tem (moeda, tampa redonda). Nada de
   imprimir nada.
+- **Calibrar pelo furo do rolamento**: em "Calibrar a escala por", escolha *Furo do
+  rolamento*. Como o Ø interno (d) é conhecido (catálogo) e o furo de aço costuma ser a
+  referência precisa, você marca 3 pontos na borda do furo e a escala sai dele — **sem
+  precisar de moeda nenhuma**. (Pressupõe o furo dentro do nominal; o revestimento PU fica
+  no diâmetro externo.)
 - **Detecção automática (🔎 Auto)**: o OpenCV roda **dentro do navegador** do celular.
   Calibre a escala uma vez na moeda e toque em **🔎 Auto (rolamento)** — a ferramenta acha
   sozinha o **Ø externo** e o **furo** do rolamento e mede. (Na 1ª vez precisa de internet
