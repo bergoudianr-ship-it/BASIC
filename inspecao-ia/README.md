@@ -50,6 +50,45 @@ No `modelo/config.json`, o campo `limite` controla o rigor: **menor** = mais rí
 mais), **maior** = mais tolerante. Comece com o valor sugerido pelo treino e ajuste com
 algumas peças reais (boas e ruins).
 
+---
+
+# Medição automática por foto (ArUco + OpenCV)
+
+Esta é a parte de **medida dimensional automática** — você fotografa a peça com um
+**marcador ArUco** impresso no quadro e a ferramenta mede sozinha o **diâmetro externo
+(D)** e o **furo (d)**, compara com o **rolamento** escolhido e responde
+**APROVADA / REPROVADA**. Ganha tempo na produção: sem marcar nada na tela.
+
+Por usar o marcador (tamanho exato conhecido + cantos com subpixel), a medida é
+**corrigida de perspectiva** (homografia imagem→mm) — bem mais precisa que marcar uma
+moeda à mão. Ideal para peças ≤200 mm.
+
+### Passos
+1. Gere e **imprima** o marcador:
+   ```bash
+   python gerar_marcador.py
+   ```
+   Imprima sem ajuste de escala e **meça o lado preto impresso** (mm) com paquímetro.
+2. Suba o servidor de medição:
+   ```bash
+   python servidor_medida.py
+   ```
+3. No celular, abra `http://IP-DO-PC:8001`, escolha o **rolamento**, informe o
+   **tamanho do marcador (mm)**, fotografe a peça **com o marcador no mesmo plano** e toque
+   em **Medir**. A foto volta anotada com D e d e o veredito.
+
+### Biblioteca de rolamentos
+`dados/rolamentos.json` traz as dimensões de catálogo (ISO 15) das séries **6000 / 6200 /
+6300** (furo d, diâmetro externo D, largura B). É a base para validar rolamentos revestidos
+de poliuretano sem precisar cadastrar um padrão manualmente.
+
+### Limites honestos
+- O **contorno da peça** é detectado por contraste — use **fundo contrastante** (peça
+  clara em fundo escuro ou vice-versa) e boa luz.
+- A **largura B** não sai de uma foto de cima (precisa de vista lateral) — o servidor mede
+  **D** e **d**.
+- Marcador e peça devem estar **no mesmo plano**; foto o mais perpendicular possível.
+
 ## Evolução para produção (Anomalib / PatchCore)
 - `pip install anomalib` e treinar um `Patchcore` com as mesmas fotos boas dá **mapa de
   calor** mostrando *onde* está o defeito e melhor acurácia.

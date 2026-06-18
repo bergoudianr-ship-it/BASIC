@@ -116,6 +116,15 @@
       <ul class="savedlist" id="specList"></ul>
       <button class="btn" onclick="newSpec()">➕ Cadastrar padrão por foto</button>
     </div>
+    <div class="card">
+      <h2>📚 Biblioteca de rolamentos</h2>
+      <p class="hint">Crie um padrão na hora a partir das medidas de catálogo (séries 6000/6200/6300). Usa o diâmetro externo (D) e o furo (d).</p>
+      <label>Rolamento</label><select id="bearingSel"></select>
+      <label>Tolerância (±)</label>
+      <div class="row"><input id="bearingTolV" type="number" inputmode="decimal" value="1"/>
+        <select id="bearingTolT"><option value="pct">%</option><option value="mm">mm</option></select></div>
+      <button class="btn" style="margin-top:10px" onclick="createSpecFromBearing()">➕ Criar padrão deste rolamento</button>
+    </div>
   </section>
 
   <!-- ===================== TELA DE MEDIÇÃO (padrão OU inspeção) ===================== -->
@@ -447,8 +456,27 @@ function buildReport(){
   return h;}
 function printResult(){$('reportPrint').innerHTML=buildReport();setTimeout(()=>window.print(),150);}
 
+/* ===================== biblioteca de rolamentos ===================== */
+const ROLAMENTOS=[
+  ["6000",10,26,8],["6001",12,28,8],["6002",15,32,9],["6003",17,35,10],["6004",20,42,12],
+  ["6005",25,47,12],["6006",30,55,13],["6007",35,62,14],["6008",40,68,15],["6009",45,75,16],["6010",50,80,16],
+  ["6200",10,30,9],["6201",12,32,10],["6202",15,35,11],["6203",17,40,12],["6204",20,47,14],
+  ["6205",25,52,15],["6206",30,62,16],["6207",35,72,17],["6208",40,80,18],["6209",45,85,19],["6210",50,90,20],
+  ["6300",10,35,11],["6301",12,37,12],["6302",15,42,13],["6303",17,47,14],["6304",20,52,15],
+  ["6305",25,62,17],["6306",30,72,19],["6307",35,80,21],["6308",40,90,23],["6309",45,100,25],["6310",50,110,27]
+].map(r=>({designacao:r[0],d:r[1],D:r[2],B:r[3]}));
+function fillBearingSelect(){const sel=$('bearingSel');if(!sel||sel.options.length)return;
+  ROLAMENTOS.forEach(r=>{const o=document.createElement('option');o.value=r.designacao;o.textContent=r.designacao+' — D'+r.D+' d'+r.d+' B'+r.B;sel.appendChild(o);});}
+function createSpecFromBearing(){
+  const r=ROLAMENTOS.find(x=>x.designacao===$('bearingSel').value);if(!r)return;
+  const tolValue=num($('bearingTolV').value)||0,tolType=$('bearingTolT').value;
+  const all=lo(K_SPECS);all.push({id:'s'+Date.now(),name:'Rolamento '+r.designacao+' (PU)',refId:null,tolType,tolValue,createdAt:new Date().toISOString(),photo:null,
+    dims:[{name:'Ø externo (D)',type:'diametro',mm:r.D,tolValue},{name:'Ø interno / furo (d)',type:'diametro',mm:r.d,tolValue}]});
+  sv(K_SPECS,all);alert('Padrão "Rolamento '+r.designacao+'" criado. Já dá para inspecionar.');renderSpecs();
+}
+
 /* ===================== padrões / histórico listas ===================== */
-function renderSpecs(){const ul=$('specList');ul.innerHTML='';const all=lo(K_SPECS);
+function renderSpecs(){fillBearingSelect();const ul=$('specList');ul.innerHTML='';const all=lo(K_SPECS);
   if(!all.length){ul.innerHTML='<li style="color:var(--muted)">Nenhum padrão.</li>';return;}
   all.forEach(s=>{const li=document.createElement('li');
     li.innerHTML=(s.photo?'<img src="'+s.photo+'">':'<div style="width:46px"></div>')+'<div class="meta"><b>'+esc(s.name)+'</b><small>'+s.dims.length+' medida(s) · tol '+(s.tolType==='pct'?'±'+s.tolValue+'%':'±'+s.tolValue+'mm')+'</small></div>';

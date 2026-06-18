@@ -24,6 +24,12 @@ Já vêm cadastradas as moedas comuns; adicione suas tampas/objetos.
    dê nome e tipo. A **lupa** ajuda a acertar a borda.
 5. Defina a **tolerância** (± % ou mm) e salve.
 
+### 2b. Biblioteca de rolamentos (atalho)
+Na aba "Padrões", a **Biblioteca de rolamentos** cria um padrão na hora a partir das
+medidas de catálogo (séries 6000/6200/6300 — ISO 15): escolha a designação (ex.: 6205),
+defina a tolerância e pronto — já dá para inspecionar usando o diâmetro externo (D) e o
+furo (d), sem precisar fotografar uma peça boa.
+
 ### 3. Inspecionar (aba "Inspecionar")
 1. Escolha o **padrão** e (opcional) a identificação da peça/lote.
 2. Fotografe a peça nova com a referência no quadro, calibre.
