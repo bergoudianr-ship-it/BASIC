@@ -46,7 +46,18 @@ furo (d), sem precisar fotografar uma peça boa.
 - Erros aumentam com foto inclinada, lente grande-angular muito próxima, ou referência
   num plano diferente da medida.
 
-## Versão de máxima precisão (engenharia)
-O método mais preciso (sub-milímetro) usa **marcador ArUco impresso + OpenCV com correção
-de perspectiva** — porém roda em **Python num PC/servidor**, não no celular. Está iniciado
-em `../inspecao-ia/` e é o caminho de evolução quando houver um computador disponível.
+## 100% no celular, sem papel
+- **Referência de escala** = um objeto que você já tem (moeda, tampa redonda). Nada de
+  imprimir nada.
+- **Detecção automática (🔎 Auto)**: o OpenCV roda **dentro do navegador** do celular.
+  Calibre a escala uma vez na moeda e toque em **🔎 Auto (rolamento)** — a ferramenta acha
+  sozinha o **Ø externo** e o **furo** do rolamento e mede. (Na 1ª vez precisa de internet
+  para baixar o motor; depois fica em cache. Se não carregar, as ferramentas manuais
+  ⭕/✏️ funcionam offline.)
+- **Relatório para o PC**: na aba Histórico, **"Relatório p/ PC (CSV)"** baixa uma planilha
+  (abre no Excel/Sheets) com todas as inspeções para acompanhamento no PCP/Qualidade.
+
+## Alternativa opcional de máxima precisão (não obrigatória)
+Para sub-milímetro existe o caminho **ArUco + OpenCV em Python** (`../inspecao-ia/`), mas
+ele exige **imprimir um marcador** e **rodar num PC/servidor** — fora do "tudo no celular".
+Fica como opção para quando houver um computador dedicado.
