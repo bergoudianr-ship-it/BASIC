@@ -7,6 +7,14 @@ foto**, e depois **inspeciona** a peça nova comparando lado a lado.
 
 Abra `index.html` no navegador do celular. Tudo roda no aparelho; nada vai para a internet.
 
+## Documentos do projeto
+- **[RESUMO_EXECUTIVO.md](RESUMO_EXECUTIVO.md)** — visão de negócio em 1 página (para apresentar).
+- **[DOCUMENTACAO.md](DOCUMENTACAO.md)** — manual de uso (v7).
+- **[ARQUITETURA.md](ARQUITETURA.md)** — arquitetura técnica, decisões, roadmap, riscos.
+- **[CONFERENCIA.md](CONFERENCIA.md)** — autoavaliação honesta e plano de validação.
+- **[CHANGELOG.md](CHANGELOG.md)** — histórico de versões.
+- PDFs correspondentes (`Inspecao_PU_*.pdf`) para envio/impressão.
+
 ## Fluxo
 
 ### 1. Referências (aba "Referências")
