@@ -677,7 +677,7 @@ function mtmBars(arr){
 }
 // ── Curva de MtM por produto (submercado × fonte × mês) + PLD do mês fechado ──
 function defaultRefMonth(){ var d=new Date(TODAY); d.setMonth(d.getMonth()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-function loadMtM(){ try{ var s=JSON.parse(localStorage.getItem('saas_mtm')||'null'); if(s){ if(!s.base)s.base={}; if(!s.subSpread)s.subSpread={}; if(!s.spread)s.spread={}; if(!s.refMonth)s.refMonth=defaultRefMonth(); return s; } }catch(e){} return {refMonth:defaultRefMonth(),base:{},subSpread:{},spread:{}}; }
+function loadMtM(){ try{ var s=JSON.parse(localStorage.getItem('saas_mtm')||'null'); if(s){ if(!s.base)s.base={}; if(!s.subPrice)s.subPrice={}; if(!s.spread)s.spread={}; if(!s.refMonth)s.refMonth=defaultRefMonth(); return s; } }catch(e){} return {refMonth:defaultRefMonth(),base:{},subPrice:{},spread:{}}; }
 function isConvencional(fonte){ return (fonte||'').toLowerCase().indexOf('convenc')>=0; }
 var SUBS_OTHER=['S','NE','N'];
 function saveMtM(m){ try{ localStorage.setItem('saas_mtm',JSON.stringify(m)); }catch(e){} }
@@ -687,8 +687,8 @@ function mLabel(k){ return mKeyToDate(k).toLocaleDateString('pt-BR',{month:'shor
 function portfolioEnd(cs){ var max=null; cs.forEach(function(c){ if(c.fimForn&&(!max||c.fimForn>max))max=c.fimForn; }); return max; }
 function productKey(c){ return (c.submercado||'N/D')+'|'+(c.fonte||'N/D'); }
 function basePrice(M,k){ if(M.base&&M.base[k]!=null&&M.base[k]!=='') return +M.base[k]; return null; }
-function subSpreadVal(M,sub,k){ if(sub==='SE/CO') return 0; if(M.subSpread[sub]&&M.subSpread[sub][k]!=null&&M.subSpread[sub][k]!=='') return +M.subSpread[sub][k]; return 0; }
-function convPrice(M,sub,k){ var b=basePrice(M,k); if(b==null) return null; return b+subSpreadVal(M,sub,k); }
+function subFixedPrice(M,sub,k){ if(M.subPrice[sub]&&M.subPrice[sub][k]!=null&&M.subPrice[sub][k]!=='') return +M.subPrice[sub][k]; return null; }
+function convPrice(M,sub,k){ if(sub==='SE/CO') return basePrice(M,k); return subFixedPrice(M,sub,k); }
 function curvePrice(M,sub,fonte,k){
   var cp=convPrice(M,sub,k); if(cp==null) return null;
   if(isConvencional(fonte)) return cp;
@@ -716,7 +716,7 @@ function viewMtM(){
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de referência (PLD fechado)</span><input id="mtmRef" type="month" value="'+esc(M.refMonth)+'" style="'+ist+';width:170px"></label>'+
     '<button class="btn btn-primary" id="mtmApply">Salvar tudo e recalcular</button>'+
     '<button class="btn btn-ghost" id="pldFetch">Tentar buscar PLD na CCEE</button>'+
-    '<span style="color:#97a3b6;font-size:11px;max-width:600px;line-height:1.5"><b>Fórmula:</b> preço = Base SE/CO convencional + spread de submercado (±) + spread da fonte incentivada. A convencional leva só o spread de submercado. 1ª coluna = PLD do mês fechado; demais = forward. CCEE bloqueia acesso automático — use o <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
+    '<span style="color:#97a3b6;font-size:11px;max-width:600px;line-height:1.5"><b>Fórmula:</b> SE/CO usa a curva base; S/NE/N usam preço fixo por submercado; sobre a convencional resultante soma-se o spread da fonte incentivada (só para incentivadas). 1ª coluna = PLD do mês fechado; demais = forward. CCEE bloqueia acesso automático — use o <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
     '<span id="mtmErr" class="err" style="display:none"></span></div>';
   if(months.length){
     // ── Curva base SE/CO convencional ──
@@ -726,18 +726,18 @@ function viewMtM(){
     h+='</tr></thead><tbody><tr><td><span class="badge badge-blue">SE/CO Conv.</span></td>';
     months.forEach(function(k,mi){ var isRef=(k===M.refMonth); var v=(M.base[k]!=null)?M.base[k]:''; h+='<td><input id="base_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="R$/MWh" style="'+ist+';min-width:84px;padding:4px 6px'+(isRef?';border-color:#5c4a10;background:#1a160a':'')+'"></td>'; });
     h+='</tr></tbody></table></div></div>';
-    // ── Spread de submercado vs SE/CO ──
-    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">2) Spread de submercado vs SE/CO · R$/MWh por mês (+ ágio / − deságio)</div>'+
-      '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Descolamento de cada submercado em relação ao SE/CO. Convencional do submercado = Base SE/CO + este spread. SE/CO = 0 (referência).</div>'+
+    // ── Preço fixo de submercado (S/NE/N) ──
+    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">2) Preço fixo de submercado — S / NE / N · R$/MWh por mês</div>'+
+      '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Preço da convencional informado diretamente por submercado (não é spread vs SE/CO). SE/CO usa a curva base da seção 1.</div>'+
       '<div class="table-wrap"><table><thead><tr><th>Submercado</th>';
     months.forEach(function(k){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+esc(mLabel(k))+'</th>'; });
     h+='</tr></thead><tbody>';
     SUBS_OTHER.forEach(function(sub,si){ h+='<tr><td><span class="badge badge-blue">'+esc(sub)+'</span></td>';
-      months.forEach(function(k,mi){ var v=(M.subSpread[sub]&&M.subSpread[sub][k]!=null)?M.subSpread[sub][k]:''; h+='<td><input id="ss_'+si+'_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="±" style="'+ist+';min-width:74px;padding:4px 6px"></td>'; });
+      months.forEach(function(k,mi){ var v=(M.subPrice[sub]&&M.subPrice[sub][k]!=null)?M.subPrice[sub][k]:''; h+='<td><input id="ss_'+si+'_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="R$/MWh" style="'+ist+';min-width:74px;padding:4px 6px"></td>'; });
       h+='</tr>'; });
     h+='</tbody></table></div></div>';
     // ── Convencional resultante por submercado + média ponderada (read-only) ──
-    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">Convencional resultante por submercado (Base + spread) + média ponderada · R$/MWh</div>'+
+    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">Convencional resultante por submercado (Base SE/CO ou preço fixo) + média ponderada · R$/MWh</div>'+
       '<div class="table-wrap"><table><thead><tr><th>Submercado</th>';
     months.forEach(function(k){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+esc(mLabel(k))+'</th>'; });
     h+='</tr></thead><tbody>';
@@ -1051,7 +1051,7 @@ function bindMtM(){
   function readRef(){ M.refMonth=val('mtmRef')||M.refMonth; }
   function readConv(){ var months=curveMonths(cs,M);
     months.forEach(function(k,mi){ var v=val('base_'+mi); if(v!=='') M.base[k]=num2(v); else delete M.base[k]; });
-    SUBS_OTHER.forEach(function(sub,si){ if(!M.subSpread[sub])M.subSpread[sub]={}; months.forEach(function(k,mi){ var v=val('ss_'+si+'_'+mi); if(v!=='') M.subSpread[sub][k]=num2(v); else delete M.subSpread[sub][k]; }); });
+    SUBS_OTHER.forEach(function(sub,si){ if(!M.subPrice[sub])M.subPrice[sub]={}; months.forEach(function(k,mi){ var v=val('ss_'+si+'_'+mi); if(v!=='') M.subPrice[sub][k]=num2(v); else delete M.subPrice[sub][k]; }); });
   }
   function readSpread(){ Array.prototype.forEach.call(document.querySelectorAll('[data-fonte]'),function(el){ var f=el.getAttribute('data-fonte'), v=el.value; if(v!=='') M.spread[f]=num2(v); else delete M.spread[f]; }); }
   function readAll(){ readRef(); readConv(); readSpread(); }
