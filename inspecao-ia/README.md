@@ -78,9 +78,21 @@ moeda à mão. Ideal para peças ≤200 mm.
    em **Medir**. A foto volta anotada com D e d e o veredito.
 
 ### Biblioteca de rolamentos
-`dados/rolamentos.json` traz as dimensões de catálogo (ISO 15) das séries **6000 / 6200 /
-6300** (furo d, diâmetro externo D, largura B). É a base para validar rolamentos revestidos
-de poliuretano sem precisar cadastrar um padrão manualmente.
+`dados/rolamentos.json` traz as dimensões de catálogo (ISO 15 / DIN 625) de **106
+rolamentos** das séries **6000, 6200, 6300, 6400, 6800, 6900 e 16000** (furo d, diâmetro
+externo D, largura B). É a base para validar rolamentos revestidos de poliuretano sem
+precisar cadastrar um padrão manualmente.
+
+> Observação: "rolamento revestido de PU" não tem tabela própria — é um rolamento padrão
+> com a capa de poliuretano no **diâmetro externo** (medida final específica de cada
+> aplicação). Por isso o catálogo guarda as dimensões do **rolamento-base**.
+
+### Banco de dados (Supabase)
+As mesmas dimensões estão salvas na tabela `public.rolamentos` do Supabase (projeto
+`pboizjwwxcnajeuteivp`), com RLS e leitura pública. O script reproduzível está em
+`supabase/rolamentos.sql` (cria a tabela e faz o seed dos 106 itens). Não existe um pacote
+Python oficial com essas dimensões — os valores vêm da norma ISO 15 / catálogos (SKF/NSK/
+Timken); **confira no datasheet do fabricante** antes de usar como critério de aprovação.
 
 ### Limites honestos
 - O **contorno da peça** é detectado por contraste — use **fundo contrastante** (peça
