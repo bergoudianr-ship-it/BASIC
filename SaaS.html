@@ -279,7 +279,8 @@ function volMWh(c){ return c.volAjMWh||c.volPrevMWh; }
 
 // ── State ────────────────────────────────────────────────────────────────
 var STATE = { contracts: [], tab: 'dashboard' };
-var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes']];
+var FIN_FILTER = '';
+var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['financeiro','Financeiro'],['config','Configurações']];
 var MARKET_PRICE = null;
 function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\b(sa|ltda|me|epp|eireli|energia|comercializadora|geracao)\b/g,'').replace(/[^a-z0-9]/g,''); }
 function onlyDigits(s){ return (s||'').replace(/\D/g,''); }
@@ -677,20 +678,25 @@ function mtmBars(arr){
 }
 // ── Curva de MtM por produto (submercado × fonte × mês) + PLD do mês fechado ──
 function defaultRefMonth(){ var d=new Date(TODAY); d.setMonth(d.getMonth()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-function loadMtM(){ try{ var s=JSON.parse(localStorage.getItem('saas_mtm')||'null'); if(s){ if(!s.conv)s.conv={}; if(!s.spread)s.spread={}; if(!s.refMonth)s.refMonth=defaultRefMonth(); return s; } }catch(e){} return {refMonth:defaultRefMonth(),conv:{},spread:{}}; }
+function loadMtM(){ try{ var s=JSON.parse(localStorage.getItem('saas_mtm')||'null'); if(s){ if(!s.base)s.base={}; if(!s.subPrice)s.subPrice={}; if(!s.spread)s.spread={}; if(!s.refMonth)s.refMonth=defaultRefMonth(); return s; } }catch(e){} return {refMonth:defaultRefMonth(),base:{},subPrice:{},spread:{}}; }
 function isConvencional(fonte){ return (fonte||'').toLowerCase().indexOf('convenc')>=0; }
+var SUBS_OTHER=['S','NE','N'];
 function saveMtM(m){ try{ localStorage.setItem('saas_mtm',JSON.stringify(m)); }catch(e){} }
 function mKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function mKeyToDate(k){ var p=String(k).split('-'); return new Date(+p[0],(+p[1]||1)-1,1); }
 function mLabel(k){ return mKeyToDate(k).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}); }
 function portfolioEnd(cs){ var max=null; cs.forEach(function(c){ if(c.fimForn&&(!max||c.fimForn>max))max=c.fimForn; }); return max; }
 function productKey(c){ return (c.submercado||'N/D')+'|'+(c.fonte||'N/D'); }
-function convPrice(M,sub,k){ if(M.conv[sub]&&M.conv[sub][k]!=null&&M.conv[sub][k]!=='') return +M.conv[sub][k]; return null; }
+function basePrice(M,k){ if(M.base&&M.base[k]!=null&&M.base[k]!=='') return +M.base[k]; return null; }
+function subFixedPrice(M,sub,k){ if(M.subPrice[sub]&&M.subPrice[sub][k]!=null&&M.subPrice[sub][k]!=='') return +M.subPrice[sub][k]; return null; }
+function convPrice(M,sub,k){ if(sub==='SE/CO') return basePrice(M,k); return subFixedPrice(M,sub,k); }
 function curvePrice(M,sub,fonte,k){
-  var base=convPrice(M,sub,k); if(base==null) return null;
-  if(isConvencional(fonte)) return base;
-  var sp=M.spread[fonte]; return base + (sp!=null&&sp!==''?+sp:0);
+  var cp=convPrice(M,sub,k); if(cp==null) return null;
+  if(isConvencional(fonte)) return cp;
+  var so=M.spread[fonte]; var sp=(so&&so[k]!=null&&so[k]!=='')?+so[k]:0;
+  return cp + sp;
 }
+function incFontesList(cs){ var arr=[]; cs.forEach(function(c){ if(!isConvencional(c.fonte)&&arr.indexOf(c.fonte)<0) arr.push(c.fonte); }); arr.sort(); return arr; }
 // média ponderada da convencional entre submercados, ponderada pelo volume convencional do portfólio no mês
 function wavgConv(cs,M,k){ var num=0,den=0,simpleN=0,simpleD=0; var ms=mKeyToDate(k), me=new Date(ms.getFullYear(),ms.getMonth()+1,0);
   SUBS_STD.forEach(function(sub){ var p=convPrice(M,sub,k); if(p==null) return; simpleN+=p; simpleD++;
@@ -704,42 +710,90 @@ function mtmContractCurve(c,M){ var P=c.precAj||c.precPrev, total=0; monthsForCo
 function fwdMonths(cs,M){ var pend=portfolioEnd(cs); var months=[]; if(pend){ var d=mKeyToDate(M.refMonth); d.setMonth(d.getMonth()+1); var end=new Date(pend.getFullYear(),pend.getMonth(),1),g=0; while(d<=end&&g<18){ months.push(mKey(d)); d.setMonth(d.getMonth()+1); g++; } } return months; }
 function curveMonths(cs,M){ return [M.refMonth].concat(fwdMonths(cs,M)); }
 function MTM_PRODUCTS(cs){ var p=[]; cs.forEach(function(c){ var k=productKey(c); if(p.indexOf(k)<0)p.push(k); }); p.sort(); return p; }
+// ── CSV da curva MtM (download modelo / upload em massa) ──
+function mtmCSVHeader(cs){ return ['Mes','SE/CO'].concat(SUBS_OTHER).concat(incFontesList(cs).map(function(f){return 'Spread '+f;})); }
+function mtmTemplateCSV(cs,M){
+  var months=curveMonths(cs,M), incFontes=incFontesList(cs);
+  var lines=[mtmCSVHeader(cs).join(';')];
+  months.forEach(function(k){
+    var row=[k];
+    row.push(M.base[k]!=null?String(M.base[k]).replace('.',','):'');
+    SUBS_OTHER.forEach(function(sub){ var v=(M.subPrice[sub]&&M.subPrice[sub][k]!=null)?M.subPrice[sub][k]:''; row.push(v!==''?String(v).replace('.',','):''); });
+    incFontes.forEach(function(f){ var v=(M.spread[f]&&M.spread[f][k]!=null)?M.spread[f][k]:''; row.push(v!==''?String(v).replace('.',','):''); });
+    lines.push(row.join(';'));
+  });
+  return lines.join('\n');
+}
+function applyMtMCSV(raw,cs,M){
+  var rows=parseCSV(raw); if(!rows.length) throw new Error('CSV vazio ou sem linhas de dados.');
+  var incFontes=incFontesList(cs);
+  rows.forEach(function(r){
+    var k=(g(r,['Mes','Mês'])||'').toString().trim(); if(!k) return;
+    var vb=g(r,['SE/CO']); if(vb!=='') M.base[k]=num(vb);
+    SUBS_OTHER.forEach(function(sub){ var v=g(r,[sub]); if(v!==''){ if(!M.subPrice[sub])M.subPrice[sub]={}; M.subPrice[sub][k]=num(v); } });
+    incFontes.forEach(function(f){ var v=g(r,['Spread '+f]); if(v!==''){ if(!M.spread[f])M.spread[f]={}; M.spread[f][k]=num(v); } });
+  });
+}
 function viewMtM(){
   var cs=STATE.contracts, M=loadMtM();
   var prods=MTM_PRODUCTS(cs), months=curveMonths(cs,M);
   var ist='background:#0a0c10;border:1px solid #232834;border-radius:6px;color:#e6ebf2;padding:6px 9px;font-size:12px;outline:none;width:100%';
-  var h='<div class="section-header"><span class="section-title">Curva de Preços — Convencional por Submercado + Spread de Incentivada</span></div>';
+  var h='<div class="section-header"><span class="section-title">Curva de Preços — Base SE/CO + Spread de Submercado + Spread de Fonte</span></div>';
   h+='<div class="card" style="margin-bottom:14px;display:flex;gap:14px;align-items:end;flex-wrap:wrap">'+
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de referência (PLD fechado)</span><input id="mtmRef" type="month" value="'+esc(M.refMonth)+'" style="'+ist+';width:170px"></label>'+
     '<button class="btn btn-primary" id="mtmApply">Salvar tudo e recalcular</button>'+
     '<button class="btn btn-ghost" id="pldFetch">Tentar buscar PLD na CCEE</button>'+
-    '<span style="color:#97a3b6;font-size:11px;max-width:560px;line-height:1.5">A 1ª coluna (destacada) é o <b>PLD do mês fechado</b> (curto prazo); as demais são a <b>curva forward convencional</b>. A CCEE bloqueia acesso automático — informe os preços do <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
+    '<button class="btn btn-ghost" id="mtmTmplBtn">Baixar modelo CSV da curva</button>'+
+    '<button class="btn btn-ghost" id="mtmUploadBtn">Subir CSV da curva</button>'+
+    '<input type="file" id="mtmUploadInput" accept=".csv,.txt" style="display:none">'+
+    '<span style="color:#97a3b6;font-size:11px;max-width:600px;line-height:1.5"><b>Fórmula:</b> SE/CO usa a curva base; S/NE/N usam preço fixo por submercado; sobre a convencional resultante soma-se o spread da fonte incentivada por mês (só para incentivadas). 1ª coluna = PLD do mês fechado; demais = forward. Baixe o modelo CSV no padrão da página (mês × SE/CO × S/NE/N × spread de cada fonte), preencha e suba de uma vez para calcular o MtM de todos os produtos. CCEE bloqueia acesso automático — use o <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
     '<span id="mtmErr" class="err" style="display:none"></span></div>';
-  // ── Curva convencional por submercado ──
   if(months.length){
-    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">Curva Convencional por submercado · R$/MWh por mês (descolam entre si)</div>'+
-      '<div class="table-wrap"><table><thead><tr><th>Submercado</th>';
+    // ── Curva base SE/CO convencional ──
+    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">1) Curva base — SE/CO Convencional · R$/MWh por mês</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Base</th>';
     months.forEach(function(k){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+(isRef?'PLD ':'')+esc(mLabel(k))+'</th>'; });
+    h+='</tr></thead><tbody><tr><td><span class="badge badge-blue">SE/CO Conv.</span></td>';
+    months.forEach(function(k,mi){ var isRef=(k===M.refMonth); var v=(M.base[k]!=null)?M.base[k]:''; h+='<td><input id="base_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="R$/MWh" style="'+ist+';min-width:84px;padding:4px 6px'+(isRef?';border-color:#5c4a10;background:#1a160a':'')+'"></td>'; });
+    h+='</tr></tbody></table></div></div>';
+    // ── Preço fixo de submercado (S/NE/N) ──
+    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">2) Preço fixo de submercado — S / NE / N · R$/MWh por mês</div>'+
+      '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Preço da convencional informado diretamente por submercado (não é spread vs SE/CO). SE/CO usa a curva base da seção 1.</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Submercado</th>';
+    months.forEach(function(k){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+esc(mLabel(k))+'</th>'; });
     h+='</tr></thead><tbody>';
-    SUBS_STD.forEach(function(sub,si){ h+='<tr><td><span class="badge badge-blue">'+esc(sub)+'</span></td>';
-      months.forEach(function(k,mi){ var isRef=(k===M.refMonth); var v=(M.conv[sub]&&M.conv[sub][k]!=null)?M.conv[sub][k]:''; h+='<td><input id="conv_'+si+'_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="R$/MWh" style="'+ist+';min-width:82px;padding:4px 6px'+(isRef?';border-color:#5c4a10;background:#1a160a':'')+'"></td>'; });
+    SUBS_OTHER.forEach(function(sub,si){ h+='<tr><td><span class="badge badge-blue">'+esc(sub)+'</span></td>';
+      months.forEach(function(k,mi){ var v=(M.subPrice[sub]&&M.subPrice[sub][k]!=null)?M.subPrice[sub][k]:''; h+='<td><input id="ss_'+si+'_'+mi+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="R$/MWh" style="'+ist+';min-width:74px;padding:4px 6px"></td>'; });
       h+='</tr>'; });
-    h+='<tr style="border-top:2px solid #232834"><td><span class="badge badge-gray">Média ponderada</span></td>';
+    h+='</tbody></table></div></div>';
+    // ── Convencional resultante por submercado + média ponderada (read-only) ──
+    h+='<div class="card" style="margin-bottom:14px"><div class="card-title">Convencional resultante por submercado (Base SE/CO ou preço fixo) + média ponderada · R$/MWh</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Submercado</th>';
+    months.forEach(function(k){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+esc(mLabel(k))+'</th>'; });
+    h+='</tr></thead><tbody>';
+    SUBS_STD.forEach(function(sub){ h+='<tr><td><span class="badge badge-gray">'+esc(sub)+'</span></td>';
+      months.forEach(function(k){ var p=convPrice(M,sub,k); h+='<td class="td-num">'+(p!=null?fmt(p):'—')+'</td>'; });
+      h+='</tr>'; });
+    h+='<tr style="border-top:2px solid #232834"><td><span class="badge badge-blue">Média ponderada</span></td>';
     months.forEach(function(k){ var w=wavgConv(cs,M,k); h+='<td class="td-num" style="color:#93b4ff;font-weight:700">'+(w!=null?fmt(w):'—')+'</td>'; });
     h+='</tr></tbody></table></div>'+
-      '<div style="color:#5b6678;font-size:11px;margin-top:8px">Média ponderada = preço convencional de cada submercado ponderado pelo volume convencional do portfólio naquele mês.</div>'+
-      '<div style="margin-top:10px"><button class="btn btn-primary" id="convSave">Salvar curva convencional</button></div></div>';
+      '<div style="color:#5b6678;font-size:11px;margin-top:8px">Média ponderada = convencional de cada submercado ponderada pelo volume convencional do portfólio no mês.</div>'+
+      '<div style="margin-top:10px"><button class="btn btn-primary" id="convSave">Salvar base e spreads de submercado</button></div></div>';
   } else {
     h+='<div class="card" style="margin-bottom:14px;padding:18px;color:#64748b;text-align:center">Importe contratos com datas e submercado para montar a curva.</div>';
   }
-  // ── Spread por fonte incentivada ──
-  var incFontes=[]; cs.forEach(function(c){ if(!isConvencional(c.fonte)&&incFontes.indexOf(c.fonte)<0) incFontes.push(c.fonte); }); incFontes.sort();
-  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">Spread por fonte incentivada (R$/MWh sobre a convencional do submercado)</div>'+
-    '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Preço da incentivada = convencional do submercado + spread da fonte. A convencional é a referência (spread zero). O spread é aplicado em todos os submercados, herdando o descolamento da convencional.</div>';
-  if(incFontes.length){
-    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">';
-    incFontes.forEach(function(f,fi){ var v=(M.spread[f]!=null?M.spread[f]:''); h+='<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">'+esc(f)+'</span><input id="sp_'+fi+'" data-fonte="'+esc(f)+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="+ / − R$/MWh" style="'+ist+'"></label>'; });
-    h+='</div><div style="margin-top:12px"><button class="btn btn-primary" id="spSave">Salvar spreads e recalcular</button></div>';
+  // ── Spread por fonte incentivada (por mês) ──
+  var incFontes=incFontesList(cs);
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">3) Spread por fonte incentivada · R$/MWh por mês (sobre a convencional do submercado)</div>'+
+    '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Preço da incentivada = convencional do submercado (resultante da seção 1/2) + spread da fonte naquele mês. A convencional NÃO leva este spread. Cada fonte pode ter spread diferente em cada mês.</div>';
+  if(incFontes.length&&months.length){
+    h+='<div class="table-wrap"><table><thead><tr><th>Fonte</th>';
+    months.forEach(function(k){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+esc(mLabel(k))+'</th>'; });
+    h+='</tr></thead><tbody>';
+    incFontes.forEach(function(f,fi){ h+='<tr><td><span class="badge badge-purple">'+esc(f)+'</span></td>';
+      months.forEach(function(k,mi){ var v=(M.spread[f]&&M.spread[f][k]!=null)?M.spread[f][k]:''; h+='<td><input id="sp_'+fi+'_'+mi+'" data-fonte="'+esc(f)+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="±" style="'+ist+';min-width:74px;padding:4px 6px"></td>'; });
+      h+='</tr>'; });
+    h+='</tbody></table></div><div style="margin-top:12px"><button class="btn btn-primary" id="spSave">Salvar spreads e recalcular</button></div>';
   } else { h+='<div style="color:#64748b">Nenhuma fonte incentivada no portfólio.</div>'; }
   h+='</div>';
   // ── Resultados MtM ──
@@ -772,7 +826,179 @@ function viewMtM(){
   return h;
 }
 
-// ── Fator de Alavancagem (CCEE) ──────────────────────────────────────────
+// ── Contrapartes (cadastro / backoffice CCEE / formas de pagamento) ────────
+var CCEE_PERFIS=['Comercializador','Consumidor Livre','Consumidor Especial','Gerador','Autoprodutor','Varejista'];
+var CCEE_PERFILIZACAO=['Conforme curva de carga','Modulação'];
+var PAG_TIPOS=['PIX','TED','Boleto','DOC'];
+function loadCP(){ try{ return JSON.parse(localStorage.getItem('saas_contrapartes')||'[]'); }catch(e){ return []; } }
+function saveCP(a){ try{ localStorage.setItem('saas_contrapartes', JSON.stringify(a)); }catch(e){} }
+function findCP(nome){ var n=norm(nome); var list=loadCP(); for(var i=0;i<list.length;i++){ if(norm(list[i].razaoSocial)===n||norm(list[i].nomeFantasia)===n) return list[i]; } return null; }
+function viewConfig(){
+  var cps=loadCP();
+  var inp='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
+  function fld(label,inner){ return '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">'+label+'</span>'+inner+'</label>'; }
+  function sec(t){ return '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">'+t+'</div>'; }
+  function opt(arr){ return '<option></option>'+arr.map(function(x){return '<option>'+esc(x)+'</option>';}).join(''); }
+  var g3='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
+  var h='<div class="section-header"><span class="section-title">Configurações — Contrapartes</span></div>';
+  h+='<div class="card" style="margin-bottom:20px">'+
+    sec('Identificação')+g3+
+    fld('Razão social*','<input id="cRazao" type="text" '+inp+'>')+
+    fld('Nome fantasia','<input id="cFantasia" type="text" '+inp+'>')+
+    fld('CNPJ*','<input id="cCnpj" type="text" placeholder="00.000.000/0000-00" '+inp+'>')+
+    fld('Inscrição Estadual','<input id="cIe" type="text" '+inp+'>')+
+    fld('Endereço','<input id="cEndereco" type="text" '+inp+'>')+
+    '<div></div>'+
+    '</div>'+
+    sec('Contato')+g3+
+    fld('Nome do contato','<input id="cContatoNome" type="text" '+inp+'>')+
+    fld('E-mail','<input id="cContatoEmail" type="email" '+inp+'>')+
+    fld('Telefone','<input id="cContatoTel" type="text" '+inp+'>')+
+    '</div>'+
+    sec('Backoffice CCEE')+g3+
+    fld('Código do Agente CCEE','<input id="cCceeCod" type="text" '+inp+'>')+
+    fld('Perfil do Agente','<select id="cCceePerfil" '+inp+'>'+opt(CCEE_PERFIS)+'</select>')+
+    fld('Submercado de registro','<select id="cCceeSub" '+inp+'>'+opt(['SE/CO','S','NE','N'])+'</select>')+
+    fld('Tipo de perfilização','<select id="cCceePerfiliz" '+inp+'>'+opt(CCEE_PERFILIZACAO)+'</select>')+
+    fld('Representante CCEE','<input id="cCceeRepr" type="text" '+inp+'>')+
+    fld('E-mail backoffice CCEE','<input id="cCceeEmail" type="email" '+inp+'>')+
+    fld('Data de habilitação CCEE','<input id="cCceeData" type="date" '+inp+'>')+
+    '<div></div><div></div>'+
+    '</div>'+
+    '<div style="margin-top:16px"><button class="btn btn-primary" id="cCreate">Cadastrar contraparte</button></div>'+
+    '<div id="cErr" class="err" style="display:none"></div></div>';
+  h+='<div class="section-header"><span class="section-title">Contrapartes Cadastradas ('+cps.length+')</span></div>';
+  if(!cps.length){ h+='<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma contraparte cadastrada ainda.</div></div>'; return h; }
+  cps.forEach(function(c){
+    h+='<div class="card" style="margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<span style="font-weight:600;color:#f1f5f9">'+esc(c.razaoSocial)+'</span>'+
+      (c.nomeFantasia?'<span class="badge badge-gray">'+esc(c.nomeFantasia)+'</span>':'')+
+      '<span style="color:#94a3b8;font-size:12px">'+esc(c.cnpj||'—')+'</span>'+
+      (c.cceePerfil?'<span class="badge badge-blue">'+esc(c.cceePerfil)+'</span>':'')+
+      (c.cceeCod?'<span class="badge badge-purple">CCEE '+esc(c.cceeCod)+'</span>':'')+
+      '<button class="btn btn-ghost" data-delcp="'+c.id+'" style="margin-left:auto;color:#f87171;border-color:#5c2020">Excluir</button>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">'+
+      '<div><div class="ficha-label">Submercado registro</div><div class="ficha-value">'+esc(c.cceeSub||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Perfilização</div><div class="ficha-value">'+esc(c.cceePerfiliz||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Contato</div><div class="ficha-value">'+esc(c.contatoNome||'—')+'</div></div>'+
+      '<div><div class="ficha-label">E-mail backoffice CCEE</div><div class="ficha-value">'+esc(c.cceeEmail||'—')+'</div></div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">Formas de pagamento ('+(c.pagamentos||[]).length+')</div>';
+    if((c.pagamentos||[]).length){
+      h+='<table><thead><tr><th>Tipo</th><th>Banco</th><th>Agência</th><th>Conta</th><th>Chave PIX</th><th>Titular</th><th>Condição</th><th></th></tr></thead><tbody>';
+      c.pagamentos.forEach(function(p){ h+='<tr><td>'+esc(p.tipo)+'</td><td>'+esc(p.banco||'—')+'</td><td>'+esc(p.agencia||'—')+'</td><td>'+esc(p.conta||'—')+'</td><td>'+esc(p.chavePix||'—')+'</td><td>'+esc(p.titular||'—')+'</td><td>'+esc(p.condicao||'—')+'</td><td><button class="btn btn-ghost" data-delpag="'+c.id+'|'+p.id+'" style="color:#f87171;border-color:#5c2020">x</button></td></tr>'; });
+      h+='</tbody></table>';
+    }
+    h+='<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px;align-items:end">'+
+      '<select data-pf="tipo" id="pf_'+c.id+'_tipo" '+inp+'>'+opt(PAG_TIPOS)+'</select>'+
+      '<input id="pf_'+c.id+'_banco" placeholder="Banco" '+inp+'>'+
+      '<input id="pf_'+c.id+'_ag" placeholder="Agência" '+inp+'>'+
+      '<input id="pf_'+c.id+'_conta" placeholder="Conta" '+inp+'>'+
+      '<input id="pf_'+c.id+'_pix" placeholder="Chave PIX" '+inp+'>'+
+      '<input id="pf_'+c.id+'_cond" placeholder="Condição (ex.: D+30)" '+inp+'>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">'+
+      '<input id="pf_'+c.id+'_titular" placeholder="Titular da conta" '+inp+'>'+
+      '<div></div><button class="btn btn-ghost" data-addpag="'+c.id+'">Adicionar forma de pagamento</button>'+
+      '</div>'+
+      '</div>';
+  });
+  return h;
+}
+function bindConfig(){
+  function v(id){ var e=document.getElementById(id); return e?e.value:''; }
+  function err(m){ var e=document.getElementById('cErr'); if(e){ e.textContent=m; e.style.display='block'; } }
+  var cr=document.getElementById('cCreate');
+  if(cr) cr.onclick=function(){
+    var razao=v('cRazao').trim(), cnpj=v('cCnpj').trim();
+    if(!razao){ err('Informe a razão social.'); return; }
+    if(!cnpj){ err('Informe o CNPJ.'); return; }
+    var list=loadCP();
+    list.push({ id:'cp_'+Date.now()+'_'+Math.floor(Math.random()*10000), razaoSocial:razao, nomeFantasia:v('cFantasia').trim(), cnpj:cnpj, ie:v('cIe').trim(), endereco:v('cEndereco').trim(),
+      contatoNome:v('cContatoNome').trim(), contatoEmail:v('cContatoEmail').trim(), contatoTel:v('cContatoTel').trim(),
+      cceeCod:v('cCceeCod').trim(), cceePerfil:v('cCceePerfil'), cceeSub:v('cCceeSub'), cceePerfiliz:v('cCceePerfiliz'), cceeRepr:v('cCceeRepr').trim(), cceeEmail:v('cCceeEmail').trim(), cceeData:v('cCceeData'),
+      pagamentos:[] });
+    saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig();
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-addpag]'),function(el){
+    el.onclick=function(){ var cpId=el.getAttribute('data-addpag'); var list=loadCP(); var c=list.filter(function(x){return x.id===cpId;})[0]; if(!c) return;
+      var tipo=v('pf_'+cpId+'_tipo'); if(!tipo) return;
+      c.pagamentos=c.pagamentos||[];
+      c.pagamentos.push({ id:'pg_'+Date.now()+'_'+Math.floor(Math.random()*10000), tipo:tipo, banco:v('pf_'+cpId+'_banco').trim(), agencia:v('pf_'+cpId+'_ag').trim(), conta:v('pf_'+cpId+'_conta').trim(), chavePix:v('pf_'+cpId+'_pix').trim(), condicao:v('pf_'+cpId+'_cond').trim(), titular:v('pf_'+cpId+'_titular').trim() });
+      saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-delpag]'),function(el){
+    el.onclick=function(){ var parts=el.getAttribute('data-delpag').split('|'); var list=loadCP(); var c=list.filter(function(x){return x.id===parts[0];})[0]; if(!c) return;
+      c.pagamentos=(c.pagamentos||[]).filter(function(p){return p.id!==parts[1];});
+      saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-delcp]'),function(el){
+    el.onclick=function(){ var id=el.getAttribute('data-delcp'); var list=loadCP().filter(function(x){return x.id!==id;}); saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig(); };
+  });
+}
+
+// ── Financeiro — resultados detalhados da companhia e por contraparte ──────
+function viewFinanceiro(){
+  var cs=STATE.contracts, s=computeStats(cs);
+  var empresas=Object.keys(s.byEmp).sort(function(a,b){return s.byEmp[b].val-s.byEmp[a].val;});
+  var sel=FIN_FILTER&&empresas.indexOf(FIN_FILTER)>=0?FIN_FILTER:'';
+  var h='<div class="section-header"><span class="section-title">Resultado Financeiro Detalhado — Companhia</span></div>';
+  h+='<div class="grid-4" style="margin-bottom:8px">'+
+    metric('Receita (Venda)',fmtR(s.rec))+
+    metric('Custo (Compra)',fmtR(s.custo))+
+    metric('Margem Bruta',fmtR(s.margem),fmt(s.margemPct,1)+'% sobre receita',null,s.margem)+
+    metric('Ticket Médio',fmtR(s.ticket))+'</div>';
+  h+='<div class="grid-3" style="margin-bottom:16px">'+
+    metric('Preço médio de venda',fmt(s.pmV)+' R$/MWh')+
+    metric('Preço médio de compra',fmt(s.pmC)+' R$/MWh')+
+    metric('Exposição USD (RETUSD)',fmtR(s.expUSD),s.retCount+' contrato(s)')+'</div>';
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">DRE Simplificado</div><table><tbody>'+
+    '<tr><td>Receita bruta (vendas)</td><td class="td-num pos-long">'+fmtR(s.rec)+'</td></tr>'+
+    '<tr><td>(−) Custo de aquisição (compras)</td><td class="td-num pos-short">'+fmtR(-s.custo)+'</td></tr>'+
+    '<tr style="border-top:2px solid #232834"><td><b>(=) Margem bruta</b></td><td class="td-num" style="font-weight:700;color:'+(s.margem>=0?'#34d399':'#f87171')+'">'+fmtR(s.margem)+'</td></tr>'+
+    '<tr><td>Margem bruta (%)</td><td class="td-num">'+fmt(s.margemPct,1)+'%</td></tr>'+
+    '</tbody></table></div>';
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">Resultado Mensal (próximos 24 meses)</div><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Compra MWm</th><th>Venda MWm</th><th>Saldo MWm</th><th>Preço médio compra</th><th>Preço médio venda</th><th>Resultado R$</th></tr></thead><tbody>';
+  s.months.forEach(function(m){ h+='<tr><td>'+esc(m.label)+'</td><td class="td-num">'+fmt(m.comp)+'</td><td class="td-num">'+fmt(m.vend)+'</td><td class="td-num '+(m.saldo>0?'pos-long':m.saldo<0?'pos-short':'pos-zero')+'">'+fmt(m.saldo)+'</td><td class="td-num">'+(m.pmComp>0?'R$ '+fmt(m.pmComp):'—')+'</td><td class="td-num">'+(m.pmVend>0?'R$ '+fmt(m.pmVend):'—')+'</td><td class="td-num '+(m.resultado>=0?'pos-long':'pos-short')+'">'+fmtR(m.resultado)+'</td></tr>'; });
+  h+='</tbody></table></div></div>';
+  h+='<div class="section-header"><span class="section-title">Ranking de Resultado por Contraparte (cliente)</span></div>';
+  h+='<div class="card" style="margin-bottom:16px"><div class="table-wrap"><table><thead><tr><th>Contraparte</th><th>CNPJ</th><th>Contratos</th><th>Vol MWm</th><th>Valor R$</th><th>% do total</th></tr></thead><tbody>';
+  var totVal=empresas.reduce(function(a,e){return a+Math.abs(s.byEmp[e].val);},0)||1;
+  empresas.forEach(function(e){ var cp=findCP(e); h+='<tr><td>'+esc(e)+'</td><td>'+esc(cp?cp.cnpj:'—')+'</td><td class="td-num">'+s.byEmp[e].count+'</td><td class="td-num">'+fmt(s.byEmp[e].vol)+'</td><td class="td-num">'+fmtR(s.byEmp[e].val)+'</td><td class="td-num">'+fmt(Math.abs(s.byEmp[e].val)/totVal*100,1)+'%</td></tr>'; });
+  if(!empresas.length) h+='<tr><td colspan="6" style="text-align:center;color:#64748b">—</td></tr>';
+  h+='</tbody></table></div></div>';
+  h+='<div class="section-header"><span class="section-title">Detalhe por Contraparte</span></div>';
+  h+='<div class="card" style="margin-bottom:16px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Selecione a contraparte</span><select id="finEmpresaSel" style="background:#0a0c10;border:1px solid #232834;border-radius:6px;color:#e6ebf2;padding:6px 9px;font-size:12px;width:280px"><option value="">Todas (consolidado acima)</option>'+empresas.map(function(e){return '<option'+(e===sel?' selected':'')+'>'+esc(e)+'</option>';}).join('')+'</select></label></div>';
+  if(sel){
+    var sub=cs.filter(function(c){return (c.empresa||'N/D')===sel;});
+    var s2=computeStats(sub), cp=findCP(sel);
+    if(cp){ h+='<div class="card" style="margin-bottom:12px"><div class="card-title">Cadastro — '+esc(cp.razaoSocial)+'</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+
+      '<div><div class="ficha-label">CNPJ</div><div class="ficha-value">'+esc(cp.cnpj||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Perfil CCEE</div><div class="ficha-value">'+esc(cp.cceePerfil||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Código do Agente CCEE</div><div class="ficha-value">'+esc(cp.cceeCod||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Formas de pagamento</div><div class="ficha-value">'+(cp.pagamentos||[]).length+'</div></div></div></div>'; }
+    h+='<div class="grid-4" style="margin-bottom:8px">'+
+      metric('Receita (Venda)',fmtR(s2.rec))+
+      metric('Custo (Compra)',fmtR(s2.custo))+
+      metric('Margem Bruta',fmtR(s2.margem),fmt(s2.margemPct,1)+'%',null,s2.margem)+
+      metric('Contratos',s2.total)+'</div>';
+    h+='<div class="card"><div class="card-title">Resultado Mensal — '+esc(sel)+'</div><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Compra MWm</th><th>Venda MWm</th><th>Saldo MWm</th><th>Resultado R$</th></tr></thead><tbody>';
+    s2.months.filter(function(m){return m.comp||m.vend;}).forEach(function(m){ h+='<tr><td>'+esc(m.label)+'</td><td class="td-num">'+fmt(m.comp)+'</td><td class="td-num">'+fmt(m.vend)+'</td><td class="td-num '+(m.saldo>0?'pos-long':m.saldo<0?'pos-short':'pos-zero')+'">'+fmt(m.saldo)+'</td><td class="td-num '+(m.resultado>=0?'pos-long':'pos-short')+'">'+fmtR(m.resultado)+'</td></tr>'; });
+    if(!s2.months.filter(function(m){return m.comp||m.vend;}).length) h+='<tr><td colspan="5" style="text-align:center;color:#64748b">Sem meses ativos para esta contraparte</td></tr>';
+    h+='</tbody></table></div></div>';
+  }
+  return h;
+}
+function bindFinanceiro(){
+  var sel=document.getElementById('finEmpresaSel');
+  if(sel) sel.onchange=function(){ FIN_FILTER=sel.value; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
+}
+
 // ── Persistência de contratos/operações ─────────────────────────────────
 function saveContracts(){ try{ localStorage.setItem('saas_contracts', JSON.stringify(STATE.contracts)); }catch(e){} }
 function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datIniCondPag','datFimCondPag','dataPrimReaj','dataBase'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); c.fonte=normFonte(c.fonte); return c; }
@@ -817,7 +1043,7 @@ function proposalPDF(p){
     row('Submercado',esc(p.submercado))+row('Fonte de energia',esc(normFonte(p.fonte)))+
     (lc(p.ret)==='sim'?row('RETUSD','Sim'):'')+
     row('Volume',fmtMW(p.vol)+' &nbsp;(aprox. '+fmt(propMWh(p),0)+' MWh no período)')+
-    row('Preço','R$ '+fmt(p.preco)+' /MWh')+
+    row('Preço','R$ '+fmt(p.preco)+' /MWh · '+esc(p.tipoPreco||'Preço fixo'))+
     row('Período de fornecimento',ini+' a '+fim)+'</table>'+
     '<div class="sec">Sazonalidade e flexibilidade</div><table>'+
     row('Sazonalidade',saz)+
@@ -850,7 +1076,7 @@ function contractFromProposal(p){
     volPrevMWm:p.vol, volPrevMWh:p.vol*horas, volAjMWm:0, volAjMWh:0, possuiAjVol:'não',
     submercado:p.submercado, possuiAjSub:'não', fonte:normFonte(p.fonte), retusd:(p.ret||'não').toLowerCase(), classificacao:p.classif||'ACL',
     modulacao:p.sazTipo||p.saz||'', sazSup:p.sazSup||0, sazInf:p.sazInf||0, flexMensal:0, flexSup:p.flexSup||0, flexInf:p.flexInf||0, volDiferenciado:(p.sazTipo&&p.sazTipo!=='Flat')?'Sim':'Não', condPag:p.condPag||'', datIniCondPag:null, datFimCondPag:null, obsFinanceiro:'Operação originada de proposta aprovada',
-    precoDiferenciado:'Não', precPrev:p.preco, precAj:0, possuiAjPreco:'não', flexPreco:(p.piso||p.teto)?'Sim':'Não', tipoSpread:p.tipoSpread||'', indice:p.indicePreco||'', spread:p.spread||0, pisoFlex:p.piso||0, tetoFlex:p.teto||0,
+    precoDiferenciado:'Não', precPrev:p.preco, precAj:0, possuiAjPreco:'não', tipoPreco:p.tipoPreco||'Preço fixo', flexPreco:(p.piso||p.teto)?'Sim':'Não', tipoSpread:p.tipoSpread||'', indice:p.indicePreco||'', spread:p.spread||0, pisoFlex:p.piso||0, tetoFlex:p.teto||0,
     indiceReaj:p.indReaj&&p.indReaj!=='Nenhum'?p.indReaj:'', dataBase:p.dataBase?new Date(p.dataBase):null, dataPrimReaj:p.primReaj?new Date(p.primReaj):null, valorNF:0 };
 }
 function viewProposta(){
@@ -890,10 +1116,10 @@ function viewProposta(){
     fld('RETUSD','<select id="pRet" '+inp+'>'+opt(simNaoOpts)+'</select>')+
     fld('Volume (MWm)','<input id="pVol" type="number" min="0" step="0.1" '+inp+'>')+
     fld('Preço (R$/MWh)','<input id="pPreco" type="number" min="0" step="1" '+inp+'>')+
-    '<div></div>'+
+    fld('Tipo de preço','<div id="pTipoPrecoBox" style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;color:#60a5fa;padding:7px 9px;font-size:12px;font-weight:600">Preço fixo</div>')+
     fld('Início do fornecimento','<input id="pIni" type="date" '+inp+'>')+
     fld('Fim do fornecimento','<input id="pFim" type="date" '+inp+'>')+
-    '<div></div>'+
+    '<div></div><div></div>'+
     '</div>'+
     sec('Sazonalidade')+g3+
     fld('Tipo de sazonalidade','<select id="pSazTipo" '+inp+'>'+opt(sazOpts)+'</select>')+
@@ -905,14 +1131,15 @@ function viewProposta(){
     fld('Flexibilidade inferior (%)','<input id="pFlexInf" type="number" min="0" step="1" placeholder="ex.: 10" '+inp+'>')+
     fld('Condição de pagamento','<input id="pCondPag" type="text" placeholder="ex.: D+30" '+inp+'>')+
     '</div>'+
-    sec('Preço variável / spread')+g3+
+    '<div id="pSpreadSec" style="display:none">'+
+    sec('Preço variável / spread (somente fontes incentivadas)')+g3+
     fld('Tipo de Spread','<select id="pTipoSpread" '+inp+'>'+opt(spreadOpts)+'</select>')+
     fld('Índice de preço','<input id="pIndicePreco" type="text" placeholder="ex.: PLD SE/CO" '+inp+'>')+
     fld('Spread (R$/MWh)','<input id="pSpread" type="number" step="1" placeholder="0" '+inp+'>')+
     fld('Piso de preço (R$/MWh)','<input id="pPiso" type="number" min="0" step="1" placeholder="0" '+inp+'>')+
     fld('Teto de preço (R$/MWh)','<input id="pTeto" type="number" min="0" step="1" placeholder="0" '+inp+'>')+
     '<div></div>'+
-    '</div>'+
+    '</div></div>'+
     sec('Reajuste')+g3+
     fld('Índice de reajuste','<select id="pIndReaj" '+inp+'>'+opt(reajOpts)+'</select>')+
     fld('Data base do reajuste','<input id="pDataBase" type="date" '+inp+'>')+
@@ -933,7 +1160,7 @@ function viewProposta(){
       '<span style="margin-left:auto;display:flex;gap:8px"><button class="btn btn-ghost" data-pdf="'+p.id+'">Baixar PDF</button><button class="btn btn-primary" data-approve="'+p.id+'" style="background:#16a34a">Aprovar → vira operação</button><button class="btn btn-ghost" data-del="'+p.id+'" style="color:#f87171;border-color:#5c2020">Excluir</button></span></div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">'+
       '<div><div class="ficha-label">Volume</div><div class="ficha-value">'+fmtMW(p.vol)+'</div></div>'+
-      '<div><div class="ficha-label">Preço</div><div class="ficha-value">R$ '+fmt(p.preco)+'/MWh</div></div>'+
+      '<div><div class="ficha-label">Preço</div><div class="ficha-value">R$ '+fmt(p.preco)+'/MWh · '+esc(p.tipoPreco||'Preço fixo')+'</div></div>'+
       '<div><div class="ficha-label">Período</div><div class="ficha-value">'+(p.inicio?new Date(p.inicio).toLocaleDateString('pt-BR'):'—')+' → '+(p.fim?new Date(p.fim).toLocaleDateString('pt-BR'):'—')+'</div></div>'+
       '<div><div class="ficha-label">Negociante</div><div class="ficha-value">'+esc(p.negociante||'—')+'</div></div>'+
       '<div><div class="ficha-label">Exposição estimada</div><div class="ficha-value" style="color:#fbbf24">'+fmtR(exp)+'</div></div>'+
@@ -951,6 +1178,13 @@ function viewProposta(){
 function bindProposta(){
   function v(id){ var e=document.getElementById(id); return e?e.value:''; }
   function err(m){ var e=document.getElementById('pErr'); if(e){ e.textContent=m; e.style.display='block'; } }
+  function syncTipoPreco(){
+    var fonteSel=v('pFonte'), inc=!isConvencional(fonteSel);
+    var box=document.getElementById('pTipoPrecoBox'), sec=document.getElementById('pSpreadSec');
+    if(box) box.textContent=inc?'Preço fixo + Spread':'Preço fixo';
+    if(sec) sec.style.display=inc?'':'none';
+  }
+  var fonteEl=document.getElementById('pFonte'); if(fonteEl){ fonteEl.onchange=syncTipoPreco; syncTipoPreco(); }
   var cr=document.getElementById('pCreate');
   if(cr) cr.onclick=function(){
     var emp=v('pEmp').trim(), vol=parseFloat(v('pVol')), preco=parseFloat(v('pPreco'));
@@ -958,8 +1192,9 @@ function bindProposta(){
     if(isNaN(vol)||vol<=0){ err('Informe um volume válido (MWm).'); return; }
     if(isNaN(preco)||preco<=0){ err('Informe um preço válido (R$/MWh).'); return; }
     if(!v('pIni')||!v('pFim')){ err('Informe início e fim do fornecimento.'); return; }
+    var inc=!isConvencional(v('pFonte'));
     var props=loadProps();
-    var p={ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:nextPropSeq(), empresa:emp, unidade:v('pUnidade').trim(), negociante:v('pNegoc').trim(), operador:v('pOperador').trim(), origem:v('pOrigem'), tipoOp:v('pTipo'), natureza:v('pNatureza'), classif:v('pClassif'), ccee:v('pCCEE').trim(), submercado:v('pSub'), fonte:v('pFonte'), ret:v('pRet'), vol:vol, preco:preco, inicio:v('pIni'), fim:v('pFim'), sazTipo:v('pSazTipo'), sazSup:parseFloat(v('pSazSup'))||0, sazInf:parseFloat(v('pSazInf'))||0, flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, condPag:v('pCondPag').trim(), tipoSpread:v('pTipoSpread'), indicePreco:v('pIndicePreco').trim(), spread:parseFloat(v('pSpread'))||0, piso:parseFloat(v('pPiso'))||0, teto:parseFloat(v('pTeto'))||0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() };
+    var p={ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:nextPropSeq(), empresa:emp, unidade:v('pUnidade').trim(), negociante:v('pNegoc').trim(), operador:v('pOperador').trim(), origem:v('pOrigem'), tipoOp:v('pTipo'), natureza:v('pNatureza'), classif:v('pClassif'), ccee:v('pCCEE').trim(), submercado:v('pSub'), fonte:v('pFonte'), ret:v('pRet'), vol:vol, preco:preco, tipoPreco:inc?'Preço fixo + Spread':'Preço fixo', inicio:v('pIni'), fim:v('pFim'), sazTipo:v('pSazTipo'), sazSup:parseFloat(v('pSazSup'))||0, sazInf:parseFloat(v('pSazInf'))||0, flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, condPag:v('pCondPag').trim(), tipoSpread:inc?v('pTipoSpread'):'', indicePreco:inc?v('pIndicePreco').trim():'', spread:inc?(parseFloat(v('pSpread'))||0):0, piso:inc?(parseFloat(v('pPiso'))||0):0, teto:inc?(parseFloat(v('pTeto'))||0):0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() };
     props.push(p); saveProps(props); render();
   };
   Array.prototype.forEach.call(document.querySelectorAll('[data-pdf]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-pdf'); var p=loadProps().filter(function(x){return x.id===id;})[0]; if(p) proposalPDF(p); }; });
@@ -992,6 +1227,8 @@ function renderView(){
     case 'portfolio': return viewPortfolio();
     case 'mtm': return viewMtM();
     case 'proposta': return viewProposta();
+    case 'financeiro': return viewFinanceiro();
+    case 'config': return viewConfig();
     default: return viewDashboard();
   }
 }
@@ -1020,6 +1257,8 @@ function bindApp(){
   bindExport();
   if(STATE.tab==='mtm') bindMtM();
   if(STATE.tab==='proposta') bindProposta();
+  if(STATE.tab==='financeiro') bindFinanceiro();
+  if(STATE.tab==='config') bindConfig();
 }
 function bindExport(){ var e=document.getElementById('exportBtn'); if(e) e.onclick=function(){ downloadFile('operacoes_companhia.csv', contractsToCSV(STATE.contracts)); }; }
 function bindMtM(){
@@ -1029,8 +1268,17 @@ function bindMtM(){
   function rerender(){ saveMtM(M); document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); }
   function num2(v){ return parseFloat(String(v).replace(',','.')); }
   function readRef(){ M.refMonth=val('mtmRef')||M.refMonth; }
-  function readConv(){ var months=curveMonths(cs,M); SUBS_STD.forEach(function(sub,si){ if(!M.conv[sub])M.conv[sub]={}; months.forEach(function(k,mi){ var v=val('conv_'+si+'_'+mi); if(v!=='') M.conv[sub][k]=num2(v); else delete M.conv[sub][k]; }); }); }
-  function readSpread(){ Array.prototype.forEach.call(document.querySelectorAll('[data-fonte]'),function(el){ var f=el.getAttribute('data-fonte'), v=el.value; if(v!=='') M.spread[f]=num2(v); else delete M.spread[f]; }); }
+  function readConv(){ var months=curveMonths(cs,M);
+    months.forEach(function(k,mi){ var v=val('base_'+mi); if(v!=='') M.base[k]=num2(v); else delete M.base[k]; });
+    SUBS_OTHER.forEach(function(sub,si){ if(!M.subPrice[sub])M.subPrice[sub]={}; months.forEach(function(k,mi){ var v=val('ss_'+si+'_'+mi); if(v!=='') M.subPrice[sub][k]=num2(v); else delete M.subPrice[sub][k]; }); });
+  }
+  function readSpread(){ var months=curveMonths(cs,M); var seen={};
+    Array.prototype.forEach.call(document.querySelectorAll('[data-fonte]'),function(el){
+      var f=el.getAttribute('data-fonte'); if(!M.spread[f])M.spread[f]={}; if(!seen[f]){ seen[f]=true; }
+      var id=el.id, mi=id.substring(id.lastIndexOf('_')+1); var k=months[+mi]; if(k==null) return;
+      var v=el.value; if(v!=='') M.spread[f][k]=num2(v); else delete M.spread[f][k];
+    });
+  }
   function readAll(){ readRef(); readConv(); readSpread(); }
   var ap=document.getElementById('mtmApply'); if(ap) ap.onclick=function(){ readAll(); rerender(); };
   var cv=document.getElementById('convSave'); if(cv) cv.onclick=function(){ readAll(); rerender(); };
@@ -1039,6 +1287,14 @@ function bindMtM(){
     err('Conectando à CCEE...');
     fetch('https://www.ccee.org.br/web/guest/precos/painel-precos',{mode:'cors'}).then(function(r){return r.text();}).then(function(){ err('Conexão respondeu, mas o painel CCEE exige sessão/JS e bloqueia leitura externa — informe o PLD manualmente na curva.'); }).catch(function(){ err('A CCEE bloqueia acesso automático (CORS/anti-bot). Copie o PLD do Painel de Preços e informe na 1ª coluna da curva.'); });
   };
+  var tb=document.getElementById('mtmTmplBtn'); if(tb) tb.onclick=function(){ readAll(); downloadFile('modelo_curva_mtm.csv', mtmTemplateCSV(cs,M)); };
+  var ub=document.getElementById('mtmUploadBtn'), ui=document.getElementById('mtmUploadInput');
+  if(ub&&ui){ ub.onclick=function(){ ui.click(); };
+    ui.onchange=function(){ var f=ui.files[0]; if(!f) return; var r=new FileReader();
+      r.onload=function(ev){ try{ applyMtMCSV(ev.target.result,cs,M); rerender(); }catch(e){ err('Erro ao ler CSV: '+e.message); } };
+      r.readAsText(f);
+    };
+  }
 }
 function bindFilters(){ Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindFichas(); bindFilters(); bindExport(); }; }); }
 function bindFichas(){
