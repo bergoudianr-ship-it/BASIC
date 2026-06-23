@@ -279,7 +279,8 @@ function volMWh(c){ return c.volAjMWh||c.volPrevMWh; }
 
 // ── State ────────────────────────────────────────────────────────────────
 var STATE = { contracts: [], tab: 'dashboard' };
-var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes']];
+var FIN_FILTER = '';
+var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['financeiro','Financeiro'],['config','Configurações']];
 var MARKET_PRICE = null;
 function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\b(sa|ltda|me|epp|eireli|energia|comercializadora|geracao)\b/g,'').replace(/[^a-z0-9]/g,''); }
 function onlyDigits(s){ return (s||'').replace(/\D/g,''); }
@@ -825,7 +826,179 @@ function viewMtM(){
   return h;
 }
 
-// ── Fator de Alavancagem (CCEE) ──────────────────────────────────────────
+// ── Contrapartes (cadastro / backoffice CCEE / formas de pagamento) ────────
+var CCEE_PERFIS=['Comercializador','Consumidor Livre','Consumidor Especial','Gerador','Autoprodutor','Varejista'];
+var CCEE_PERFILIZACAO=['Conforme curva de carga','Modulação'];
+var PAG_TIPOS=['PIX','TED','Boleto','DOC'];
+function loadCP(){ try{ return JSON.parse(localStorage.getItem('saas_contrapartes')||'[]'); }catch(e){ return []; } }
+function saveCP(a){ try{ localStorage.setItem('saas_contrapartes', JSON.stringify(a)); }catch(e){} }
+function findCP(nome){ var n=norm(nome); var list=loadCP(); for(var i=0;i<list.length;i++){ if(norm(list[i].razaoSocial)===n||norm(list[i].nomeFantasia)===n) return list[i]; } return null; }
+function viewConfig(){
+  var cps=loadCP();
+  var inp='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
+  function fld(label,inner){ return '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">'+label+'</span>'+inner+'</label>'; }
+  function sec(t){ return '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">'+t+'</div>'; }
+  function opt(arr){ return '<option></option>'+arr.map(function(x){return '<option>'+esc(x)+'</option>';}).join(''); }
+  var g3='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
+  var h='<div class="section-header"><span class="section-title">Configurações — Contrapartes</span></div>';
+  h+='<div class="card" style="margin-bottom:20px">'+
+    sec('Identificação')+g3+
+    fld('Razão social*','<input id="cRazao" type="text" '+inp+'>')+
+    fld('Nome fantasia','<input id="cFantasia" type="text" '+inp+'>')+
+    fld('CNPJ*','<input id="cCnpj" type="text" placeholder="00.000.000/0000-00" '+inp+'>')+
+    fld('Inscrição Estadual','<input id="cIe" type="text" '+inp+'>')+
+    fld('Endereço','<input id="cEndereco" type="text" '+inp+'>')+
+    '<div></div>'+
+    '</div>'+
+    sec('Contato')+g3+
+    fld('Nome do contato','<input id="cContatoNome" type="text" '+inp+'>')+
+    fld('E-mail','<input id="cContatoEmail" type="email" '+inp+'>')+
+    fld('Telefone','<input id="cContatoTel" type="text" '+inp+'>')+
+    '</div>'+
+    sec('Backoffice CCEE')+g3+
+    fld('Código do Agente CCEE','<input id="cCceeCod" type="text" '+inp+'>')+
+    fld('Perfil do Agente','<select id="cCceePerfil" '+inp+'>'+opt(CCEE_PERFIS)+'</select>')+
+    fld('Submercado de registro','<select id="cCceeSub" '+inp+'>'+opt(['SE/CO','S','NE','N'])+'</select>')+
+    fld('Tipo de perfilização','<select id="cCceePerfiliz" '+inp+'>'+opt(CCEE_PERFILIZACAO)+'</select>')+
+    fld('Representante CCEE','<input id="cCceeRepr" type="text" '+inp+'>')+
+    fld('E-mail backoffice CCEE','<input id="cCceeEmail" type="email" '+inp+'>')+
+    fld('Data de habilitação CCEE','<input id="cCceeData" type="date" '+inp+'>')+
+    '<div></div><div></div>'+
+    '</div>'+
+    '<div style="margin-top:16px"><button class="btn btn-primary" id="cCreate">Cadastrar contraparte</button></div>'+
+    '<div id="cErr" class="err" style="display:none"></div></div>';
+  h+='<div class="section-header"><span class="section-title">Contrapartes Cadastradas ('+cps.length+')</span></div>';
+  if(!cps.length){ h+='<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma contraparte cadastrada ainda.</div></div>'; return h; }
+  cps.forEach(function(c){
+    h+='<div class="card" style="margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<span style="font-weight:600;color:#f1f5f9">'+esc(c.razaoSocial)+'</span>'+
+      (c.nomeFantasia?'<span class="badge badge-gray">'+esc(c.nomeFantasia)+'</span>':'')+
+      '<span style="color:#94a3b8;font-size:12px">'+esc(c.cnpj||'—')+'</span>'+
+      (c.cceePerfil?'<span class="badge badge-blue">'+esc(c.cceePerfil)+'</span>':'')+
+      (c.cceeCod?'<span class="badge badge-purple">CCEE '+esc(c.cceeCod)+'</span>':'')+
+      '<button class="btn btn-ghost" data-delcp="'+c.id+'" style="margin-left:auto;color:#f87171;border-color:#5c2020">Excluir</button>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">'+
+      '<div><div class="ficha-label">Submercado registro</div><div class="ficha-value">'+esc(c.cceeSub||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Perfilização</div><div class="ficha-value">'+esc(c.cceePerfiliz||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Contato</div><div class="ficha-value">'+esc(c.contatoNome||'—')+'</div></div>'+
+      '<div><div class="ficha-label">E-mail backoffice CCEE</div><div class="ficha-value">'+esc(c.cceeEmail||'—')+'</div></div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">Formas de pagamento ('+(c.pagamentos||[]).length+')</div>';
+    if((c.pagamentos||[]).length){
+      h+='<table><thead><tr><th>Tipo</th><th>Banco</th><th>Agência</th><th>Conta</th><th>Chave PIX</th><th>Titular</th><th>Condição</th><th></th></tr></thead><tbody>';
+      c.pagamentos.forEach(function(p){ h+='<tr><td>'+esc(p.tipo)+'</td><td>'+esc(p.banco||'—')+'</td><td>'+esc(p.agencia||'—')+'</td><td>'+esc(p.conta||'—')+'</td><td>'+esc(p.chavePix||'—')+'</td><td>'+esc(p.titular||'—')+'</td><td>'+esc(p.condicao||'—')+'</td><td><button class="btn btn-ghost" data-delpag="'+c.id+'|'+p.id+'" style="color:#f87171;border-color:#5c2020">x</button></td></tr>'; });
+      h+='</tbody></table>';
+    }
+    h+='<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px;align-items:end">'+
+      '<select data-pf="tipo" id="pf_'+c.id+'_tipo" '+inp+'>'+opt(PAG_TIPOS)+'</select>'+
+      '<input id="pf_'+c.id+'_banco" placeholder="Banco" '+inp+'>'+
+      '<input id="pf_'+c.id+'_ag" placeholder="Agência" '+inp+'>'+
+      '<input id="pf_'+c.id+'_conta" placeholder="Conta" '+inp+'>'+
+      '<input id="pf_'+c.id+'_pix" placeholder="Chave PIX" '+inp+'>'+
+      '<input id="pf_'+c.id+'_cond" placeholder="Condição (ex.: D+30)" '+inp+'>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">'+
+      '<input id="pf_'+c.id+'_titular" placeholder="Titular da conta" '+inp+'>'+
+      '<div></div><button class="btn btn-ghost" data-addpag="'+c.id+'">Adicionar forma de pagamento</button>'+
+      '</div>'+
+      '</div>';
+  });
+  return h;
+}
+function bindConfig(){
+  function v(id){ var e=document.getElementById(id); return e?e.value:''; }
+  function err(m){ var e=document.getElementById('cErr'); if(e){ e.textContent=m; e.style.display='block'; } }
+  var cr=document.getElementById('cCreate');
+  if(cr) cr.onclick=function(){
+    var razao=v('cRazao').trim(), cnpj=v('cCnpj').trim();
+    if(!razao){ err('Informe a razão social.'); return; }
+    if(!cnpj){ err('Informe o CNPJ.'); return; }
+    var list=loadCP();
+    list.push({ id:'cp_'+Date.now()+'_'+Math.floor(Math.random()*10000), razaoSocial:razao, nomeFantasia:v('cFantasia').trim(), cnpj:cnpj, ie:v('cIe').trim(), endereco:v('cEndereco').trim(),
+      contatoNome:v('cContatoNome').trim(), contatoEmail:v('cContatoEmail').trim(), contatoTel:v('cContatoTel').trim(),
+      cceeCod:v('cCceeCod').trim(), cceePerfil:v('cCceePerfil'), cceeSub:v('cCceeSub'), cceePerfiliz:v('cCceePerfiliz'), cceeRepr:v('cCceeRepr').trim(), cceeEmail:v('cCceeEmail').trim(), cceeData:v('cCceeData'),
+      pagamentos:[] });
+    saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig();
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-addpag]'),function(el){
+    el.onclick=function(){ var cpId=el.getAttribute('data-addpag'); var list=loadCP(); var c=list.filter(function(x){return x.id===cpId;})[0]; if(!c) return;
+      var tipo=v('pf_'+cpId+'_tipo'); if(!tipo) return;
+      c.pagamentos=c.pagamentos||[];
+      c.pagamentos.push({ id:'pg_'+Date.now()+'_'+Math.floor(Math.random()*10000), tipo:tipo, banco:v('pf_'+cpId+'_banco').trim(), agencia:v('pf_'+cpId+'_ag').trim(), conta:v('pf_'+cpId+'_conta').trim(), chavePix:v('pf_'+cpId+'_pix').trim(), condicao:v('pf_'+cpId+'_cond').trim(), titular:v('pf_'+cpId+'_titular').trim() });
+      saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-delpag]'),function(el){
+    el.onclick=function(){ var parts=el.getAttribute('data-delpag').split('|'); var list=loadCP(); var c=list.filter(function(x){return x.id===parts[0];})[0]; if(!c) return;
+      c.pagamentos=(c.pagamentos||[]).filter(function(p){return p.id!==parts[1];});
+      saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-delcp]'),function(el){
+    el.onclick=function(){ var id=el.getAttribute('data-delcp'); var list=loadCP().filter(function(x){return x.id!==id;}); saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig(); };
+  });
+}
+
+// ── Financeiro — resultados detalhados da companhia e por contraparte ──────
+function viewFinanceiro(){
+  var cs=STATE.contracts, s=computeStats(cs);
+  var empresas=Object.keys(s.byEmp).sort(function(a,b){return s.byEmp[b].val-s.byEmp[a].val;});
+  var sel=FIN_FILTER&&empresas.indexOf(FIN_FILTER)>=0?FIN_FILTER:'';
+  var h='<div class="section-header"><span class="section-title">Resultado Financeiro Detalhado — Companhia</span></div>';
+  h+='<div class="grid-4" style="margin-bottom:8px">'+
+    metric('Receita (Venda)',fmtR(s.rec))+
+    metric('Custo (Compra)',fmtR(s.custo))+
+    metric('Margem Bruta',fmtR(s.margem),fmt(s.margemPct,1)+'% sobre receita',null,s.margem)+
+    metric('Ticket Médio',fmtR(s.ticket))+'</div>';
+  h+='<div class="grid-3" style="margin-bottom:16px">'+
+    metric('Preço médio de venda',fmt(s.pmV)+' R$/MWh')+
+    metric('Preço médio de compra',fmt(s.pmC)+' R$/MWh')+
+    metric('Exposição USD (RETUSD)',fmtR(s.expUSD),s.retCount+' contrato(s)')+'</div>';
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">DRE Simplificado</div><table><tbody>'+
+    '<tr><td>Receita bruta (vendas)</td><td class="td-num pos-long">'+fmtR(s.rec)+'</td></tr>'+
+    '<tr><td>(−) Custo de aquisição (compras)</td><td class="td-num pos-short">'+fmtR(-s.custo)+'</td></tr>'+
+    '<tr style="border-top:2px solid #232834"><td><b>(=) Margem bruta</b></td><td class="td-num" style="font-weight:700;color:'+(s.margem>=0?'#34d399':'#f87171')+'">'+fmtR(s.margem)+'</td></tr>'+
+    '<tr><td>Margem bruta (%)</td><td class="td-num">'+fmt(s.margemPct,1)+'%</td></tr>'+
+    '</tbody></table></div>';
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">Resultado Mensal (próximos 24 meses)</div><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Compra MWm</th><th>Venda MWm</th><th>Saldo MWm</th><th>Preço médio compra</th><th>Preço médio venda</th><th>Resultado R$</th></tr></thead><tbody>';
+  s.months.forEach(function(m){ h+='<tr><td>'+esc(m.label)+'</td><td class="td-num">'+fmt(m.comp)+'</td><td class="td-num">'+fmt(m.vend)+'</td><td class="td-num '+(m.saldo>0?'pos-long':m.saldo<0?'pos-short':'pos-zero')+'">'+fmt(m.saldo)+'</td><td class="td-num">'+(m.pmComp>0?'R$ '+fmt(m.pmComp):'—')+'</td><td class="td-num">'+(m.pmVend>0?'R$ '+fmt(m.pmVend):'—')+'</td><td class="td-num '+(m.resultado>=0?'pos-long':'pos-short')+'">'+fmtR(m.resultado)+'</td></tr>'; });
+  h+='</tbody></table></div></div>';
+  h+='<div class="section-header"><span class="section-title">Ranking de Resultado por Contraparte (cliente)</span></div>';
+  h+='<div class="card" style="margin-bottom:16px"><div class="table-wrap"><table><thead><tr><th>Contraparte</th><th>CNPJ</th><th>Contratos</th><th>Vol MWm</th><th>Valor R$</th><th>% do total</th></tr></thead><tbody>';
+  var totVal=empresas.reduce(function(a,e){return a+Math.abs(s.byEmp[e].val);},0)||1;
+  empresas.forEach(function(e){ var cp=findCP(e); h+='<tr><td>'+esc(e)+'</td><td>'+esc(cp?cp.cnpj:'—')+'</td><td class="td-num">'+s.byEmp[e].count+'</td><td class="td-num">'+fmt(s.byEmp[e].vol)+'</td><td class="td-num">'+fmtR(s.byEmp[e].val)+'</td><td class="td-num">'+fmt(Math.abs(s.byEmp[e].val)/totVal*100,1)+'%</td></tr>'; });
+  if(!empresas.length) h+='<tr><td colspan="6" style="text-align:center;color:#64748b">—</td></tr>';
+  h+='</tbody></table></div></div>';
+  h+='<div class="section-header"><span class="section-title">Detalhe por Contraparte</span></div>';
+  h+='<div class="card" style="margin-bottom:16px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Selecione a contraparte</span><select id="finEmpresaSel" style="background:#0a0c10;border:1px solid #232834;border-radius:6px;color:#e6ebf2;padding:6px 9px;font-size:12px;width:280px"><option value="">Todas (consolidado acima)</option>'+empresas.map(function(e){return '<option'+(e===sel?' selected':'')+'>'+esc(e)+'</option>';}).join('')+'</select></label></div>';
+  if(sel){
+    var sub=cs.filter(function(c){return (c.empresa||'N/D')===sel;});
+    var s2=computeStats(sub), cp=findCP(sel);
+    if(cp){ h+='<div class="card" style="margin-bottom:12px"><div class="card-title">Cadastro — '+esc(cp.razaoSocial)+'</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+
+      '<div><div class="ficha-label">CNPJ</div><div class="ficha-value">'+esc(cp.cnpj||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Perfil CCEE</div><div class="ficha-value">'+esc(cp.cceePerfil||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Código do Agente CCEE</div><div class="ficha-value">'+esc(cp.cceeCod||'—')+'</div></div>'+
+      '<div><div class="ficha-label">Formas de pagamento</div><div class="ficha-value">'+(cp.pagamentos||[]).length+'</div></div></div></div>'; }
+    h+='<div class="grid-4" style="margin-bottom:8px">'+
+      metric('Receita (Venda)',fmtR(s2.rec))+
+      metric('Custo (Compra)',fmtR(s2.custo))+
+      metric('Margem Bruta',fmtR(s2.margem),fmt(s2.margemPct,1)+'%',null,s2.margem)+
+      metric('Contratos',s2.total)+'</div>';
+    h+='<div class="card"><div class="card-title">Resultado Mensal — '+esc(sel)+'</div><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Compra MWm</th><th>Venda MWm</th><th>Saldo MWm</th><th>Resultado R$</th></tr></thead><tbody>';
+    s2.months.filter(function(m){return m.comp||m.vend;}).forEach(function(m){ h+='<tr><td>'+esc(m.label)+'</td><td class="td-num">'+fmt(m.comp)+'</td><td class="td-num">'+fmt(m.vend)+'</td><td class="td-num '+(m.saldo>0?'pos-long':m.saldo<0?'pos-short':'pos-zero')+'">'+fmt(m.saldo)+'</td><td class="td-num '+(m.resultado>=0?'pos-long':'pos-short')+'">'+fmtR(m.resultado)+'</td></tr>'; });
+    if(!s2.months.filter(function(m){return m.comp||m.vend;}).length) h+='<tr><td colspan="5" style="text-align:center;color:#64748b">Sem meses ativos para esta contraparte</td></tr>';
+    h+='</tbody></table></div></div>';
+  }
+  return h;
+}
+function bindFinanceiro(){
+  var sel=document.getElementById('finEmpresaSel');
+  if(sel) sel.onchange=function(){ FIN_FILTER=sel.value; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
+}
+
 // ── Persistência de contratos/operações ─────────────────────────────────
 function saveContracts(){ try{ localStorage.setItem('saas_contracts', JSON.stringify(STATE.contracts)); }catch(e){} }
 function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datIniCondPag','datFimCondPag','dataPrimReaj','dataBase'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); c.fonte=normFonte(c.fonte); return c; }
@@ -1054,6 +1227,8 @@ function renderView(){
     case 'portfolio': return viewPortfolio();
     case 'mtm': return viewMtM();
     case 'proposta': return viewProposta();
+    case 'financeiro': return viewFinanceiro();
+    case 'config': return viewConfig();
     default: return viewDashboard();
   }
 }
@@ -1082,6 +1257,8 @@ function bindApp(){
   bindExport();
   if(STATE.tab==='mtm') bindMtM();
   if(STATE.tab==='proposta') bindProposta();
+  if(STATE.tab==='financeiro') bindFinanceiro();
+  if(STATE.tab==='config') bindConfig();
 }
 function bindExport(){ var e=document.getElementById('exportBtn'); if(e) e.onclick=function(){ downloadFile('operacoes_companhia.csv', contractsToCSV(STATE.contracts)); }; }
 function bindMtM(){
