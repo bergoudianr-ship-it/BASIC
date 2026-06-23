@@ -692,8 +692,10 @@ function convPrice(M,sub,k){ if(sub==='SE/CO') return basePrice(M,k); return sub
 function curvePrice(M,sub,fonte,k){
   var cp=convPrice(M,sub,k); if(cp==null) return null;
   if(isConvencional(fonte)) return cp;
-  var sp=M.spread[fonte]; return cp + (sp!=null&&sp!==''?+sp:0);
+  var so=M.spread[fonte]; var sp=(so&&so[k]!=null&&so[k]!=='')?+so[k]:0;
+  return cp + sp;
 }
+function incFontesList(cs){ var arr=[]; cs.forEach(function(c){ if(!isConvencional(c.fonte)&&arr.indexOf(c.fonte)<0) arr.push(c.fonte); }); arr.sort(); return arr; }
 // média ponderada da convencional entre submercados, ponderada pelo volume convencional do portfólio no mês
 function wavgConv(cs,M,k){ var num=0,den=0,simpleN=0,simpleD=0; var ms=mKeyToDate(k), me=new Date(ms.getFullYear(),ms.getMonth()+1,0);
   SUBS_STD.forEach(function(sub){ var p=convPrice(M,sub,k); if(p==null) return; simpleN+=p; simpleD++;
@@ -707,6 +709,30 @@ function mtmContractCurve(c,M){ var P=c.precAj||c.precPrev, total=0; monthsForCo
 function fwdMonths(cs,M){ var pend=portfolioEnd(cs); var months=[]; if(pend){ var d=mKeyToDate(M.refMonth); d.setMonth(d.getMonth()+1); var end=new Date(pend.getFullYear(),pend.getMonth(),1),g=0; while(d<=end&&g<18){ months.push(mKey(d)); d.setMonth(d.getMonth()+1); g++; } } return months; }
 function curveMonths(cs,M){ return [M.refMonth].concat(fwdMonths(cs,M)); }
 function MTM_PRODUCTS(cs){ var p=[]; cs.forEach(function(c){ var k=productKey(c); if(p.indexOf(k)<0)p.push(k); }); p.sort(); return p; }
+// ── CSV da curva MtM (download modelo / upload em massa) ──
+function mtmCSVHeader(cs){ return ['Mes','SE/CO'].concat(SUBS_OTHER).concat(incFontesList(cs).map(function(f){return 'Spread '+f;})); }
+function mtmTemplateCSV(cs,M){
+  var months=curveMonths(cs,M), incFontes=incFontesList(cs);
+  var lines=[mtmCSVHeader(cs).join(';')];
+  months.forEach(function(k){
+    var row=[k];
+    row.push(M.base[k]!=null?String(M.base[k]).replace('.',','):'');
+    SUBS_OTHER.forEach(function(sub){ var v=(M.subPrice[sub]&&M.subPrice[sub][k]!=null)?M.subPrice[sub][k]:''; row.push(v!==''?String(v).replace('.',','):''); });
+    incFontes.forEach(function(f){ var v=(M.spread[f]&&M.spread[f][k]!=null)?M.spread[f][k]:''; row.push(v!==''?String(v).replace('.',','):''); });
+    lines.push(row.join(';'));
+  });
+  return lines.join('\n');
+}
+function applyMtMCSV(raw,cs,M){
+  var rows=parseCSV(raw); if(!rows.length) throw new Error('CSV vazio ou sem linhas de dados.');
+  var incFontes=incFontesList(cs);
+  rows.forEach(function(r){
+    var k=(g(r,['Mes','Mês'])||'').toString().trim(); if(!k) return;
+    var vb=g(r,['SE/CO']); if(vb!=='') M.base[k]=num(vb);
+    SUBS_OTHER.forEach(function(sub){ var v=g(r,[sub]); if(v!==''){ if(!M.subPrice[sub])M.subPrice[sub]={}; M.subPrice[sub][k]=num(v); } });
+    incFontes.forEach(function(f){ var v=g(r,['Spread '+f]); if(v!==''){ if(!M.spread[f])M.spread[f]={}; M.spread[f][k]=num(v); } });
+  });
+}
 function viewMtM(){
   var cs=STATE.contracts, M=loadMtM();
   var prods=MTM_PRODUCTS(cs), months=curveMonths(cs,M);
@@ -716,7 +742,10 @@ function viewMtM(){
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de referência (PLD fechado)</span><input id="mtmRef" type="month" value="'+esc(M.refMonth)+'" style="'+ist+';width:170px"></label>'+
     '<button class="btn btn-primary" id="mtmApply">Salvar tudo e recalcular</button>'+
     '<button class="btn btn-ghost" id="pldFetch">Tentar buscar PLD na CCEE</button>'+
-    '<span style="color:#97a3b6;font-size:11px;max-width:600px;line-height:1.5"><b>Fórmula:</b> SE/CO usa a curva base; S/NE/N usam preço fixo por submercado; sobre a convencional resultante soma-se o spread da fonte incentivada (só para incentivadas). 1ª coluna = PLD do mês fechado; demais = forward. CCEE bloqueia acesso automático — use o <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
+    '<button class="btn btn-ghost" id="mtmTmplBtn">Baixar modelo CSV da curva</button>'+
+    '<button class="btn btn-ghost" id="mtmUploadBtn">Subir CSV da curva</button>'+
+    '<input type="file" id="mtmUploadInput" accept=".csv,.txt" style="display:none">'+
+    '<span style="color:#97a3b6;font-size:11px;max-width:600px;line-height:1.5"><b>Fórmula:</b> SE/CO usa a curva base; S/NE/N usam preço fixo por submercado; sobre a convencional resultante soma-se o spread da fonte incentivada por mês (só para incentivadas). 1ª coluna = PLD do mês fechado; demais = forward. Baixe o modelo CSV no padrão da página (mês × SE/CO × S/NE/N × spread de cada fonte), preencha e suba de uma vez para calcular o MtM de todos os produtos. CCEE bloqueia acesso automático — use o <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
     '<span id="mtmErr" class="err" style="display:none"></span></div>';
   if(months.length){
     // ── Curva base SE/CO convencional ──
@@ -752,14 +781,18 @@ function viewMtM(){
   } else {
     h+='<div class="card" style="margin-bottom:14px;padding:18px;color:#64748b;text-align:center">Importe contratos com datas e submercado para montar a curva.</div>';
   }
-  // ── Spread por fonte incentivada ──
-  var incFontes=[]; cs.forEach(function(c){ if(!isConvencional(c.fonte)&&incFontes.indexOf(c.fonte)<0) incFontes.push(c.fonte); }); incFontes.sort();
-  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">3) Spread por fonte incentivada · R$/MWh (sobre a convencional do submercado)</div>'+
-    '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Preço da incentivada = convencional do submercado (Base SE/CO + spread de submercado) + spread da fonte. A convencional NÃO leva este spread.</div>';
-  if(incFontes.length){
-    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">';
-    incFontes.forEach(function(f,fi){ var v=(M.spread[f]!=null?M.spread[f]:''); h+='<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">'+esc(f)+'</span><input id="sp_'+fi+'" data-fonte="'+esc(f)+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="+ / − R$/MWh" style="'+ist+'"></label>'; });
-    h+='</div><div style="margin-top:12px"><button class="btn btn-primary" id="spSave">Salvar spreads e recalcular</button></div>';
+  // ── Spread por fonte incentivada (por mês) ──
+  var incFontes=incFontesList(cs);
+  h+='<div class="card" style="margin-bottom:16px"><div class="card-title">3) Spread por fonte incentivada · R$/MWh por mês (sobre a convencional do submercado)</div>'+
+    '<div style="color:#97a3b6;font-size:11px;margin-bottom:10px">Preço da incentivada = convencional do submercado (resultante da seção 1/2) + spread da fonte naquele mês. A convencional NÃO leva este spread. Cada fonte pode ter spread diferente em cada mês.</div>';
+  if(incFontes.length&&months.length){
+    h+='<div class="table-wrap"><table><thead><tr><th>Fonte</th>';
+    months.forEach(function(k){ var isRef=(k===M.refMonth); h+='<th class="td-num"'+(isRef?' style="color:#fcd34d"':'')+'>'+esc(mLabel(k))+'</th>'; });
+    h+='</tr></thead><tbody>';
+    incFontes.forEach(function(f,fi){ h+='<tr><td><span class="badge badge-purple">'+esc(f)+'</span></td>';
+      months.forEach(function(k,mi){ var v=(M.spread[f]&&M.spread[f][k]!=null)?M.spread[f][k]:''; h+='<td><input id="sp_'+fi+'_'+mi+'" data-fonte="'+esc(f)+'" type="number" step="0.01" value="'+esc(v)+'" placeholder="±" style="'+ist+';min-width:74px;padding:4px 6px"></td>'; });
+      h+='</tr>'; });
+    h+='</tbody></table></div><div style="margin-top:12px"><button class="btn btn-primary" id="spSave">Salvar spreads e recalcular</button></div>';
   } else { h+='<div style="color:#64748b">Nenhuma fonte incentivada no portfólio.</div>'; }
   h+='</div>';
   // ── Resultados MtM ──
@@ -837,7 +870,7 @@ function proposalPDF(p){
     row('Submercado',esc(p.submercado))+row('Fonte de energia',esc(normFonte(p.fonte)))+
     (lc(p.ret)==='sim'?row('RETUSD','Sim'):'')+
     row('Volume',fmtMW(p.vol)+' &nbsp;(aprox. '+fmt(propMWh(p),0)+' MWh no período)')+
-    row('Preço','R$ '+fmt(p.preco)+' /MWh')+
+    row('Preço','R$ '+fmt(p.preco)+' /MWh · '+esc(p.tipoPreco||'Preço fixo'))+
     row('Período de fornecimento',ini+' a '+fim)+'</table>'+
     '<div class="sec">Sazonalidade e flexibilidade</div><table>'+
     row('Sazonalidade',saz)+
@@ -870,7 +903,7 @@ function contractFromProposal(p){
     volPrevMWm:p.vol, volPrevMWh:p.vol*horas, volAjMWm:0, volAjMWh:0, possuiAjVol:'não',
     submercado:p.submercado, possuiAjSub:'não', fonte:normFonte(p.fonte), retusd:(p.ret||'não').toLowerCase(), classificacao:p.classif||'ACL',
     modulacao:p.sazTipo||p.saz||'', sazSup:p.sazSup||0, sazInf:p.sazInf||0, flexMensal:0, flexSup:p.flexSup||0, flexInf:p.flexInf||0, volDiferenciado:(p.sazTipo&&p.sazTipo!=='Flat')?'Sim':'Não', condPag:p.condPag||'', datIniCondPag:null, datFimCondPag:null, obsFinanceiro:'Operação originada de proposta aprovada',
-    precoDiferenciado:'Não', precPrev:p.preco, precAj:0, possuiAjPreco:'não', flexPreco:(p.piso||p.teto)?'Sim':'Não', tipoSpread:p.tipoSpread||'', indice:p.indicePreco||'', spread:p.spread||0, pisoFlex:p.piso||0, tetoFlex:p.teto||0,
+    precoDiferenciado:'Não', precPrev:p.preco, precAj:0, possuiAjPreco:'não', tipoPreco:p.tipoPreco||'Preço fixo', flexPreco:(p.piso||p.teto)?'Sim':'Não', tipoSpread:p.tipoSpread||'', indice:p.indicePreco||'', spread:p.spread||0, pisoFlex:p.piso||0, tetoFlex:p.teto||0,
     indiceReaj:p.indReaj&&p.indReaj!=='Nenhum'?p.indReaj:'', dataBase:p.dataBase?new Date(p.dataBase):null, dataPrimReaj:p.primReaj?new Date(p.primReaj):null, valorNF:0 };
 }
 function viewProposta(){
@@ -910,10 +943,10 @@ function viewProposta(){
     fld('RETUSD','<select id="pRet" '+inp+'>'+opt(simNaoOpts)+'</select>')+
     fld('Volume (MWm)','<input id="pVol" type="number" min="0" step="0.1" '+inp+'>')+
     fld('Preço (R$/MWh)','<input id="pPreco" type="number" min="0" step="1" '+inp+'>')+
-    '<div></div>'+
+    fld('Tipo de preço','<div id="pTipoPrecoBox" style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;color:#60a5fa;padding:7px 9px;font-size:12px;font-weight:600">Preço fixo</div>')+
     fld('Início do fornecimento','<input id="pIni" type="date" '+inp+'>')+
     fld('Fim do fornecimento','<input id="pFim" type="date" '+inp+'>')+
-    '<div></div>'+
+    '<div></div><div></div>'+
     '</div>'+
     sec('Sazonalidade')+g3+
     fld('Tipo de sazonalidade','<select id="pSazTipo" '+inp+'>'+opt(sazOpts)+'</select>')+
@@ -925,14 +958,15 @@ function viewProposta(){
     fld('Flexibilidade inferior (%)','<input id="pFlexInf" type="number" min="0" step="1" placeholder="ex.: 10" '+inp+'>')+
     fld('Condição de pagamento','<input id="pCondPag" type="text" placeholder="ex.: D+30" '+inp+'>')+
     '</div>'+
-    sec('Preço variável / spread')+g3+
+    '<div id="pSpreadSec" style="display:none">'+
+    sec('Preço variável / spread (somente fontes incentivadas)')+g3+
     fld('Tipo de Spread','<select id="pTipoSpread" '+inp+'>'+opt(spreadOpts)+'</select>')+
     fld('Índice de preço','<input id="pIndicePreco" type="text" placeholder="ex.: PLD SE/CO" '+inp+'>')+
     fld('Spread (R$/MWh)','<input id="pSpread" type="number" step="1" placeholder="0" '+inp+'>')+
     fld('Piso de preço (R$/MWh)','<input id="pPiso" type="number" min="0" step="1" placeholder="0" '+inp+'>')+
     fld('Teto de preço (R$/MWh)','<input id="pTeto" type="number" min="0" step="1" placeholder="0" '+inp+'>')+
     '<div></div>'+
-    '</div>'+
+    '</div></div>'+
     sec('Reajuste')+g3+
     fld('Índice de reajuste','<select id="pIndReaj" '+inp+'>'+opt(reajOpts)+'</select>')+
     fld('Data base do reajuste','<input id="pDataBase" type="date" '+inp+'>')+
@@ -953,7 +987,7 @@ function viewProposta(){
       '<span style="margin-left:auto;display:flex;gap:8px"><button class="btn btn-ghost" data-pdf="'+p.id+'">Baixar PDF</button><button class="btn btn-primary" data-approve="'+p.id+'" style="background:#16a34a">Aprovar → vira operação</button><button class="btn btn-ghost" data-del="'+p.id+'" style="color:#f87171;border-color:#5c2020">Excluir</button></span></div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px">'+
       '<div><div class="ficha-label">Volume</div><div class="ficha-value">'+fmtMW(p.vol)+'</div></div>'+
-      '<div><div class="ficha-label">Preço</div><div class="ficha-value">R$ '+fmt(p.preco)+'/MWh</div></div>'+
+      '<div><div class="ficha-label">Preço</div><div class="ficha-value">R$ '+fmt(p.preco)+'/MWh · '+esc(p.tipoPreco||'Preço fixo')+'</div></div>'+
       '<div><div class="ficha-label">Período</div><div class="ficha-value">'+(p.inicio?new Date(p.inicio).toLocaleDateString('pt-BR'):'—')+' → '+(p.fim?new Date(p.fim).toLocaleDateString('pt-BR'):'—')+'</div></div>'+
       '<div><div class="ficha-label">Negociante</div><div class="ficha-value">'+esc(p.negociante||'—')+'</div></div>'+
       '<div><div class="ficha-label">Exposição estimada</div><div class="ficha-value" style="color:#fbbf24">'+fmtR(exp)+'</div></div>'+
@@ -971,6 +1005,13 @@ function viewProposta(){
 function bindProposta(){
   function v(id){ var e=document.getElementById(id); return e?e.value:''; }
   function err(m){ var e=document.getElementById('pErr'); if(e){ e.textContent=m; e.style.display='block'; } }
+  function syncTipoPreco(){
+    var fonteSel=v('pFonte'), inc=!isConvencional(fonteSel);
+    var box=document.getElementById('pTipoPrecoBox'), sec=document.getElementById('pSpreadSec');
+    if(box) box.textContent=inc?'Preço fixo + Spread':'Preço fixo';
+    if(sec) sec.style.display=inc?'':'none';
+  }
+  var fonteEl=document.getElementById('pFonte'); if(fonteEl){ fonteEl.onchange=syncTipoPreco; syncTipoPreco(); }
   var cr=document.getElementById('pCreate');
   if(cr) cr.onclick=function(){
     var emp=v('pEmp').trim(), vol=parseFloat(v('pVol')), preco=parseFloat(v('pPreco'));
@@ -978,8 +1019,9 @@ function bindProposta(){
     if(isNaN(vol)||vol<=0){ err('Informe um volume válido (MWm).'); return; }
     if(isNaN(preco)||preco<=0){ err('Informe um preço válido (R$/MWh).'); return; }
     if(!v('pIni')||!v('pFim')){ err('Informe início e fim do fornecimento.'); return; }
+    var inc=!isConvencional(v('pFonte'));
     var props=loadProps();
-    var p={ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:nextPropSeq(), empresa:emp, unidade:v('pUnidade').trim(), negociante:v('pNegoc').trim(), operador:v('pOperador').trim(), origem:v('pOrigem'), tipoOp:v('pTipo'), natureza:v('pNatureza'), classif:v('pClassif'), ccee:v('pCCEE').trim(), submercado:v('pSub'), fonte:v('pFonte'), ret:v('pRet'), vol:vol, preco:preco, inicio:v('pIni'), fim:v('pFim'), sazTipo:v('pSazTipo'), sazSup:parseFloat(v('pSazSup'))||0, sazInf:parseFloat(v('pSazInf'))||0, flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, condPag:v('pCondPag').trim(), tipoSpread:v('pTipoSpread'), indicePreco:v('pIndicePreco').trim(), spread:parseFloat(v('pSpread'))||0, piso:parseFloat(v('pPiso'))||0, teto:parseFloat(v('pTeto'))||0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() };
+    var p={ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:nextPropSeq(), empresa:emp, unidade:v('pUnidade').trim(), negociante:v('pNegoc').trim(), operador:v('pOperador').trim(), origem:v('pOrigem'), tipoOp:v('pTipo'), natureza:v('pNatureza'), classif:v('pClassif'), ccee:v('pCCEE').trim(), submercado:v('pSub'), fonte:v('pFonte'), ret:v('pRet'), vol:vol, preco:preco, tipoPreco:inc?'Preço fixo + Spread':'Preço fixo', inicio:v('pIni'), fim:v('pFim'), sazTipo:v('pSazTipo'), sazSup:parseFloat(v('pSazSup'))||0, sazInf:parseFloat(v('pSazInf'))||0, flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, condPag:v('pCondPag').trim(), tipoSpread:inc?v('pTipoSpread'):'', indicePreco:inc?v('pIndicePreco').trim():'', spread:inc?(parseFloat(v('pSpread'))||0):0, piso:inc?(parseFloat(v('pPiso'))||0):0, teto:inc?(parseFloat(v('pTeto'))||0):0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() };
     props.push(p); saveProps(props); render();
   };
   Array.prototype.forEach.call(document.querySelectorAll('[data-pdf]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-pdf'); var p=loadProps().filter(function(x){return x.id===id;})[0]; if(p) proposalPDF(p); }; });
@@ -1053,7 +1095,13 @@ function bindMtM(){
     months.forEach(function(k,mi){ var v=val('base_'+mi); if(v!=='') M.base[k]=num2(v); else delete M.base[k]; });
     SUBS_OTHER.forEach(function(sub,si){ if(!M.subPrice[sub])M.subPrice[sub]={}; months.forEach(function(k,mi){ var v=val('ss_'+si+'_'+mi); if(v!=='') M.subPrice[sub][k]=num2(v); else delete M.subPrice[sub][k]; }); });
   }
-  function readSpread(){ Array.prototype.forEach.call(document.querySelectorAll('[data-fonte]'),function(el){ var f=el.getAttribute('data-fonte'), v=el.value; if(v!=='') M.spread[f]=num2(v); else delete M.spread[f]; }); }
+  function readSpread(){ var months=curveMonths(cs,M); var seen={};
+    Array.prototype.forEach.call(document.querySelectorAll('[data-fonte]'),function(el){
+      var f=el.getAttribute('data-fonte'); if(!M.spread[f])M.spread[f]={}; if(!seen[f]){ seen[f]=true; }
+      var id=el.id, mi=id.substring(id.lastIndexOf('_')+1); var k=months[+mi]; if(k==null) return;
+      var v=el.value; if(v!=='') M.spread[f][k]=num2(v); else delete M.spread[f][k];
+    });
+  }
   function readAll(){ readRef(); readConv(); readSpread(); }
   var ap=document.getElementById('mtmApply'); if(ap) ap.onclick=function(){ readAll(); rerender(); };
   var cv=document.getElementById('convSave'); if(cv) cv.onclick=function(){ readAll(); rerender(); };
@@ -1062,6 +1110,14 @@ function bindMtM(){
     err('Conectando à CCEE...');
     fetch('https://www.ccee.org.br/web/guest/precos/painel-precos',{mode:'cors'}).then(function(r){return r.text();}).then(function(){ err('Conexão respondeu, mas o painel CCEE exige sessão/JS e bloqueia leitura externa — informe o PLD manualmente na curva.'); }).catch(function(){ err('A CCEE bloqueia acesso automático (CORS/anti-bot). Copie o PLD do Painel de Preços e informe na 1ª coluna da curva.'); });
   };
+  var tb=document.getElementById('mtmTmplBtn'); if(tb) tb.onclick=function(){ readAll(); downloadFile('modelo_curva_mtm.csv', mtmTemplateCSV(cs,M)); };
+  var ub=document.getElementById('mtmUploadBtn'), ui=document.getElementById('mtmUploadInput');
+  if(ub&&ui){ ub.onclick=function(){ ui.click(); };
+    ui.onchange=function(){ var f=ui.files[0]; if(!f) return; var r=new FileReader();
+      r.onload=function(ev){ try{ applyMtMCSV(ev.target.result,cs,M); rerender(); }catch(e){ err('Erro ao ler CSV: '+e.message); } };
+      r.readAsText(f);
+    };
+  }
 }
 function bindFilters(){ Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindFichas(); bindFilters(); bindExport(); }; }); }
 function bindFichas(){
