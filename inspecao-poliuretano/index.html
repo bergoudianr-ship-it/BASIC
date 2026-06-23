@@ -79,7 +79,7 @@
 </style>
 </head>
 <body>
-<header><h1>🔍 Inspeção PU</h1><span class="tag">100% celular · v6</span></header>
+<header><h1>🔍 Inspeção PU</h1><span class="tag">rolamento revestido · v7</span></header>
 <main>
   <div class="tabs">
     <button id="tabRefs" onclick="showTab('refs')">Referências</button>
@@ -117,13 +117,16 @@
       <button class="btn" onclick="newSpec()">➕ Cadastrar padrão por foto</button>
     </div>
     <div class="card">
-      <h2>📚 Biblioteca de rolamentos</h2>
-      <p class="hint">Crie um padrão na hora a partir das medidas de catálogo (séries 6000/6200/6300). Usa o diâmetro externo (D) e o furo (d).</p>
-      <label>Rolamento</label><select id="bearingSel"></select>
-      <label>Tolerância (±)</label>
-      <div class="row"><input id="bearingTolV" type="number" inputmode="decimal" value="1"/>
-        <select id="bearingTolT"><option value="pct">%</option><option value="mm">mm</option></select></div>
-      <button class="btn" style="margin-top:10px" onclick="createSpecFromBearing()">➕ Criar padrão deste rolamento</button>
+      <h2>📚 Biblioteca de rolamentos (revestidos de PU)</h2>
+      <p class="hint">Escolha o rolamento-base e a espessura do revestimento de poliuretano. O app calcula o <b>Ø externo revestido esperado</b> (D + 2× espessura) e usa o <b>furo (d)</b> como escala.</p>
+      <label>Rolamento (base)</label><select id="bearingSel"></select>
+      <label>Espessura do revestimento PU por lado (mm) — use 0 se for sem capa</label>
+      <input id="bearingPU" type="number" inputmode="decimal" value="0" oninput="updateBearingPreview()"/>
+      <label>Tolerância do Ø externo (±)</label>
+      <div class="row"><input id="bearingTolV" type="number" inputmode="decimal" value="0.5" oninput="updateBearingPreview()"/>
+        <select id="bearingTolT" onchange="updateBearingPreview()"><option value="mm">mm</option><option value="pct">%</option></select></div>
+      <p class="hint" id="bearingPreview" style="color:var(--accent)"></p>
+      <button class="btn" style="margin-top:6px" onclick="createSpecFromBearing()">➕ Criar padrão deste rolamento</button>
     </div>
   </section>
 
@@ -201,6 +204,7 @@
     <div class="card hidden" id="resultCard">
       <div id="verdict" class="verdict ok">—</div>
       <table id="resTable"><thead><tr><th>Medida</th><th class="num">Padrão</th><th class="num">Peça</th><th class="num">Desvio</th><th>Status</th></tr></thead><tbody></tbody></table>
+      <p class="hint" id="extraNote" style="color:var(--accent)"></p>
       <div class="sidebyside" id="sbs"></div>
       <div class="btns">
         <button class="btn" onclick="printResult()">🖨️ Relatório (PDF)</button>
@@ -433,7 +437,13 @@ function startInspect(){const spec=lo(K_SPECS).find(s=>s.id===$('inspSpec').valu
   $('measTitle').textContent='Inspecionar: '+spec.name;
   $('measLead').textContent='Fotografe a peça nova. Calibre pela referência OU pelo furo do rolamento, e meça as dimensões na ordem indicada.';
   const bore=boreFromSpec(spec);M.boreMm=bore;$('boreMm').value=bore!=null?bore:'';
-  M.calMode='ref';$('calMode').value='ref';$('boreWrap').classList.add('hidden');$('refWrap').classList.remove('hidden');
+  if(bore!=null){ // tem furo conhecido -> calibra pelo furo por padrão (sem moeda)
+    M.calMode='bore';$('calMode').value='bore';$('boreWrap').classList.remove('hidden');$('refWrap').classList.add('hidden');
+    $('measLead').innerHTML='Foto da peça (de cima). Toque <b>🔎 Auto</b>: usa o furo como escala e mede o Ø externo revestido sozinho. Ou calibre/meça manual.';
+  } else {
+    M.calMode='ref';$('calMode').value='ref';$('boreWrap').classList.add('hidden');$('refWrap').classList.remove('hidden');
+    $('measLead').textContent='Fotografe a peça nova com a referência no quadro. Calibre e meça as dimensões na ordem indicada.';
+  }
   fillRefSelect(spec.refId);$('specMeasCard').classList.add('hidden');$('inspMeasCard').classList.remove('hidden');$('resultCard').classList.add('hidden');
   $('stageEmpty').classList.remove('hidden');cv.classList.add('hidden');
   showMeasureScreen();refreshMeasUI();}
@@ -456,6 +466,11 @@ function finishInspect(){
   M.results.forEach(r=>{const ok=stOk(r);if(!ok)fail=true;const dev=r.measured-r.nominal;const sign=dev>=0?'+':'';
     const tr=document.createElement('tr');tr.innerHTML='<td>'+esc(r.name)+'</td><td class="num">'+fmt(r.nominal)+'</td><td class="num">'+fmt(r.measured)+'</td><td class="num">'+sign+fmt(dev)+'</td><td><span class="pill '+(ok?'ok':'bad')+'">'+(ok?'OK':'FORA')+'</span></td>';tb.appendChild(tr);});
   const v=$('verdict');v.className='verdict '+(fail?'bad':'ok');v.textContent=fail?'❌ REPROVADA':'✅ APROVADA';
+  // estimativa da espessura do revestimento (Ø externo medido - D base) / 2
+  const en=$('extraNote');en.textContent='';
+  if(M.spec.baseD){const od=M.results[0]&&M.results[0].measured;
+    if(od){const espEst=(od-M.spec.baseD)/2;
+      en.innerHTML='Espessura estimada do revestimento: <b>'+fmt(espEst)+' mm/lado</b>'+(M.spec.espessura?(' (nominal '+fmt(M.spec.espessura)+')'):'');}}
   const sbs=$('sbs');sbs.innerHTML=(M.spec.photo?'<figure><img src="'+M.spec.photo+'"><figcaption>Peça correta (padrão)</figcaption></figure>':'')
     +'<figure><img src="'+M.photo+'"><figcaption>Peça inspecionada</figcaption></figure>';
   $('resultCard').classList.remove('hidden');$('resultCard').scrollIntoView({behavior:'smooth'});draw();
@@ -528,13 +543,23 @@ const ROLAMENTOS=[
 ["16010","16000",50,80,9],["16011","16000",55,90,11],["16012","16000",60,95,11]
 ].map(r=>({designacao:r[0],serie:r[1],d:r[2],D:r[3],B:r[4]}));
 function fillBearingSelect(){const sel=$('bearingSel');if(!sel||sel.options.length)return;
-  ROLAMENTOS.forEach(r=>{const o=document.createElement('option');o.value=r.designacao;o.textContent=r.designacao+' — D'+r.D+' d'+r.d+' B'+r.B;sel.appendChild(o);});}
+  ROLAMENTOS.forEach(r=>{const o=document.createElement('option');o.value=r.designacao;o.textContent=r.designacao+' — D'+r.D+' d'+r.d+' B'+r.B;sel.appendChild(o);});
+  sel.onchange=updateBearingPreview;updateBearingPreview();}
+function updateBearingPreview(){
+  const r=ROLAMENTOS.find(x=>x.designacao===$('bearingSel').value);if(!r){$('bearingPreview').textContent='';return;}
+  const esp=num($('bearingPU').value)||0,od=r.D+2*esp;
+  $('bearingPreview').innerHTML='Ø externo revestido esperado: <b>'+fmt(od)+' mm</b> (D '+r.D+' + 2×'+fmt(esp)+') · furo (escala) '+r.d+' mm';
+}
 function createSpecFromBearing(){
   const r=ROLAMENTOS.find(x=>x.designacao===$('bearingSel').value);if(!r)return;
   const tolValue=num($('bearingTolV').value)||0,tolType=$('bearingTolT').value;
-  const all=lo(K_SPECS);all.push({id:'s'+Date.now(),name:'Rolamento '+r.designacao+' (PU)',refId:null,tolType,tolValue,createdAt:new Date().toISOString(),photo:null,
-    dims:[{name:'Ø externo (D)',type:'diametro',mm:r.D,tolValue},{name:'Ø interno / furo (d)',type:'diametro',mm:r.d,tolValue}]});
-  sv(K_SPECS,all);alert('Padrão "Rolamento '+r.designacao+'" criado. Já dá para inspecionar.');renderSpecs();
+  const esp=num($('bearingPU').value)||0,od=r.D+2*esp;
+  const name='Rolamento '+r.designacao+(esp>0?' + PU '+fmt(esp)+'mm':'');
+  const all=lo(K_SPECS);all.push({id:'s'+Date.now(),name,refId:null,tolType,tolValue,createdAt:new Date().toISOString(),photo:null,
+    baseD:r.D,furo:r.d,espessura:esp,
+    dims:[{name:'Ø externo'+(esp>0?' revestido':''),type:'diametro',mm:od,tolValue},
+          {name:'Ø interno / furo (d)',type:'diametro',mm:r.d,tolValue}]});
+  sv(K_SPECS,all);alert('Padrão "'+name+'" criado. Já dá para inspecionar.');renderSpecs();
 }
 
 /* ===================== padrões / histórico listas ===================== */
@@ -559,7 +584,8 @@ function autoDetect(){
   const ocv=window.cv;
   if(!ocv||!ocv.Mat){alert('A detecção automática ainda está carregando (precisa de internet na 1ª vez). Use ⭕ Diâmetro / ✏️ Distância manuais.');return;}
   if(!M.img){alert('Carregue a foto primeiro.');return;}
-  if(!M.scale){alert('Calibre a escala primeiro: 📏 Calibrar na moeda/referência.');return;}
+  const autoCalibBore=(!M.scale && M.calMode==='bore' && M.boreMm>0); // autocalibra pelo furo
+  if(!M.scale && !autoCalibBore){alert('Calibre a escala primeiro (📏), ou use "Calibrar por: Furo do rolamento" para o Auto calibrar sozinho.');return;}
   let src,gray,circles;
   try{
     const tmp=document.createElement('canvas');tmp.width=cv.width;tmp.height=cv.height;
@@ -573,6 +599,11 @@ function autoDetect(){
     list.sort((a,b)=>b.r-a.r);
     const outer=list[0];
     const inner=list.find(c=>c!==outer&&c.r<outer.r*0.9&&Math.hypot(c.x-outer.x,c.y-outer.y)<outer.r*0.4);
+    if(autoCalibBore){ // escala a partir do furo (círculo interno), conhecido
+      if(!inner){alert('Não localizei o furo para calibrar. Marque a escala manual (📏) ou melhore a foto.');return;}
+      M.scale=M.boreMm/(inner.r*2);M.calCircle=inner;M.calPts=[{x:inner.x-inner.r,y:inner.y},{x:inner.x+inner.r,y:inner.y}];
+      M.calLabel='furo '+fmt(M.boreMm)+'mm';updateScale();
+    }
     const Dmm=outer.r*2*M.scale,dmm=inner?inner.r*2*M.scale:null;
     if(M.mode==='spec'){
       addAutoMeasure('Ø externo (D)','diametro',Dmm,outer);

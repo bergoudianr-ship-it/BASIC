@@ -24,11 +24,19 @@ Já vêm cadastradas as moedas comuns; adicione suas tampas/objetos.
    dê nome e tipo. A **lupa** ajuda a acertar a borda.
 5. Defina a **tolerância** (± % ou mm) e salve.
 
-### 2b. Biblioteca de rolamentos (atalho)
-Na aba "Padrões", a **Biblioteca de rolamentos** cria um padrão na hora a partir das
-medidas de catálogo (séries 6000/6200/6300 — ISO 15): escolha a designação (ex.: 6205),
-defina a tolerância e pronto — já dá para inspecionar usando o diâmetro externo (D) e o
-furo (d), sem precisar fotografar uma peça boa.
+### 2b. Biblioteca de rolamentos revestidos de PU (atalho — recomendado)
+Na aba "Padrões", a **Biblioteca de rolamentos** cria o padrão na hora: escolha a
+designação (ex.: 6205), digite a **espessura do revestimento PU por lado** e a tolerância.
+O app calcula o **Ø externo revestido esperado** = D + 2× espessura, usando o **furo (d)**
+como escala. (Com espessura 0, vale para o rolamento sem capa.)
+
+Fluxo recomendado na inspeção (quase "uma foto → veredito"):
+1. Escolha o padrão e **Iniciar inspeção** (já vem em *Calibrar por: Furo do rolamento*).
+2. Fotografe a peça de cima (bom contraste/luz).
+3. Toque **🔎 Auto**: ele detecta os dois círculos, usa o **furo para a escala
+   automaticamente** e mede o **Ø externo revestido**, ainda **estimando a espessura da
+   capa** ((Ø externo medido − D base) / 2). Veredito **APROVADA/REPROVADA** na hora.
+4. Se a foto não permitir o Auto, use ⭕/✏️ manuais.
 
 ### 3. Inspecionar (aba "Inspecionar")
 1. Escolha o **padrão** e (opcional) a identificação da peça/lote.
