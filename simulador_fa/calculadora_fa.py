@@ -24,6 +24,62 @@ def _v(d, key, vertice):
     return float((d.get(key) or {}).get(vertice, 0) or 0)
 
 
+# ─── Combinação Portfólio Real + Portfólio Extra ─────────────────────────────
+def _zeros():
+    return {v: 0.0 for v in VERTICES}
+
+
+def _merge_section(base, extra):
+    """Combina uma seção (preco_fixo / preco_variavel / derivativos).
+    Volumes (subm, recurso, requisito) são SOMADOS.
+    Preços médios (pm_recurso, pm_requisito) são MÉDIA PONDERADA pelo volume.
+    """
+    base = base or {}
+    extra = extra or {}
+    out = {"subm": {}, "recurso": {}, "pm_recurso": {},
+           "requisito": {}, "pm_requisito": {}}
+
+    # Exposição por submercado: soma
+    for s in SUBMERCADOS:
+        out["subm"][s] = {}
+        for v in VERTICES:
+            bv = float(((base.get("subm") or {}).get(s) or {}).get(v, 0) or 0)
+            ev = float(((extra.get("subm") or {}).get(s) or {}).get(v, 0) or 0)
+            out["subm"][s][v] = bv + ev
+
+    # Recurso/Requisito: soma de volume + média ponderada de preço
+    for vol, pm in (("recurso", "pm_recurso"), ("requisito", "pm_requisito")):
+        out[vol] = {}
+        out[pm] = {}
+        for v in VERTICES:
+            bvol = _v(base, vol, v)
+            evol = _v(extra, vol, v)
+            bpm = _v(base, pm, v)
+            epm = _v(extra, pm, v)
+            tot = bvol + evol
+            out[vol][v] = tot
+            out[pm][v] = ((bvol * bpm + evol * epm) / tot) if tot != 0 else 0.0
+    return out
+
+
+def combinar_portfolios(empresa, extra):
+    """Retorna uma cópia da empresa com o portfólio extra incorporado.
+    Mantém o PLA da empresa real. Soma volumes e pondera preços médios.
+    """
+    import copy
+    comb = copy.deepcopy(empresa)
+    comb["preco_fixo"] = _merge_section(empresa.get("preco_fixo"), extra.get("preco_fixo"))
+    comb["preco_variavel"] = _merge_section(empresa.get("preco_variavel"), extra.get("preco_variavel"))
+    comb["derivativos"] = _merge_section(empresa.get("derivativos"), extra.get("derivativos"))
+    # EFM: soma
+    efm = {}
+    for v in VERTICES:
+        efm[v] = float((empresa.get("efm_regulado") or {}).get(v, 0) or 0) \
+               + float((extra.get("efm_regulado") or {}).get(v, 0) or 0)
+    comb["efm_regulado"] = efm
+    return comb
+
+
 def calcular_fa(empresa, premissas):
     phi = abs(float(premissas.get("phi_norm", -1.6449) or -1.6449))
     D = float(premissas.get("dias_liquidacao", 1) or 1)

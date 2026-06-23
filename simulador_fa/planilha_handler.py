@@ -333,3 +333,134 @@ def gerar_modelo_portfolio():
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ─── Portfólio Extra — modelo e parser CSV ───────────────────────────────────
+import csv as _csv
+import unicodedata
+
+EXTRA_SECOES = [
+    ("Preco Fixo", "preco_fixo"),
+    ("Preco Variavel", "preco_variavel"),
+    ("Derivativos", "derivativos"),
+]
+EXTRA_CAMPOS = [
+    ("Exposicao Submercado", "subm"),
+    ("Recurso", "recurso"),
+    ("PM Recurso", "pm_recurso"),
+    ("Requisito", "requisito"),
+    ("PM Requisito", "pm_requisito"),
+]
+
+
+def _norm(s):
+    if s is None:
+        return ""
+    s = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode("ascii")
+    return s.strip().lower()
+
+
+def _empty_extra_section():
+    return {
+        "subm": {s: {v: 0 for v in VERTICES} for s in SUBMERCADOS},
+        "recurso": {v: 0 for v in VERTICES},
+        "pm_recurso": {v: 0 for v in VERTICES},
+        "requisito": {v: 0 for v in VERTICES},
+        "pm_requisito": {v: 0 for v in VERTICES},
+    }
+
+
+def gerar_modelo_extra_csv():
+    """Gera o CSV modelo do Portfólio Extra (separador ';', decimal '.')."""
+    out = io.StringIO()
+    w = _csv.writer(out, delimiter=";")
+    w.writerow(["Secao", "Campo", "Submercado"] + VERTICES)
+    for sec_label, _ in EXTRA_SECOES:
+        for campo_label, campo_key in EXTRA_CAMPOS:
+            if campo_key == "subm":
+                for s in SUBMERCADOS:
+                    w.writerow([sec_label, campo_label, s] + [0]*len(VERTICES))
+            else:
+                w.writerow([sec_label, campo_label, ""] + [0]*len(VERTICES))
+    # EFM
+    w.writerow(["EFM", "Efeitos Financeiros Mercado Regulado", ""] + [0]*len(VERTICES))
+    return out.getvalue()
+
+
+def _parse_num(x):
+    if x is None or str(x).strip() == "":
+        return 0.0
+    s = str(x).strip().replace(" ", "")
+    # aceita decimal com vírgula ou ponto
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def parse_extra_csv(file_bytes):
+    """Lê o CSV do Portfólio Extra (separador ';' ou ',') e devolve o dict."""
+    errors = []
+    extra = {
+        "ativo": False,
+        "nome": "Portfólio Extra (Simulação)",
+        "preco_fixo": _empty_extra_section(),
+        "preco_variavel": _empty_extra_section(),
+        "derivativos": _empty_extra_section(),
+        "efm_regulado": {v: 0 for v in VERTICES},
+    }
+    try:
+        text = file_bytes.decode("utf-8-sig", errors="replace")
+    except Exception:
+        text = file_bytes.decode("latin-1", errors="replace")
+
+    # detecta separador
+    first = text.splitlines()[0] if text.splitlines() else ""
+    delim = ";" if first.count(";") >= first.count(",") else ","
+
+    sec_map = {_norm(lbl): key for lbl, key in EXTRA_SECOES}
+    campo_map = {_norm(lbl): key for lbl, key in EXTRA_CAMPOS}
+    subm_map = {_norm(s): s for s in SUBMERCADOS}
+    subm_map[_norm("SUDESTE/CENTRO-OESTE")] = "SE/CO"
+
+    try:
+        reader = _csv.reader(io.StringIO(text), delimiter=delim)
+        rows = list(reader)
+        if not rows:
+            return extra, ["CSV vazio."]
+        # pula cabeçalho se for texto
+        start = 1 if rows and _norm(rows[0][0]) in ("secao", "seção") else 0
+        for r in rows[start:]:
+            if not r or all((c is None or str(c).strip() == "") for c in r):
+                continue
+            sec = _norm(r[0]) if len(r) > 0 else ""
+            campo = _norm(r[1]) if len(r) > 1 else ""
+            subm = _norm(r[2]) if len(r) > 2 else ""
+            vals = [_parse_num(r[3+i]) if len(r) > 3+i else 0.0 for i in range(len(VERTICES))]
+
+            if sec == "efm" or "efeitos financeiros" in campo or "efm" in sec:
+                for i, v in enumerate(VERTICES):
+                    extra["efm_regulado"][v] = vals[i]
+                continue
+
+            sec_key = sec_map.get(sec)
+            campo_key = campo_map.get(campo)
+            if not sec_key or not campo_key:
+                continue
+            target = extra[sec_key]
+            if campo_key == "subm":
+                s_real = subm_map.get(subm)
+                if s_real:
+                    for i, v in enumerate(VERTICES):
+                        target["subm"][s_real][v] = vals[i]
+            else:
+                for i, v in enumerate(VERTICES):
+                    target[campo_key][v] = vals[i]
+    except Exception as e:
+        errors.append(f"Erro ao ler CSV: {e}")
+
+    return extra, errors

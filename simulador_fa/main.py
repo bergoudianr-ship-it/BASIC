@@ -14,8 +14,9 @@ DATA = os.path.join(BASE, "data")
 STATIC = os.path.join(BASE, "static")
 
 sys.path.insert(0, BASE)
-from calculadora_fa import calcular_fa
-from planilha_handler import parse_planilha_ccee, parse_portfolio, gerar_modelo_portfolio
+from calculadora_fa import calcular_fa, combinar_portfolios
+from planilha_handler import (parse_planilha_ccee, parse_portfolio, gerar_modelo_portfolio,
+                              gerar_modelo_extra_csv, parse_extra_csv)
 
 
 # ─── Threaded server: cada request em thread separada ────────────────────────
@@ -128,12 +129,22 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/calcular":
                 empresa = _read_json("empresa.json")
                 premissas = _read_json("premissas.json")
-                self._send_json(calcular_fa(empresa, premissas))
+                extra = _read_json("portfolio_extra.json") or {}
+                extra_ativo = bool(extra.get("ativo"))
+                base = combinar_portfolios(empresa, extra) if extra_ativo else empresa
+                resultado = calcular_fa(base, premissas)
+                resultado["extra_ativo"] = extra_ativo
+                self._send_json(resultado)
+            elif path == "/api/portfolio_extra":
+                self._send_json(_read_json("portfolio_extra.json"))
             elif path == "/api/download/modelo":
                 self._send_bytes(
                     gerar_modelo_portfolio(),
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     "modelo_portfolio.xlsx")
+            elif path == "/api/download/modelo_extra_csv":
+                self._send_bytes(gerar_modelo_extra_csv().encode("utf-8-sig"),
+                    "text/csv", "modelo_portfolio_extra.csv")
             elif path == "/api/download/historico_csv":
                 hist = _read_json("historico.json") or []
                 buf = io.StringIO()
@@ -220,6 +231,34 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self._read_body())
                 premissas = _read_json("premissas.json")
                 self._send_json(calcular_fa(body, premissas))
+
+            elif path == "/api/portfolio_extra":
+                data = json.loads(self._read_body())
+                _write_json("portfolio_extra.json", data)
+                self._send_json({"ok": True})
+
+            elif path == "/api/calcular/extra-preview":
+                # Recebe o portfólio extra (sem salvar) e devolve real vs combinado
+                extra = json.loads(self._read_body())
+                empresa = _read_json("empresa.json")
+                premissas = _read_json("premissas.json")
+                real = calcular_fa(empresa, premissas)
+                comb = calcular_fa(combinar_portfolios(empresa, extra), premissas)
+                self._send_json({"real": real, "combinado": comb})
+
+            elif path == "/api/upload/portfolio_extra_csv":
+                ct = self.headers.get("Content-Type", "")
+                raw = self._read_body()
+                file_bytes = _extract_file(raw, ct)
+                if len(file_bytes) < 20:
+                    self._send_json({"ok": False, "errors": [
+                        f"Arquivo não recebido ({len(file_bytes)} bytes)."], "data": {}})
+                    return
+                extra_data, errors = parse_extra_csv(file_bytes)
+                if errors:
+                    self._send_json({"ok": False, "errors": errors, "data": extra_data})
+                else:
+                    self._send_json({"ok": True, "data": extra_data, "errors": []})
 
             else:
                 self.send_response(404)

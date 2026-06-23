@@ -95,6 +95,16 @@ input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(26,10
 .btn-amb:hover{filter:brightness(.93);}
 .btn-row{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:12px;}
 
+/* ---- TOGGLE SWITCH ---- */
+.switch{position:relative;display:inline-block;width:50px;height:26px;flex:none;}
+.switch input{opacity:0;width:0;height:0;}
+.slider{position:absolute;cursor:pointer;inset:0;background:#cdc6b6;border-radius:26px;
+  transition:.2s;}
+.slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;bottom:3px;
+  background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.2);}
+.switch input:checked + .slider{background:var(--acc);}
+.switch input:checked + .slider::before{transform:translateX(24px);}
+
 /* ---- TABLES ---- */
 .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);}
 table{width:100%;border-collapse:collapse;font-size:12px;}
@@ -176,6 +186,7 @@ footer{text-align:center;padding:20px;color:var(--muted);font-size:10px;
   <button class="active" onclick="showTab('premissas')">Premissas</button>
   <button onclick="showTab('pla')">Patrimônio Líquido Ajustado</button>
   <button onclick="showTab('portfolio')">Declaração Portfólio</button>
+  <button onclick="showTab('extra')">Portfólio Extra</button>
   <button onclick="showTab('calculo')">Cálculo VaR / Consolidado</button>
   <button onclick="showTab('historico')">Histórico</button>
 </nav>
@@ -314,6 +325,80 @@ footer{text-align:center;padding:20px;color:var(--muted);font-size:10px;
   </div>
 </div>
 
+<!-- ===================== PORTFÓLIO EXTRA ===================== -->
+<div id="tab-extra" class="tab">
+  <div class="card" style="margin-bottom:10px;">
+    <div class="card-title">Portfólio Extra — Simulação de Hedges e Trocas</div>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+      Lance aqui operações que <b>não estão no portfólio real</b> para testar hedges e trocas de resultado.
+      Os volumes são <b>somados</b> e os preços médios entram por <b>média ponderada</b> com o portfólio real.
+      Use o botão abaixo para incluir (ou não) este portfólio no cálculo do Fator de Alavancagem.
+    </p>
+
+    <!-- TOGGLE de ativação -->
+    <div id="extra-toggle-box" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+         padding:14px 16px;border-radius:9px;border:1px solid var(--border);background:var(--surf3);">
+      <label class="switch" style="margin:0;">
+        <input type="checkbox" id="extra-ativo" onchange="toggleExtra()">
+        <span class="slider"></span>
+      </label>
+      <div style="flex:1;min-width:240px;">
+        <div style="font-weight:700;font-size:13px;color:var(--text);" id="extra-toggle-label">
+          Portfólio Extra DESATIVADO — FA usa só o portfólio real
+        </div>
+        <div style="font-size:11px;color:var(--muted);" id="extra-toggle-sub">
+          Ative para somar este portfólio ao real no cálculo do Fator de Alavancagem.
+        </div>
+      </div>
+      <span id="extra-status-badge" class="hbadge hb-gray">Inativo</span>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+      <button class="btn-out" onclick="downloadModeloExtra()">⬇ Baixar Modelo CSV</button>
+      <div class="upload-drop" style="padding:8px 14px;display:inline-block;" onclick="document.getElementById('up-extra').click()">
+        <input type="file" id="up-extra" accept=".csv" onchange="uploadExtraCSV(this)">
+        ⬆ Carregar CSV Preenchido
+      </div>
+      <button class="btn" style="margin-left:auto;" onclick="salvarExtra()">Salvar Portfólio Extra</button>
+      <button class="btn-out" onclick="limparExtra()">Limpar Tudo</button>
+    </div>
+    <div id="msg-extra"></div>
+  </div>
+
+  <!-- COMPARATIVO Real vs Combinado -->
+  <div class="card">
+    <div class="card-title">Comparativo — Real vs Real + Extra</div>
+    <div class="tbl-wrap" id="extra-compare"></div>
+  </div>
+
+  <!-- SEÇÃO 1: PREÇO FIXO -->
+  <div class="card">
+    <div class="card-title"><span class="section-label">SEÇÃO 1</span> Preço Fixo, Consumo e Geração</div>
+    <p style="color:var(--muted);font-size:11px;margin-bottom:8px;">
+      Exposições vendidas são negativas. Recurso = venda; Requisito = compra.
+    </p>
+    <div class="tbl-wrap" id="tbl-pf-x"></div>
+  </div>
+
+  <!-- SEÇÃO 2: PREÇO VARIÁVEL -->
+  <div class="card">
+    <div class="card-title"><span class="section-label">SEÇÃO 2</span> Preço Variável (PLD)</div>
+    <div class="tbl-wrap" id="tbl-pv-x"></div>
+  </div>
+
+  <!-- SEÇÃO 3: DERIVATIVOS -->
+  <div class="card">
+    <div class="card-title"><span class="section-label">SEÇÃO 3</span> Derivativos de Energia</div>
+    <div class="tbl-wrap" id="tbl-der-x"></div>
+  </div>
+
+  <!-- SEÇÃO 4: EFM REGULADO -->
+  <div class="card">
+    <div class="card-title"><span class="section-label">SEÇÃO 4</span> Efeitos Financeiros do Mercado Regulado</div>
+    <div class="tbl-wrap" id="tbl-efm-x"></div>
+  </div>
+</div>
+
 <!-- ===================== CÁLCULO ===================== -->
 <div id="tab-calculo" class="tab">
   <!-- FA Result -->
@@ -398,6 +483,7 @@ const DED_ITENS = ["I","II","III","IV","V","VI","VII","VIII"];
 // STATE
 // ============================================================
 let premissas = {}, emp = {}, lastEmp = null;
+let extraData = null, lastExtraPreview = null;
 let charts = {};
 
 // ============================================================
@@ -418,7 +504,7 @@ function inp(id, def=0){ const e=document.getElementById(id); return e ? (parseF
 // ============================================================
 // TABS
 // ============================================================
-const TABS = ['premissas','pla','portfolio','calculo','historico'];
+const TABS = ['premissas','pla','portfolio','extra','calculo','historico'];
 function showTab(name){
   document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
@@ -426,6 +512,7 @@ function showTab(name){
   document.querySelectorAll('nav button')[TABS.indexOf(name)].classList.add('active');
   if(name==='calculo') renderCalculo();
   if(name==='historico') loadHistorico();
+  if(name==='extra') calcExtra();
 }
 // ============================================================
 // INIT
@@ -433,9 +520,12 @@ function showTab(name){
 async function init(){
   premissas = await fetch('/api/premissas').then(r=>r.json());
   emp = await fetch('/api/empresa').then(r=>r.json());
+  extraData = await fetch('/api/portfolio_extra').then(r=>r.json());
   renderPremissas();
   loadEmpresaForm();
   renderPortfolioTables('emp', emp, triggerCalcEmp);
+  renderPortfolioTables('extra', extraData, triggerCalcExtra, '-x');
+  syncExtraToggle();
   await calcularEmp();
 }
 
@@ -538,11 +628,12 @@ function plaChanged(){
 // ============================================================
 // PORTFOLIO TABLES — reusuable for emp and sim
 // ============================================================
-function renderPortfolioTables(ctx, data, onChange){
-  renderSection(ctx, 'pf', data.preco_fixo, 'tbl-pf', onChange);
-  renderSection(ctx, 'pv', data.preco_variavel, 'tbl-pv', onChange);
-  renderDerSection(ctx, data.derivativos, 'tbl-der', onChange);
-  renderEFM(ctx, data.efm_regulado, 'tbl-efm', onChange);
+function renderPortfolioTables(ctx, data, onChange, sfx){
+  sfx = sfx || '';
+  renderSection(ctx, 'pf', data.preco_fixo, 'tbl-pf'+sfx, onChange);
+  renderSection(ctx, 'pv', data.preco_variavel, 'tbl-pv'+sfx, onChange);
+  renderDerSection(ctx, data.derivativos, 'tbl-der'+sfx, onChange);
+  renderEFM(ctx, data.efm_regulado, 'tbl-efm'+sfx, onChange);
 }
 
 function renderSection(ctx, sec, secData, containerId, onChange){
@@ -639,24 +730,26 @@ function renderEFM(ctx, efmData, containerId, onChange){
 // INPUT CHANGE HANDLERS
 // ============================================================
 function pfChange(inp){
-  const {sec,field,sub,v} = inp.dataset;
+  const {ctx,sec,field,sub,v} = inp.dataset;
+  const target = ctx==='extra' ? extraData : emp;
   const val = parseFloat(inp.value)||0;
   if(sec==='der'){
-    if(field==='subm') emp.derivativos.subm[sub][v]=val;
-    else emp.derivativos[field][v]=val;
+    if(field==='subm') target.derivativos.subm[sub][v]=val;
+    else target.derivativos[field][v]=val;
   } else {
     const s = sec==='pf' ? 'preco_fixo' : 'preco_variavel';
-    if(field==='subm') emp[s].subm[sub][v]=val;
-    else emp[s][field][v]=val;
+    if(field==='subm') target[s].subm[sub][v]=val;
+    else target[s][field][v]=val;
   }
-  if(sec!=='der') updateNET('emp', sec, sec==='pf'?emp.preco_fixo:emp.preco_variavel);
-  triggerCalcEmp();
+  if(sec!=='der') updateNET(ctx, sec, sec==='pf'?target.preco_fixo:target.preco_variavel);
+  if(ctx==='extra') triggerCalcExtra(); else triggerCalcEmp();
 }
 
 function efmChange(inp){
-  const {v} = inp.dataset;
-  emp.efm_regulado[v] = parseFloat(inp.value)||0;
-  triggerCalcEmp();
+  const {ctx,v} = inp.dataset;
+  const target = ctx==='extra' ? extraData : emp;
+  target.efm_regulado[v] = parseFloat(inp.value)||0;
+  if(ctx==='extra') triggerCalcExtra(); else triggerCalcEmp();
 }
 
 function updateNET(ctx, sec, secData){
@@ -706,6 +799,111 @@ async function salvarHistorico(){
   showMsg('msg-emp',`Salvo no histórico: ${res.entry?.data||'?'} — FA_RIS=${fmtN(res.entry?.fa_ris,4)}`);
 }
 
+// ============================================================
+// PORTFÓLIO EXTRA
+// ============================================================
+function emptyExtraSection(){
+  const z=()=>Object.fromEntries(VX.map(v=>[v,0]));
+  return {
+    subm: Object.fromEntries(SUBMS.map(s=>[s,z()])),
+    recurso:z(), pm_recurso:z(), requisito:z(), pm_requisito:z()
+  };
+}
+
+let calcExtraTimer=null;
+function triggerCalcExtra(){ clearTimeout(calcExtraTimer); calcExtraTimer=setTimeout(calcExtra,300); }
+
+async function calcExtra(){
+  if(!extraData) return;
+  lastExtraPreview = await fetch('/api/calcular/extra-preview',{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(extraData)
+  }).then(r=>r.json());
+  renderExtraCompare();
+}
+
+function renderExtraCompare(){
+  if(!lastExtraPreview) return;
+  const r=lastExtraPreview.real.totais, c=lastExtraPreview.combinado.totais;
+  const faStr=(t)=>t.pla_negativo?'PLA≤0':(t.fa_ris!=null?fmtN(t.fa_ris,4):'—');
+  const faDivStr=(t)=>t.pla_negativo?'PLA≤0':(t.fa_divulgado!=null?fmtN(t.fa_divulgado,4):'—');
+  const delta=(a,b)=>{ if(a==null||b==null) return '—'; const d=b-a; const cor=d>0?'var(--red)':d<0?'var(--green)':'var(--muted)'; return `<span style="color:${cor}">${d>0?'+':''}${fmtN(d,4)}</span>`; };
+  const deltaR=(a,b)=>{ const d=(b||0)-(a||0); const cor=d<0?'var(--red)':d>0?'var(--green)':'var(--muted)'; return `<span style="color:${cor}">${d>0?'+':''}${fmtN(d/1e6,2)} mi</span>`; };
+  let h=`<table><thead><tr><th>Indicador</th><th>Portfólio Real</th><th>Real + Extra</th><th>Variação</th></tr></thead><tbody>`;
+  h+=`<tr class="row-total"><td>FA Risco</td><td>${faStr(r)}</td><td>${faStr(c)}</td><td>${delta(r.fa_ris,c.fa_ris)}</td></tr>`;
+  h+=`<tr class="row-total"><td>FA Divulgado</td><td>${faDivStr(r)}</td><td>${faDivStr(c)}</td><td>${delta(r.fa_divulgado,c.fa_divulgado)}</td></tr>`;
+  h+=`<tr><td>RWA (R$)</td><td>${fmtN(r.rwa,0)}</td><td>${fmtN(c.rwa,0)}</td><td>${deltaR(r.rwa,c.rwa)}</td></tr>`;
+  h+=`<tr><td>Resultado Financeiro (R$)</td><td>${fmtN(r.res_fin,0)}</td><td>${fmtN(c.res_fin,0)}</td><td>${deltaR(r.res_fin,c.res_fin)}</td></tr>`;
+  h+=`<tr><td>VaR Total (R$)</td><td>${fmtN(r.var_tot,0)}</td><td>${fmtN(c.var_tot,0)}</td><td>${deltaR(r.var_tot,c.var_tot)}</td></tr>`;
+  h+=`<tr><td>MtM (R$)</td><td>${fmtN(r.mtm,0)}</td><td>${fmtN(c.mtm,0)}</td><td>${deltaR(r.mtm,c.mtm)}</td></tr>`;
+  h+=`<tr><td>Stress Total (R$)</td><td>${fmtN(r.stest_tot,0)}</td><td>${fmtN(c.stest_tot,0)}</td><td>${deltaR(r.stest_tot,c.stest_tot)}</td></tr>`;
+  h+=`</tbody></table>`;
+  document.getElementById('extra-compare').innerHTML=h;
+}
+
+function syncExtraToggle(){
+  const on = !!(extraData && extraData.ativo);
+  const cb=document.getElementById('extra-ativo'); if(cb) cb.checked=on;
+  const lbl=document.getElementById('extra-toggle-label');
+  const sub=document.getElementById('extra-toggle-sub');
+  const badge=document.getElementById('extra-status-badge');
+  if(lbl) lbl.textContent = on
+    ? 'Portfólio Extra ATIVADO — FA usa Real + Extra'
+    : 'Portfólio Extra DESATIVADO — FA usa só o portfólio real';
+  if(sub) sub.textContent = on
+    ? 'O cálculo do Fator de Alavancagem está somando este portfólio ao real.'
+    : 'Ative para somar este portfólio ao real no cálculo do Fator de Alavancagem.';
+  if(badge){ badge.textContent = on?'Ativo no FA':'Inativo'; badge.className = 'hbadge '+(on?'hb-green':'hb-gray'); }
+}
+
+async function toggleExtra(){
+  if(!extraData) return;
+  extraData.ativo = document.getElementById('extra-ativo').checked;
+  syncExtraToggle();
+  await fetch('/api/portfolio_extra',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(extraData)});
+  await calcularEmp();   // header + Cálculo passam a refletir (ou não) o extra
+  showMsg('msg-extra', extraData.ativo
+    ? '✔ Portfólio Extra ATIVADO no cálculo do FA.'
+    : 'Portfólio Extra desativado — FA voltou a usar só o real.', 'ok');
+}
+
+async function salvarExtra(){
+  await fetch('/api/portfolio_extra',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(extraData)});
+  showMsg('msg-extra','Portfólio Extra salvo.');
+  if(extraData.ativo) await calcularEmp();
+}
+
+function limparExtra(){
+  extraData.preco_fixo=emptyExtraSection();
+  extraData.preco_variavel=emptyExtraSection();
+  extraData.derivativos=emptyExtraSection();
+  extraData.efm_regulado=Object.fromEntries(VX.map(v=>[v,0]));
+  renderPortfolioTables('extra',extraData,triggerCalcExtra,'-x');
+  calcExtra();
+  showMsg('msg-extra','Campos do Portfólio Extra zerados (lembre de salvar).','info');
+}
+
+async function uploadExtraCSV(input){
+  const file=input.files[0]; if(!file) return;
+  showMsg('msg-extra','Carregando CSV...','info');
+  try{
+    const buf=await file.arrayBuffer();
+    const res=await fetch('/api/upload/portfolio_extra_csv',{
+      method:'POST', headers:{'Content-Type':'application/octet-stream'}, body:buf
+    }).then(r=>r.json());
+    if(res.ok){
+      const wasAtivo=extraData.ativo;
+      extraData=Object.assign(extraData,res.data);
+      extraData.ativo=wasAtivo;   // upload não altera o estado do toggle
+      renderPortfolioTables('extra',extraData,triggerCalcExtra,'-x');
+      calcExtra();
+      showMsg('msg-extra','✔ CSV importado com sucesso.');
+    } else { showMsg('msg-extra','Erro: '+(res.errors||[]).join('; '),'err'); }
+  }catch(e){ showMsg('msg-extra','Falha na requisição: '+e.message,'err'); }
+  input.value='';
+}
+
+function downloadModeloExtra(){ window.open('/api/download/modelo_extra_csv','_blank'); }
+
 
 // ============================================================
 // UPLOAD PORTFOLIO
@@ -750,6 +948,13 @@ function updateHeader(res){
   document.getElementById('hb-div').className='hbadge '+(neg?'hb-gray':hbClass(di));
   document.getElementById('hb-rwa').textContent='RWA '+fmtM(t.rwa);
   document.getElementById('hb-pla').textContent='PLA '+fmtM(t.pla);
+  // Indicador de portfólio extra ativo
+  let exEl=document.getElementById('hb-extra');
+  if(res.extra_ativo){
+    if(!exEl){ exEl=document.createElement('span'); exEl.id='hb-extra'; document.getElementById('hdr-badges').prepend(exEl); }
+    exEl.className='hbadge hb-yellow'; exEl.textContent='+ EXTRA';
+    exEl.title='Portfólio Extra incluído no cálculo do FA';
+  } else if(exEl){ exEl.remove(); }
 }
 
 function renderResultados(res, ctx){
