@@ -179,6 +179,8 @@ function esc(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').r
 function lc(s){ return (s||'').toLowerCase(); }
 function isCompra(c){ return lc(c.tipoOp).indexOf('compra')>=0; }
 function isVenda(c){ return lc(c.tipoOp).indexOf('venda')>=0; }
+function monthOverlap(c,mkey){ if(!mkey) return true; if(!c.inicioForn||!c.fimForn) return false; var p=mkey.split('-'); var ms=new Date(+p[0],(+p[1]||1)-1,1), me=new Date(+p[0],(+p[1]||1),0); return c.inicioForn<=me && c.fimForn>=ms; }
+function matchesSearch(c,q){ if(!q) return true; q=q.toLowerCase(); var fields=[c.negocio,c.empresa,c.negociante,c.operador,c.origem,c.contratoCCEE,c.submercado,c.fonte,c.classificacao,c.unidadeNegocio,c.natureza,c.condPag,c.entrega]; return fields.some(function(f){return (f||'').toString().toLowerCase().indexOf(q)>=0;}); }
 // Padroniza a fonte de energia conforme os produtos da BBCE
 function normFonte(raw){
   var s=(raw||'').toString().trim(); if(!s) return 'N/D';
@@ -268,6 +270,7 @@ function parseContracts(raw){
   });
 }
 function status(c){
+  if(c.cancelado) return {label:'Cancelado',cls:'status-enc',code:'cancelado'};
   if(!c.inicioForn||!c.fimForn) return {label:'Indefinido',cls:'status-enc',code:'indef'};
   var d=daysDiff(c.fimForn);
   if(c.fimForn<TODAY) return {label:'Encerrado',cls:'status-enc',code:'enc'};
@@ -344,6 +347,7 @@ function pieList(data){
 
 // ── Compute stats ────────────────────────────────────────────────────────
 function computeStats(cs){
+  cs=cs.filter(function(c){return !c.cancelado;});
   var ativos=cs.filter(function(c){return status(c).code==='ativo';});
   var ainc=cs.filter(function(c){return status(c).code==='ainc';});
   var enc=cs.filter(function(c){return status(c).code==='enc';});
@@ -524,8 +528,11 @@ function viewAlertas(){
 }
 
 var FILTER='todos';
+var CT_MES=''; var CT_SEARCH=''; var CT_SHOW_CREATE=false; var CT_SHOW_AJUSTE=false;
+var FIN_MES=''; var FIN_SEARCH='';
 function viewContratos(){
-  var cs=STATE.contracts;
+  var csAll=STATE.contracts;
+  var cs=csAll.filter(function(c){return !c.cancelado;});
   var vendas=cs.filter(isVenda), compras=cs.filter(isCompra);
   var rec=vendas.reduce(function(s,c){return s+expFin(c);},0);
   var custo=compras.reduce(function(s,c){return s+expFin(c);},0);
@@ -537,15 +544,162 @@ function viewContratos(){
     metric('Custo (Compra)',fmtR(custo))+
     metric('Margem Bruta',fmtR(rec-custo),(rec>0?fmt((rec-custo)/rec*100,1):'0')+'%',null,rec-custo)+
     metric('PM Venda vs Compra','R$ '+fmt(pmV-pmC)+'/MWh','V: R$'+fmt(pmV)+' · C: R$'+fmt(pmC),null,pmV-pmC)+'</div></div>';
-  var filters=[['todos','Todos'],['ativo','Ativos'],['ainc','A iniciar'],['enc','Encerrados'],['alerta','Com alertas']];
+  h+='<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'+
+    '<button class="btn btn-primary" id="ctCreateToggle">'+(CT_SHOW_CREATE?'✕ Fechar formulário':'＋ Criar contrato')+'</button>'+
+    '<button class="btn btn-ghost" id="ctAjusteToggle">'+(CT_SHOW_AJUSTE?'✕ Fechar ajuste mensal':'Ajuste mensal')+'</button>'+
+    '</div>';
+  if(CT_SHOW_CREATE) h+=criarContratoCard();
+  if(CT_SHOW_AJUSTE) h+=ajusteMensalCard(csAll);
+  var filters=[['todos','Todos'],['ativo','Ativos'],['ainc','A iniciar'],['enc','Encerrados'],['alerta','Com alertas'],['cancelado','Cancelados']];
+  h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de suprimento</span><input type="month" id="ctMes" value="'+esc(CT_MES)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:170px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span class="ficha-label">Buscar (negócio, empresa, CCEE, submercado, fonte, negociante...)</span><input type="text" id="ctSearch" value="'+esc(CT_SEARCH)+'" placeholder="Pesquisa rápida" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:100%"></label>'+
+    (CT_MES||CT_SEARCH?'<button class="btn btn-ghost" id="ctClearFilters">Limpar filtros</button>':'')+
+    '</div>';
   h+='<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
   filters.forEach(function(f){ h+='<button class="btn '+(FILTER===f[0]?'btn-primary':'btn-ghost')+'" data-filter="'+f[0]+'">'+f[1]+'</button>'; });
-  var filtered=cs.filter(function(c){ var st=status(c).code; if(FILTER==='ativo')return st==='ativo'; if(FILTER==='ainc')return st==='ainc'; if(FILTER==='enc')return st==='enc'; if(FILTER==='alerta')return alerts(c).length>0; return true; });
+  var filtered=csAll.filter(function(c){ var st=status(c).code; if(FILTER==='ativo')return st==='ativo'; if(FILTER==='ainc')return st==='ainc'; if(FILTER==='enc')return st==='enc'; if(FILTER==='alerta')return alerts(c).length>0; if(FILTER==='cancelado')return st==='cancelado'; return st!=='cancelado'; });
+  filtered=filtered.filter(function(c){ return monthOverlap(c,CT_MES)&&matchesSearch(c,CT_SEARCH); });
   h+='<button class="btn btn-ghost" id="exportBtn" style="margin-left:auto">Baixar CSV (modelo da base)</button>';
   h+='<span style="color:#64748b;font-size:12px;display:flex;align-items:center">'+filtered.length+' contrato(s)</span></div>';
-  if(!filtered.length){ return h+'<div class="empty-state"><div class="empty-text">Nenhum contrato nesta categoria</div></div>'; }
+  if(!filtered.length){ return h+'<div class="empty-state"><div class="empty-text">Nenhum contrato nesta categoria/filtro</div></div>'; }
   filtered.forEach(function(c){ h+=fichaHTML(c); });
   return h;
+}
+// ── Criar contrato direto (mesmo padrão de campos da Criação de Proposta) ──
+function criarContratoCard(){
+  var subs=['SE/CO','S','NE','N'], fontes=['Convencional','Incentivada 0%','Incentivada 50%','Incentivada 80%','Incentivada 100%','Cogeração Qualificada 50%','Cogeração Qualificada 100%'];
+  var sazOpts=['Flat','Modulação','Conforme curva de carga'];
+  var formaConsumoOpts=['Flat','Conforme curva de carga de consumo','Conforme curva de carga de geração','Conforme curva de carga líquida (consumo − geração)','Modulação por horário (ponta / fora-ponta)','Sazonalizado mensal'];
+  var reajOpts=['Nenhum','IPCA','IGP-M','IGP-DI','IPCA cheio','Pré-fixado'];
+  var origemOpts=['Mesa','Corretora','Indicação','Direto','Plataforma BBCE'];
+  var natOpts=['Bilateral','Spot','Swap'];
+  var classOpts=['ACL','ACR'];
+  var simNaoOpts=['Não','Sim'];
+  var spreadOpts=['','Preço fixo','Fixo + Spread','% do PLD','PLD + Spread'];
+  function opt(arr){ return arr.map(function(x){return '<option>'+esc(x)+'</option>';}).join(''); }
+  function fld(label,inner){ return '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">'+label+'</span>'+inner+'</label>'; }
+  function sec(t){ return '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">'+t+'</div>'; }
+  var inp='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
+  var g3='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
+  var h='<div class="card" style="margin-bottom:18px">'+
+    '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Novo contrato — Identificação</div>'+
+    g3+
+    fld('Número do contrato','<div style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;color:#60a5fa;padding:7px 9px;font-size:12px;font-weight:600">'+esc(peekContractSeq())+' <span style="color:#475569;font-weight:400">(automático)</span></div>')+
+    fld('Contraparte','<input id="ncEmp" type="text" placeholder="Empresa responsável" '+inp+'>')+
+    fld('Unidade de negócio','<input id="ncUnidade" type="text" placeholder="ex.: Comercial" '+inp+'>')+
+    fld('Negociante','<input id="ncNegoc" type="text" placeholder="Responsável" '+inp+'>')+
+    fld('Operador','<input id="ncOperador" type="text" placeholder="Operador" '+inp+'>')+
+    fld('Origem da operação','<select id="ncOrigem" '+inp+'>'+opt(origemOpts)+'</select>')+
+    fld('Tipo de operação','<select id="ncTipo" '+inp+'><option>Compra</option><option>Venda</option></select>')+
+    fld('Natureza','<select id="ncNatureza" '+inp+'>'+opt(natOpts)+'</select>')+
+    fld('Classificação','<select id="ncClassif" '+inp+'>'+opt(classOpts)+'</select>')+
+    fld('Contrato CCEE','<input id="ncCCEE" type="text" placeholder="opcional" '+inp+'>')+
+    '<div></div><div></div>'+
+    '</div>'+
+    sec('Objeto da operação')+g3+
+    fld('Submercado','<select id="ncSub" '+inp+'>'+opt(subs)+'</select>')+
+    fld('Fonte de energia','<select id="ncFonte" '+inp+'>'+opt(fontes)+'</select>')+
+    fld('RETUSD','<select id="ncRet" '+inp+'>'+opt(simNaoOpts)+'</select>')+
+    fld('Volume (MWm)','<input id="ncVol" type="number" min="0" step="0.1" '+inp+'>')+
+    fld('Preço (R$/MWh)','<input id="ncPreco" type="number" min="0" step="1" '+inp+'>')+
+    fld('Tipo de preço','<div id="ncTipoPrecoBox" style="background:#0f1a2e;border:1px solid #1e3a5f;border-radius:6px;color:#60a5fa;padding:7px 9px;font-size:12px;font-weight:600">Preço fixo</div>')+
+    fld('Forma de consumo','<select id="ncFormaConsumo" '+inp+'>'+opt(formaConsumoOpts)+'</select>')+
+    fld('Início do fornecimento','<input id="ncIni" type="date" '+inp+'>')+
+    fld('Fim do fornecimento','<input id="ncFim" type="date" '+inp+'>')+
+    '</div>'+
+    sec('Sazonalidade')+g3+
+    fld('Tipo de sazonalidade','<select id="ncSazTipo" '+inp+'>'+opt(sazOpts)+'</select>')+
+    fld('Sazonalidade superior (%)','<input id="ncSazSup" type="number" min="0" step="1" placeholder="ex.: 110" '+inp+'>')+
+    fld('Sazonalidade inferior (%)','<input id="ncSazInf" type="number" min="0" step="1" placeholder="ex.: 90" '+inp+'>')+
+    '</div>'+
+    sec('Flexibilidade e pagamento')+g3+
+    fld('Flexibilidade superior (%)','<input id="ncFlexSup" type="number" min="0" step="1" placeholder="ex.: 10" '+inp+'>')+
+    fld('Flexibilidade inferior (%)','<input id="ncFlexInf" type="number" min="0" step="1" placeholder="ex.: 10" '+inp+'>')+
+    fld('Condição de pagamento','<input id="ncCondPag" type="text" placeholder="ex.: D+30" '+inp+'>')+
+    '</div>'+
+    '<div id="ncSpreadSec" style="display:none">'+
+    sec('Preço variável / spread (somente fontes incentivadas)')+g3+
+    fld('Tipo de Spread','<select id="ncTipoSpread" '+inp+'>'+opt(spreadOpts)+'</select>')+
+    fld('Índice de preço','<input id="ncIndicePreco" type="text" placeholder="ex.: PLD SE/CO" '+inp+'>')+
+    fld('Spread (R$/MWh)','<input id="ncSpread" type="number" step="1" placeholder="0" '+inp+'>')+
+    fld('Piso de preço (R$/MWh)','<input id="ncPiso" type="number" min="0" step="1" placeholder="0" '+inp+'>')+
+    fld('Teto de preço (R$/MWh)','<input id="ncTeto" type="number" min="0" step="1" placeholder="0" '+inp+'>')+
+    '<div></div>'+
+    '</div></div>'+
+    sec('Reajuste')+g3+
+    fld('Índice de reajuste','<select id="ncIndReaj" '+inp+'>'+opt(reajOpts)+'</select>')+
+    fld('Data base do reajuste','<input id="ncDataBase" type="date" '+inp+'>')+
+    fld('Data do 1º reajuste','<input id="ncPrimReaj" type="date" '+inp+'>')+
+    '</div>'+
+    '<div style="margin-top:16px;display:flex;gap:8px;align-items:center"><button class="btn btn-primary" id="ncCreate" style="justify-content:center">Criar contrato</button><span style="color:#64748b;font-size:11px">O contrato entra direto no portfólio, sem passar por proposta.</span></div>'+
+    '<div id="ncErr" class="err" style="display:none"></div></div>';
+  return h;
+}
+function bindCriarContrato(){
+  function v(id){ var e=document.getElementById(id); return e?e.value:''; }
+  function err(m){ var e=document.getElementById('ncErr'); if(e){ e.textContent=m; e.style.display='block'; } }
+  function syncTipoPreco(){
+    var inc=!isConvencional(v('ncFonte'));
+    var box=document.getElementById('ncTipoPrecoBox'), sec=document.getElementById('ncSpreadSec');
+    if(box) box.textContent=inc?'Preço fixo + Spread':'Preço fixo';
+    if(sec) sec.style.display=inc?'':'none';
+  }
+  var fonteEl=document.getElementById('ncFonte'); if(fonteEl){ fonteEl.onchange=syncTipoPreco; syncTipoPreco(); }
+  var cr=document.getElementById('ncCreate');
+  if(cr) cr.onclick=function(){
+    var emp=v('ncEmp').trim(), vol=parseFloat(v('ncVol')), preco=parseFloat(v('ncPreco'));
+    if(!emp){ err('Informe a contraparte.'); return; }
+    if(isNaN(vol)||vol<=0){ err('Informe um volume válido (MWm).'); return; }
+    if(isNaN(preco)||preco<=0){ err('Informe um preço válido (R$/MWh).'); return; }
+    if(!v('ncIni')||!v('ncFim')){ err('Informe início e fim do fornecimento.'); return; }
+    var inc=!isConvencional(v('ncFonte'));
+    var p={ negocio:nextContractSeq(), empresa:emp, unidade:v('ncUnidade').trim(), negociante:v('ncNegoc').trim(), operador:v('ncOperador').trim(), origem:v('ncOrigem'), tipoOp:v('ncTipo'), natureza:v('ncNatureza'), classif:v('ncClassif'), ccee:v('ncCCEE').trim(), submercado:v('ncSub'), fonte:v('ncFonte'), ret:v('ncRet'), vol:vol, preco:preco, tipoPreco:inc?'Preço fixo + Spread':'Preço fixo', formaConsumo:v('ncFormaConsumo'), inicio:v('ncIni'), fim:v('ncFim'), sazTipo:v('ncSazTipo'), sazSup:parseFloat(v('ncSazSup'))||0, sazInf:parseFloat(v('ncSazInf'))||0, flexSup:parseFloat(v('ncFlexSup'))||0, flexInf:parseFloat(v('ncFlexInf'))||0, condPag:v('ncCondPag').trim(), tipoSpread:inc?v('ncTipoSpread'):'', indicePreco:inc?v('ncIndicePreco').trim():'', spread:inc?(parseFloat(v('ncSpread'))||0):0, piso:inc?(parseFloat(v('ncPiso'))||0):0, teto:inc?(parseFloat(v('ncTeto'))||0):0, indReaj:v('ncIndReaj'), dataBase:v('ncDataBase'), primReaj:v('ncPrimReaj') };
+    STATE.contracts.push(contractFromProposal(p)); saveContracts(); CT_SHOW_CREATE=false; render();
+  };
+  var tg=document.getElementById('ctCreateToggle'); if(tg) tg.onclick=function(){ CT_SHOW_CREATE=!CT_SHOW_CREATE; CT_SHOW_AJUSTE=false; document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); };
+}
+// ── Ajuste mensal (volume/preço ajustado por mês de fornecimento) ──
+function ajusteMensalCard(cs){
+  var ist='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
+  var ativos=cs.filter(function(c){return !c.cancelado;});
+  var h='<div class="card" style="margin-bottom:18px">'+
+    '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Ajuste mensal de volume/preço</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Contrato</span><select id="amContrato" '+ist+'>'+
+      ativos.map(function(c){ return '<option value="'+c._id+'">'+esc(c.negocio)+' — '+esc(c.empresa)+'</option>'; }).join('')+
+    '</select></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de referência</span><input type="month" id="amMes" '+ist+'></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Volume ajustado (MWm)</span><input type="number" step="0.1" id="amVol" '+ist+'></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Preço ajustado (R$/MWh)</span><input type="number" step="1" id="amPreco" '+ist+'></label>'+
+    '</div>'+
+    '<div style="margin-top:14px;display:flex;gap:8px;align-items:center"><button class="btn btn-primary" id="amSave">Salvar ajuste do mês</button><span style="color:#64748b;font-size:11px">Atualiza o volume/preço ajustado do contrato e registra o histórico por mês.</span></div>'+
+    '<div id="amErr" class="err" style="display:none"></div>'+
+    (!ativos.length?'<div style="color:#64748b;font-size:12px;margin-top:8px">Nenhum contrato disponível para ajuste.</div>':'')+
+    '</div>';
+  return h;
+}
+function bindAjusteMensal(){
+  function err(m){ var e=document.getElementById('amErr'); if(e){ e.textContent=m; e.style.display='block'; } }
+  var sv=document.getElementById('amSave');
+  if(sv) sv.onclick=function(){
+    var sel=document.getElementById('amContrato'), mesEl=document.getElementById('amMes');
+    var vol=parseFloat(document.getElementById('amVol').value), preco=parseFloat(document.getElementById('amPreco').value);
+    if(!sel||!sel.value){ err('Nenhum contrato selecionado.'); return; }
+    var mes=mesEl?mesEl.value:''; if(!mes){ err('Informe o mês de referência.'); return; }
+    if(isNaN(vol)&&isNaN(preco)){ err('Informe volume e/ou preço ajustado.'); return; }
+    var id=sel.value; var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0];
+    if(!c){ err('Contrato não encontrado.'); return; }
+    var p=mes.split('-'); var days=new Date(+p[0],(+p[1]||1),0).getDate(); var horas=days*24;
+    if(!c.ajustes) c.ajustes={};
+    var volMWm = isNaN(vol)?(c.volAjMWm||c.volPrevMWm):vol;
+    var precoAj = isNaN(preco)?(c.precAj||c.precPrev):preco;
+    c.ajustes[mes]={ volMWm:volMWm, volMWh:volMWm*horas, preco:precoAj };
+    c.volAjMWm=volMWm; c.volAjMWh=volMWm*horas; c.precAj=precoAj;
+    c.possuiAjVol='sim'; c.possuiAjPreco='sim';
+    saveContracts(); CT_SHOW_AJUSTE=false; render();
+  };
+  var tg=document.getElementById('ctAjusteToggle'); if(tg) tg.onclick=function(){ CT_SHOW_AJUSTE=!CT_SHOW_AJUSTE; CT_SHOW_CREATE=false; document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); };
 }
 function fichaHTML(c){
   var st=status(c), al=alerts(c), exf=expFin(c), dMWm=c.volAjMWm-c.volPrevMWm, dPct=c.volPrevMWm>0?dMWm/c.volPrevMWm*100:0;
@@ -554,11 +708,14 @@ function fichaHTML(c){
   h+='<span style="font-weight:600;color:#f1f5f9;min-width:120px">'+esc(c.negocio)+'</span>';
   h+='<span class="'+st.cls+'">'+esc(st.label)+'</span>';
   h+='<span style="margin-left:10px;color:#64748b;font-size:11px">'+esc(c.empresa)+'</span>';
-  h+='<span style="margin-left:auto;display:flex;gap:6px">';
+  h+='<span style="margin-left:auto;display:flex;gap:6px;align-items:center">';
   h+='<span class="badge '+(isVenda(c)?'badge-green':'badge-blue')+'">'+esc(c.tipoOp||'—')+'</span>';
   if(c.submercado) h+='<span class="badge badge-gray">'+esc(c.submercado)+'</span>';
   if(c.fonte) h+='<span class="badge badge-purple">'+esc(c.fonte)+'</span>';
   if(al.length) h+='<span class="badge badge-red">'+al.length+' alerta(s)</span>';
+  if(c.faturar) h+='<span class="badge badge-yellow" title="Marcado para faturamento — exclusão bloqueada">Faturamento</span>';
+  h+='<button class="btn btn-ghost" data-cancel="'+c._id+'" style="padding:3px 8px;font-size:11px" title="'+(c.cancelado?'Reativar contrato':'Cancelar contrato')+'">'+(c.cancelado?'Reativar':'Cancelar')+'</button>';
+  if(!c.faturar) h+='<button class="btn btn-ghost" data-delc="'+c._id+'" style="padding:3px 8px;font-size:11px;color:#f87171;border-color:#5c2020" title="Excluir contrato">Excluir</button>';
   h+='</span></div>';
   h+='<div class="ficha-body" data-body="'+c._id+'" style="display:none">';
   function fld(l,v){ return '<div><div class="ficha-label">'+l+'</div><div class="ficha-value">'+v+'</div></div>'; }
@@ -1054,6 +1211,7 @@ function viewFinanceiro(){
   empresas.forEach(function(e){ var cp=findCP(e); h+='<tr><td>'+esc(e)+'</td><td>'+esc(cp?cp.cnpj:'—')+'</td><td class="td-num">'+s.byEmp[e].count+'</td><td class="td-num">'+fmt(s.byEmp[e].vol)+'</td><td class="td-num">'+fmtR(s.byEmp[e].val)+'</td><td class="td-num">'+fmt(Math.abs(s.byEmp[e].val)/totVal*100,1)+'%</td></tr>'; });
   if(!empresas.length) h+='<tr><td colspan="6" style="text-align:center;color:#64748b">—</td></tr>';
   h+='</tbody></table></div></div>';
+  h+=viewFaturamento(cs);
   h+='<div class="section-header"><span class="section-title">Detalhe por Contraparte</span></div>';
   h+='<div class="card" style="margin-bottom:16px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Selecione a contraparte</span><select id="finEmpresaSel" style="background:#0a0c10;border:1px solid #232834;border-radius:6px;color:#e6ebf2;padding:6px 9px;font-size:12px;width:280px"><option value="">Todas (consolidado acima)</option>'+empresas.map(function(e){return '<option'+(e===sel?' selected':'')+'>'+esc(e)+'</option>';}).join('')+'</select></label></div>';
@@ -1077,9 +1235,61 @@ function viewFinanceiro(){
   }
   return h;
 }
+function viewFaturamento(cs){
+  var list=cs.filter(function(c){return !c.cancelado;});
+  var filtered=list.filter(function(c){ return monthOverlap(c,FIN_MES)&&matchesSearch(c,FIN_SEARCH); });
+  var h='<div class="section-header"><span class="section-title">Faturamento</span></div>';
+  h+='<div class="card" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">'+
+     '<label style="font-size:12px;color:#94a3b8">Mês de suprimento<br><input type="month" id="finMes" value="'+esc(FIN_MES)+'" class="input"></label>'+
+     '<label style="font-size:12px;color:#94a3b8">Buscar (negócio, empresa, CCEE, submercado...)<br><input type="text" id="finSearch" value="'+esc(FIN_SEARCH)+'" class="input" placeholder="digite para pesquisar" style="min-width:260px"></label>'+
+     (FIN_MES||FIN_SEARCH?'<button class="btn btn-ghost" id="finClearFilters">Limpar filtros</button>':'')+
+     '<div style="margin-left:auto;display:flex;gap:8px">'+
+     '<button class="btn btn-primary" id="finMarkAll">Marcar todos para faturamento</button>'+
+     '<button class="btn btn-ghost" id="finUnmarkAll">Desmarcar todos</button>'+
+     '</div></div>';
+  h+='<div class="card"><div class="table-wrap"><table><thead><tr><th></th><th>Negócio</th><th>Empresa</th><th>Tipo</th><th>Volume MWm</th><th>Status</th></tr></thead><tbody>';
+  if(!filtered.length) h+='<tr><td colspan="6" style="text-align:center;color:#64748b">Nenhum contrato encontrado para os filtros aplicados</td></tr>';
+  filtered.forEach(function(c){
+    var st=status(c);
+    h+='<tr data-fatrow="'+c._id+'"><td><input type="checkbox" data-fat="'+c._id+'" '+(c.faturar?'checked':'')+'></td>'+
+       '<td>'+esc(c.negocio||'—')+'</td><td>'+esc(c.empresa||'—')+'</td>'+
+       '<td><span class="badge '+(isVenda(c)?'badge-green':'badge-blue')+'">'+esc(c.tipoOp||'—')+'</span></td>'+
+       '<td class="td-num">'+fmt(c.volMWm)+'</td>'+
+       '<td><span class="badge '+st.cls+'">'+esc(st.label)+'</span></td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  return h;
+}
+function bindFaturamento(){
+  var mesEl=document.getElementById('finMes'), searchEl=document.getElementById('finSearch');
+  if(mesEl) mesEl.onchange=function(){ FIN_MES=mesEl.value; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
+  if(searchEl) searchEl.oninput=function(){ FIN_SEARCH=searchEl.value; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); searchEl.focus(); };
+  var clr=document.getElementById('finClearFilters');
+  if(clr) clr.onclick=function(){ FIN_MES=''; FIN_SEARCH=''; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-fat]'),function(el){
+    el.onchange=function(){
+      var c=STATE.contracts.find(function(x){return x._id===el.getAttribute('data-fat');});
+      if(c){ c.faturar=el.checked; saveContracts(); }
+      document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro();
+    };
+  });
+  var markAll=document.getElementById('finMarkAll');
+  if(markAll) markAll.onclick=function(){
+    var list=STATE.contracts.filter(function(c){return !c.cancelado;}).filter(function(c){return monthOverlap(c,FIN_MES)&&matchesSearch(c,FIN_SEARCH);});
+    list.forEach(function(c){ c.faturar=true; });
+    saveContracts(); document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro();
+  };
+  var unmarkAll=document.getElementById('finUnmarkAll');
+  if(unmarkAll) unmarkAll.onclick=function(){
+    var list=STATE.contracts.filter(function(c){return !c.cancelado;}).filter(function(c){return monthOverlap(c,FIN_MES)&&matchesSearch(c,FIN_SEARCH);});
+    list.forEach(function(c){ c.faturar=false; });
+    saveContracts(); document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro();
+  };
+}
 function bindFinanceiro(){
   var sel=document.getElementById('finEmpresaSel');
   if(sel) sel.onchange=function(){ FIN_FILTER=sel.value; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
+  bindFaturamento();
 }
 
 // ── Backoffice — contratado x flex/saz exercida + curva horária ───────────
@@ -1200,6 +1410,8 @@ function loadProps(){ try{ return JSON.parse(localStorage.getItem('saas_proposal
 function saveProps(p){ try{ localStorage.setItem('saas_proposals', JSON.stringify(p)); }catch(e){} }
 function peekPropSeq(){ var n=0; try{ n=parseInt(localStorage.getItem('saas_prop_seq')||'0',10)||0; }catch(e){} return 'PROP-'+String(n+1).padStart(4,'0'); }
 function nextPropSeq(){ var n=0; try{ n=parseInt(localStorage.getItem('saas_prop_seq')||'0',10)||0; }catch(e){} n++; try{ localStorage.setItem('saas_prop_seq', String(n)); }catch(e){} return 'PROP-'+String(n).padStart(4,'0'); }
+function peekContractSeq(){ var n=0; try{ n=parseInt(localStorage.getItem('saas_contract_seq')||'0',10)||0; }catch(e){} return 'CT-'+String(n+1).padStart(4,'0'); }
+function nextContractSeq(){ var n=0; try{ n=parseInt(localStorage.getItem('saas_contract_seq')||'0',10)||0; }catch(e){} n++; try{ localStorage.setItem('saas_contract_seq', String(n)); }catch(e){} return 'CT-'+String(n).padStart(4,'0'); }
 function proposalPDF(p){
   var ini=p.inicio?new Date(p.inicio).toLocaleDateString('pt-BR'):'—', fim=p.fim?new Date(p.fim).toLocaleDateString('pt-BR'):'—';
   var db=p.dataBase?new Date(p.dataBase).toLocaleDateString('pt-BR'):'—', pr=p.primReaj?new Date(p.primReaj).toLocaleDateString('pt-BR'):'—';
@@ -1445,9 +1657,7 @@ function bindApp(){
     el.onclick=function(){ var t=el.getAttribute('data-nav'); if(t==='_import'){ STATE.contracts=[]; clearStored(); render(); } else { STATE.tab=t; render(); } };
   });
   var cb=document.getElementById('clearBtn'); if(cb) cb.onclick=function(){ STATE.contracts=[]; clearStored(); render(); };
-  Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindFichas(); bindFilters(); bindExport(); }; });
-  bindFichas();
-  bindExport();
+  if(STATE.tab==='contratos') bindContratosTab();
   if(STATE.tab==='mtm') bindMtM();
   if(STATE.tab==='proposta') bindProposta();
   if(STATE.tab==='financeiro') bindFinanceiro();
@@ -1491,11 +1701,33 @@ function bindMtM(){
     };
   }
 }
-function bindFilters(){ Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindFichas(); bindFilters(); bindExport(); }; }); }
 function bindFichas(){
   Array.prototype.forEach.call(document.querySelectorAll('[data-toggle]'),function(el){
     el.onclick=function(){ var id=el.getAttribute('data-toggle'); var body=document.querySelector('[data-body="'+id+'"]'); var arrow=document.querySelector('[data-arrow="'+id+'"]'); if(body){ var open=body.style.display!=='none'; body.style.display=open?'none':'block'; if(arrow) arrow.textContent=open?'▶':'▼'; } };
   });
+}
+function bindContratosTab(){
+  bindFichas();
+  bindExport();
+  bindCriarContrato();
+  bindAjusteMensal();
+  Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); }; });
+  function applyLiveFilter(){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ficha]'),function(el){
+      var id=el.getAttribute('data-ficha');
+      var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0];
+      el.style.display=(c&&monthOverlap(c,CT_MES)&&matchesSearch(c,CT_SEARCH))?'':'none';
+    });
+  }
+  var me=document.getElementById('ctMes'); if(me) me.oninput=function(){ CT_MES=me.value; applyLiveFilter(); };
+  var se=document.getElementById('ctSearch'); if(se) se.oninput=function(){ CT_SEARCH=se.value; applyLiveFilter(); };
+  var cf=document.getElementById('ctClearFilters'); if(cf) cf.onclick=function(){ CT_MES=''; CT_SEARCH=''; document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-cancel]'),function(el){ el.onclick=function(e){ e.stopPropagation(); var id=el.getAttribute('data-cancel'); var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0]; if(!c) return; c.cancelado=!c.cancelado; saveContracts(); document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-delc]'),function(el){ el.onclick=function(e){ e.stopPropagation(); var id=el.getAttribute('data-delc'); var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0]; if(!c) return;
+    if(c.faturar){ alert('Este contrato está marcado para faturamento. Remova a marcação na aba Financeiro ou utilize "Cancelar".'); return; }
+    if(!confirm('Excluir definitivamente o contrato '+c.negocio+'? Esta ação não pode ser desfeita.')) return;
+    STATE.contracts=STATE.contracts.filter(function(x){return x!==c;}); saveContracts(); document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab();
+  }; });
 }
 
 var _saved=loadContracts(); if(_saved){ STATE.contracts=_saved; }
