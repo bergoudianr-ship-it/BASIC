@@ -183,6 +183,9 @@ function monthOverlap(c,mkey){ if(!mkey) return true; if(!c.inicioForn||!c.fimFo
 function dateOverlap(c,dkey){ if(!dkey) return true; if(!c.inicioForn||!c.fimForn) return false; var p=dkey.split('-'); var d=new Date(+p[0],(+p[1]||1)-1,+p[2]||1); return c.inicioForn<=d && c.fimForn>=d; }
 function rangeOverlap(c,ini,fim){ if(!ini&&!fim) return true; if(!c.inicioForn||!c.fimForn) return false; function pd(s){ var p=s.split('-'); return new Date(+p[0],(+p[1]||1)-1,+p[2]||1); } var s=ini?pd(ini):null, e=fim?pd(fim):null; if(s&&c.fimForn<s) return false; if(e&&c.inicioForn>e) return false; return true; }
 function matchesSearch(c,q){ if(!q) return true; q=q.toLowerCase(); var fields=[c.negocio,c.empresa,c.negociante,c.operador,c.origem,c.contratoCCEE,c.submercado,c.fonte,c.classificacao,c.unidadeNegocio,c.natureza,c.condPag,c.entrega]; return fields.some(function(f){return (f||'').toString().toLowerCase().indexOf(q)>=0;}); }
+function matchesSearchProp(p,q){ if(!q) return true; q=q.toLowerCase(); var fields=[p.negocio,p.empresa,p.negociante,p.operador,p.origem,p.ccee,p.submercado,p.fonte,p.classif,p.unidade,p.natureza,p.condPag]; return fields.some(function(f){return (f||'').toString().toLowerCase().indexOf(q)>=0;}); }
+function rangeOverlapStr(p,ini,fim){ if(!ini&&!fim) return true; if(!p.inicio||!p.fim) return false; function pd(s){ var pp=s.split('-'); return new Date(+pp[0],(+pp[1]||1)-1,+pp[2]||1); } var ps=pd(p.inicio), pe=pd(p.fim); var s=ini?pd(ini):null, e=fim?pd(fim):null; if(s&&pe<s) return false; if(e&&ps>e) return false; return true; }
+function distinctVals(arr,key){ var seen={},out=[]; arr.forEach(function(x){ var v=x[key]; if(v&&!seen[v]){seen[v]=1;out.push(v);} }); out.sort(); return out; }
 // Padroniza a fonte de energia conforme os produtos da BBCE
 function normFonte(raw){
   var s=(raw||'').toString().trim(); if(!s) return 'N/D';
@@ -545,12 +548,17 @@ function bindAlertas(){
 
 var FILTER='todos';
 var CT_MES=''; var CT_DATA=''; var CT_SEARCH=''; var CT_SHOW_CREATE=false; var CT_SHOW_AJUSTE=false;
+var CT_INI=''; var CT_FIM='';
+var CT_COL_EMP=''; var CT_COL_NEG=''; var CT_COL_TIPO=''; var CT_COL_SUB=''; var CT_COL_FONTE=''; var CT_COL_CLASSIF=''; var CT_COL_STATUS='';
 var FIN_MES=''; var FIN_DATA=''; var FIN_SEARCH='';
 var BO_MES=''; var BO_DATA=''; var BO_SEARCH='';
 var PF_INI=''; var PF_FIM=''; var PF_SEARCH='';
 var MTM_MES=''; var MTM_DATA=''; var MTM_SEARCH='';
 var AL_MES=''; var AL_DATA=''; var AL_SEARCH='';
 var CFG_SEARCH='';
+var PROP_SHOW_CREATE=false;
+var PROP_INI=''; var PROP_FIM=''; var PROP_SEARCH='';
+var PROP_COL_EMP=''; var PROP_COL_NEG=''; var PROP_COL_TIPO=''; var PROP_COL_SUB=''; var PROP_COL_FONTE=''; var PROP_COL_CLASSIF='';
 function viewContratos(){
   var csAll=STATE.contracts;
   var cs=csAll.filter(function(c){return !c.cancelado;});
@@ -572,20 +580,73 @@ function viewContratos(){
   if(CT_SHOW_CREATE) h+=criarContratoCard();
   if(CT_SHOW_AJUSTE) h+=ajusteMensalCard(csAll);
   var filters=[['todos','Todos'],['ativo','Ativos'],['ainc','A iniciar'],['enc','Encerrados'],['alerta','Com alertas'],['cancelado','Cancelados']];
+  var ctHasFilter=CT_MES||CT_DATA||CT_INI||CT_FIM||CT_SEARCH||CT_COL_EMP||CT_COL_NEG||CT_COL_TIPO||CT_COL_SUB||CT_COL_FONTE||CT_COL_CLASSIF||CT_COL_STATUS;
   h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de suprimento</span><input type="month" id="ctMes" value="'+esc(CT_MES)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:170px"></label>'+
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Data específica</span><input type="date" id="ctData" value="'+esc(CT_DATA)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Início do suprimento (de)</span><input type="date" id="ctIni" value="'+esc(CT_INI)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Fim do suprimento (até)</span><input type="date" id="ctFim" value="'+esc(CT_FIM)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
     '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span class="ficha-label">Buscar (negócio, empresa, CCEE, submercado, fonte, negociante...)</span><input type="text" id="ctSearch" value="'+esc(CT_SEARCH)+'" placeholder="Pesquisa rápida" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:100%"></label>'+
-    (CT_MES||CT_DATA||CT_SEARCH?'<button class="btn btn-ghost" id="ctClearFilters">Limpar filtros</button>':'')+
+    (ctHasFilter?'<button class="btn btn-ghost" id="ctClearFilters">Limpar filtros</button>':'')+
     '</div>';
   h+='<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
   filters.forEach(function(f){ h+='<button class="btn '+(FILTER===f[0]?'btn-primary':'btn-ghost')+'" data-filter="'+f[0]+'">'+f[1]+'</button>'; });
   var filtered=csAll.filter(function(c){ var st=status(c).code; if(FILTER==='ativo')return st==='ativo'; if(FILTER==='ainc')return st==='ainc'; if(FILTER==='enc')return st==='enc'; if(FILTER==='alerta')return alerts(c).length>0; if(FILTER==='cancelado')return st==='cancelado'; return st!=='cancelado'; });
-  filtered=filtered.filter(function(c){ return monthOverlap(c,CT_MES)&&dateOverlap(c,CT_DATA)&&matchesSearch(c,CT_SEARCH); });
+  filtered=filtered.filter(function(c){ return monthOverlap(c,CT_MES)&&dateOverlap(c,CT_DATA)&&rangeOverlap(c,CT_INI,CT_FIM)&&matchesSearch(c,CT_SEARCH); });
+  filtered=filtered.filter(function(c){
+    if(CT_COL_EMP&&c.empresa!==CT_COL_EMP) return false;
+    if(CT_COL_NEG&&c.negociante!==CT_COL_NEG) return false;
+    if(CT_COL_TIPO&&c.tipoOp!==CT_COL_TIPO) return false;
+    if(CT_COL_SUB&&c.submercado!==CT_COL_SUB) return false;
+    if(CT_COL_FONTE&&c.fonte!==CT_COL_FONTE) return false;
+    if(CT_COL_CLASSIF&&c.classificacao!==CT_COL_CLASSIF) return false;
+    if(CT_COL_STATUS&&status(c).code!==CT_COL_STATUS) return false;
+    return true;
+  });
   h+='<button class="btn btn-ghost" id="exportBtn" style="margin-left:auto">Baixar CSV (modelo da base)</button>';
   h+='<span style="color:#64748b;font-size:12px;display:flex;align-items:center">'+filtered.length+' contrato(s)</span></div>';
+  h+=contratosQuadroHTML(csAll,filtered);
   if(!filtered.length){ return h+'<div class="empty-state"><div class="empty-text">Nenhum contrato nesta categoria/filtro</div></div>'; }
   filtered.forEach(function(c){ h+=fichaHTML(c); });
+  return h;
+}
+// ── Quadro interativo de Contratos — tabela com filtro embutido por coluna ──
+function contratosQuadroHTML(csAll,rows){
+  var selSt='background:#0a0c10;border:1px solid #232834;border-radius:5px;color:#e6ebf2;padding:3px 4px;font-size:10.5px;width:100%;margin-top:5px';
+  function sel(id,vals,selected){ var o='<option value="">Todos</option>'; vals.forEach(function(v){ o+='<option value="'+esc(v)+'"'+(v===selected?' selected':'')+'>'+esc(v)+'</option>'; }); return '<select id="'+id+'" style="'+selSt+'">'+o+'</select>'; }
+  function selPairs(id,pairs,selected){ var o='<option value="">Todos</option>'; pairs.forEach(function(p){ o+='<option value="'+esc(p[0])+'"'+(p[0]===selected?' selected':'')+'>'+esc(p[1])+'</option>'; }); return '<select id="'+id+'" style="'+selSt+'">'+o+'</select>'; }
+  var statusPairs=[['ativo','Ativo'],['ainc','A iniciar'],['venc','Vencendo'],['enc','Encerrado'],['cancelado','Cancelado'],['indef','Indefinido']];
+  var h='<div class="section-header"><span class="section-title">Quadro interativo de contratos</span><span style="margin-left:auto;color:#64748b;font-size:11px">Filtre por coluna · clique numa linha para abrir a ficha</span></div>';
+  h+='<div class="card" style="margin-bottom:18px;padding:0"><div class="table-wrap"><table><thead><tr>'+
+    '<th>Negócio</th>'+
+    '<th>Contraparte'+sel('qEmp',distinctVals(csAll,'empresa'),CT_COL_EMP)+'</th>'+
+    '<th>Negociante'+sel('qNeg',distinctVals(csAll,'negociante'),CT_COL_NEG)+'</th>'+
+    '<th>Tipo Op.'+sel('qTipo',distinctVals(csAll,'tipoOp'),CT_COL_TIPO)+'</th>'+
+    '<th>Submercado'+sel('qSub',distinctVals(csAll,'submercado'),CT_COL_SUB)+'</th>'+
+    '<th>Fonte'+sel('qFonte',distinctVals(csAll,'fonte'),CT_COL_FONTE)+'</th>'+
+    '<th>Classificação'+sel('qClassif',distinctVals(csAll,'classificacao'),CT_COL_CLASSIF)+'</th>'+
+    '<th>Status'+selPairs('qStatus',statusPairs,CT_COL_STATUS)+'</th>'+
+    '<th>Volume MWm</th><th>Preço R$/MWh</th><th>Início</th><th>Fim</th><th>Alertas</th>'+
+    '</tr></thead><tbody>';
+  if(!rows.length){ h+='<tr><td colspan="13" style="text-align:center;color:#64748b">Nenhum contrato para os filtros aplicados</td></tr>'; }
+  rows.forEach(function(c){ var st=status(c), al=alerts(c);
+    h+='<tr data-qrow="'+c._id+'" style="cursor:pointer">'+
+      '<td style="font-weight:600;color:#f1f5f9">'+esc(c.negocio)+'</td>'+
+      '<td>'+esc(c.empresa||'—')+'</td>'+
+      '<td>'+esc(c.negociante||'—')+'</td>'+
+      '<td><span class="badge '+(isVenda(c)?'badge-green':'badge-blue')+'">'+esc(c.tipoOp||'—')+'</span></td>'+
+      '<td>'+esc(c.submercado||'—')+'</td>'+
+      '<td>'+esc(c.fonte||'—')+'</td>'+
+      '<td>'+esc(c.classificacao||'—')+'</td>'+
+      '<td><span class="'+st.cls+'">'+esc(st.label)+'</span></td>'+
+      '<td class="td-num">'+fmt(volMWm(c))+'</td>'+
+      '<td class="td-num">'+fmt(c.precAj||c.precPrev)+'</td>'+
+      '<td>'+(c.inicioForn?c.inicioForn.toLocaleDateString('pt-BR'):'—')+'</td>'+
+      '<td>'+(c.fimForn?c.fimForn.toLocaleDateString('pt-BR'):'—')+'</td>'+
+      '<td>'+(al.length?'<span class="badge badge-red">'+al.length+'</span>':'—')+'</td>'+
+    '</tr>';
+  });
+  h+='</tbody></table></div></div>';
   return h;
 }
 // ── Criar contrato direto (mesmo padrão de campos da Criação de Proposta) ──
@@ -1560,7 +1621,11 @@ function viewProposta(){
   function sec(t){ return '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">'+t+'</div>'; }
   var inp='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
   var g3='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
-  var h='<div class="section-header"><span class="section-title">Nova Proposta Comercial</span></div>';
+  var h='<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'+
+    '<button class="btn btn-primary" id="propCreateToggle">'+(PROP_SHOW_CREATE?'✕ Fechar formulário':'＋ Criar proposta')+'</button>'+
+    '</div>';
+  if(!PROP_SHOW_CREATE) return h+viewPropostaListagem(props);
+  h+='<div class="section-header"><span class="section-title">Nova Proposta Comercial</span></div>';
   h+='<div class="card" style="margin-bottom:20px">'+
     '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Identificação</div>'+
     g3+
@@ -1613,11 +1678,35 @@ function viewProposta(){
     '</div>'+
     '<div style="margin-top:16px;display:flex;gap:8px;align-items:center"><button class="btn btn-primary" id="pCreate" style="justify-content:center">Criar proposta</button><span style="color:#64748b;font-size:11px">A proposta entra na lista abaixo. Em cada uma você pode baixar o PDF, aprovar (vira operação) ou excluir.</span></div>'+
     '<div id="pErr" class="err" style="display:none"></div></div>';
-  h+='<div class="section-header"><span class="section-title">Propostas em Aberto ('+props.length+')</span></div>';
-  if(!props.length){ return h+'<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma proposta em aberto. Crie uma acima — ao aprovar, vira operação no portfólio; ao excluir, some daqui.</div></div>'; }
-  props.forEach(function(p){
+  h+=viewPropostaListagem(props);
+  return h;
+}
+// ── Listagem de Propostas — filtro Início/Fim/Buscar + subfiltros de coluna + quadro interativo ──
+function viewPropostaListagem(propsAll){
+  var propHasFilter=PROP_INI||PROP_FIM||PROP_SEARCH||PROP_COL_EMP||PROP_COL_NEG||PROP_COL_TIPO||PROP_COL_SUB||PROP_COL_FONTE||PROP_COL_CLASSIF;
+  var h='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Início do suprimento (de)</span><input type="date" id="propIni" value="'+esc(PROP_INI)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Fim do suprimento (até)</span><input type="date" id="propFim" value="'+esc(PROP_FIM)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span class="ficha-label">Buscar (negócio, empresa, CCEE, submercado, fonte, negociante...)</span><input type="text" id="propSearch" value="'+esc(PROP_SEARCH)+'" placeholder="Pesquisa rápida" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:100%"></label>'+
+    (propHasFilter?'<button class="btn btn-ghost" id="propClearFilters">Limpar filtros</button>':'')+
+    '</div>';
+  var filtered=propsAll.filter(function(p){ return rangeOverlapStr(p,PROP_INI,PROP_FIM)&&matchesSearchProp(p,PROP_SEARCH); });
+  filtered=filtered.filter(function(p){
+    if(PROP_COL_EMP&&p.empresa!==PROP_COL_EMP) return false;
+    if(PROP_COL_NEG&&p.negociante!==PROP_COL_NEG) return false;
+    if(PROP_COL_TIPO&&p.tipoOp!==PROP_COL_TIPO) return false;
+    if(PROP_COL_SUB&&p.submercado!==PROP_COL_SUB) return false;
+    if(PROP_COL_FONTE&&p.fonte!==PROP_COL_FONTE) return false;
+    if(PROP_COL_CLASSIF&&p.classif!==PROP_COL_CLASSIF) return false;
+    return true;
+  });
+  h+='<div style="display:flex;margin-bottom:8px"><span style="color:#64748b;font-size:12px">'+filtered.length+' de '+propsAll.length+' proposta(s)</span></div>';
+  h+=propostasQuadroHTML(propsAll,filtered);
+  h+='<div class="section-header"><span class="section-title">Propostas em Aberto ('+filtered.length+')</span></div>';
+  if(!filtered.length){ return h+'<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma proposta para os filtros aplicados.</div></div>'; }
+  filtered.forEach(function(p){
     var exp=propExposure(p);
-    h+='<div class="card" style="margin-bottom:10px;border-left:3px solid '+(p.tipoOp==='Venda'?'#22c55e':'#3b82f6')+'"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+    h+='<div class="card" data-propcard="'+p.id+'" style="margin-bottom:10px;border-left:3px solid '+(p.tipoOp==='Venda'?'#22c55e':'#3b82f6')+'"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
       '<span style="font-weight:600;color:#f1f5f9">'+esc(p.negocio)+'</span>'+
       '<span class="badge '+(p.tipoOp==='Venda'?'badge-green':'badge-blue')+'">'+esc(p.tipoOp)+'</span>'+
       '<span class="badge badge-gray">'+esc(p.submercado)+'</span>'+
@@ -1641,6 +1730,40 @@ function viewProposta(){
   });
   return h;
 }
+// ── Quadro interativo de Propostas — tabela com filtro embutido por coluna ──
+function propostasQuadroHTML(propsAll,rows){
+  var selSt='background:#0a0c10;border:1px solid #232834;border-radius:5px;color:#e6ebf2;padding:3px 4px;font-size:10.5px;width:100%;margin-top:5px';
+  function sel(id,vals,selected){ var o='<option value="">Todos</option>'; vals.forEach(function(v){ o+='<option value="'+esc(v)+'"'+(v===selected?' selected':'')+'>'+esc(v)+'</option>'; }); return '<select id="'+id+'" style="'+selSt+'">'+o+'</select>'; }
+  var h='<div class="section-header"><span class="section-title">Quadro interativo de propostas</span><span style="margin-left:auto;color:#64748b;font-size:11px">Filtre por coluna · clique numa linha para abrir a proposta</span></div>';
+  h+='<div class="card" style="margin-bottom:18px;padding:0"><div class="table-wrap"><table><thead><tr>'+
+    '<th>Negócio</th>'+
+    '<th>Contraparte'+sel('qpEmp',distinctVals(propsAll,'empresa'),PROP_COL_EMP)+'</th>'+
+    '<th>Negociante'+sel('qpNeg',distinctVals(propsAll,'negociante'),PROP_COL_NEG)+'</th>'+
+    '<th>Tipo Op.'+sel('qpTipo',distinctVals(propsAll,'tipoOp'),PROP_COL_TIPO)+'</th>'+
+    '<th>Submercado'+sel('qpSub',distinctVals(propsAll,'submercado'),PROP_COL_SUB)+'</th>'+
+    '<th>Fonte'+sel('qpFonte',distinctVals(propsAll,'fonte'),PROP_COL_FONTE)+'</th>'+
+    '<th>Classificação'+sel('qpClassif',distinctVals(propsAll,'classif'),PROP_COL_CLASSIF)+'</th>'+
+    '<th>Volume MWm</th><th>Preço R$/MWh</th><th>Início</th><th>Fim</th>'+
+    '</tr></thead><tbody>';
+  if(!rows.length){ h+='<tr><td colspan="11" style="text-align:center;color:#64748b">Nenhuma proposta para os filtros aplicados</td></tr>'; }
+  rows.forEach(function(p){
+    h+='<tr data-qproprow="'+p.id+'" style="cursor:pointer">'+
+      '<td style="font-weight:600;color:#f1f5f9">'+esc(p.negocio)+'</td>'+
+      '<td>'+esc(p.empresa||'—')+'</td>'+
+      '<td>'+esc(p.negociante||'—')+'</td>'+
+      '<td><span class="badge '+(p.tipoOp==='Venda'?'badge-green':'badge-blue')+'">'+esc(p.tipoOp||'—')+'</span></td>'+
+      '<td>'+esc(p.submercado||'—')+'</td>'+
+      '<td>'+esc(p.fonte||'—')+'</td>'+
+      '<td>'+esc(p.classif||'—')+'</td>'+
+      '<td class="td-num">'+fmt(p.vol)+'</td>'+
+      '<td class="td-num">'+fmt(p.preco)+'</td>'+
+      '<td>'+(p.inicio?new Date(p.inicio).toLocaleDateString('pt-BR'):'—')+'</td>'+
+      '<td>'+(p.fim?new Date(p.fim).toLocaleDateString('pt-BR'):'—')+'</td>'+
+    '</tr>';
+  });
+  h+='</tbody></table></div></div>';
+  return h;
+}
 function bindProposta(){
   function v(id){ var e=document.getElementById(id); return e?e.value:''; }
   function err(m){ var e=document.getElementById('pErr'); if(e){ e.textContent=m; e.style.display='block'; } }
@@ -1661,11 +1784,26 @@ function bindProposta(){
     var inc=!isConvencional(v('pFonte'));
     var props=loadProps();
     var p={ id:'p_'+Date.now()+'_'+Math.floor(Math.random()*10000), negocio:nextPropSeq(), empresa:emp, unidade:v('pUnidade').trim(), negociante:v('pNegoc').trim(), operador:v('pOperador').trim(), origem:v('pOrigem'), tipoOp:v('pTipo'), natureza:v('pNatureza'), classif:v('pClassif'), ccee:v('pCCEE').trim(), submercado:v('pSub'), fonte:v('pFonte'), ret:v('pRet'), vol:vol, preco:preco, tipoPreco:inc?'Preço fixo + Spread':'Preço fixo', formaConsumo:v('pFormaConsumo'), inicio:v('pIni'), fim:v('pFim'), sazTipo:v('pSazTipo'), sazSup:parseFloat(v('pSazSup'))||0, sazInf:parseFloat(v('pSazInf'))||0, flexSup:parseFloat(v('pFlexSup'))||0, flexInf:parseFloat(v('pFlexInf'))||0, condPag:v('pCondPag').trim(), tipoSpread:inc?v('pTipoSpread'):'', indicePreco:inc?v('pIndicePreco').trim():'', spread:inc?(parseFloat(v('pSpread'))||0):0, piso:inc?(parseFloat(v('pPiso'))||0):0, teto:inc?(parseFloat(v('pTeto'))||0):0, indReaj:v('pIndReaj'), dataBase:v('pDataBase'), primReaj:v('pPrimReaj'), criadoEm:new Date().toISOString() };
-    props.push(p); saveProps(props); render();
+    props.push(p); saveProps(props); PROP_SHOW_CREATE=false; render();
   };
+  var tg=document.getElementById('propCreateToggle'); if(tg) tg.onclick=function(){ PROP_SHOW_CREATE=!PROP_SHOW_CREATE; document.getElementById('viewBody').innerHTML=viewProposta(); bindProposta(); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-pdf]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-pdf'); var p=loadProps().filter(function(x){return x.id===id;})[0]; if(p) proposalPDF(p); }; });
   Array.prototype.forEach.call(document.querySelectorAll('[data-approve]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-approve'); var props=loadProps(); var p=null; props=props.filter(function(x){ if(x.id===id){ p=x; return false; } return true; }); if(p){ STATE.contracts.push(contractFromProposal(p)); saveContracts(); saveProps(props); STATE.tab='portfolio'; render(); } }; });
   Array.prototype.forEach.call(document.querySelectorAll('[data-del]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-del'); var props=loadProps().filter(function(x){return x.id!==id;}); saveProps(props); render(); }; });
+  function rerenderList(){ document.getElementById('viewBody').innerHTML=viewProposta(); bindProposta(); }
+  var pi=document.getElementById('propIni'); if(pi) pi.onchange=function(){ PROP_INI=pi.value; rerenderList(); };
+  var pf=document.getElementById('propFim'); if(pf) pf.onchange=function(){ PROP_FIM=pf.value; rerenderList(); };
+  var ps=document.getElementById('propSearch'); if(ps) ps.oninput=function(){ PROP_SEARCH=ps.value; rerenderList(); var f=document.getElementById('propSearch'); if(f){ f.focus(); f.setSelectionRange(f.value.length,f.value.length); } };
+  var qpEmp=document.getElementById('qpEmp'); if(qpEmp) qpEmp.onchange=function(){ PROP_COL_EMP=qpEmp.value; rerenderList(); };
+  var qpNeg=document.getElementById('qpNeg'); if(qpNeg) qpNeg.onchange=function(){ PROP_COL_NEG=qpNeg.value; rerenderList(); };
+  var qpTipo=document.getElementById('qpTipo'); if(qpTipo) qpTipo.onchange=function(){ PROP_COL_TIPO=qpTipo.value; rerenderList(); };
+  var qpSub=document.getElementById('qpSub'); if(qpSub) qpSub.onchange=function(){ PROP_COL_SUB=qpSub.value; rerenderList(); };
+  var qpFonte=document.getElementById('qpFonte'); if(qpFonte) qpFonte.onchange=function(){ PROP_COL_FONTE=qpFonte.value; rerenderList(); };
+  var qpClassif=document.getElementById('qpClassif'); if(qpClassif) qpClassif.onchange=function(){ PROP_COL_CLASSIF=qpClassif.value; rerenderList(); };
+  var pcf=document.getElementById('propClearFilters'); if(pcf) pcf.onclick=function(){ PROP_INI=''; PROP_FIM=''; PROP_SEARCH=''; PROP_COL_EMP=''; PROP_COL_NEG=''; PROP_COL_TIPO=''; PROP_COL_SUB=''; PROP_COL_FONTE=''; PROP_COL_CLASSIF=''; rerenderList(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-qproprow]'),function(el){
+    el.onclick=function(){ var id=el.getAttribute('data-qproprow'); var card=document.querySelector('[data-propcard="'+id+'"]'); if(card) card.scrollIntoView({behavior:'smooth',block:'center'}); };
+  });
 }
 
 // ── Main render ──────────────────────────────────────────────────────────
@@ -1787,17 +1925,40 @@ function bindContratosTab(){
   bindCriarContrato();
   bindAjusteMensal();
   Array.prototype.forEach.call(document.querySelectorAll('[data-filter]'),function(el){ el.onclick=function(){ FILTER=el.getAttribute('data-filter'); document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); }; });
+  function ctPasses(c){
+    return monthOverlap(c,CT_MES)&&dateOverlap(c,CT_DATA)&&rangeOverlap(c,CT_INI,CT_FIM)&&matchesSearch(c,CT_SEARCH)
+      &&(!CT_COL_EMP||c.empresa===CT_COL_EMP)&&(!CT_COL_NEG||c.negociante===CT_COL_NEG)&&(!CT_COL_TIPO||c.tipoOp===CT_COL_TIPO)
+      &&(!CT_COL_SUB||c.submercado===CT_COL_SUB)&&(!CT_COL_FONTE||c.fonte===CT_COL_FONTE)&&(!CT_COL_CLASSIF||c.classificacao===CT_COL_CLASSIF)
+      &&(!CT_COL_STATUS||status(c).code===CT_COL_STATUS);
+  }
   function applyLiveFilter(){
     Array.prototype.forEach.call(document.querySelectorAll('[data-ficha]'),function(el){
       var id=el.getAttribute('data-ficha');
       var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0];
-      el.style.display=(c&&monthOverlap(c,CT_MES)&&dateOverlap(c,CT_DATA)&&matchesSearch(c,CT_SEARCH))?'':'none';
+      el.style.display=(c&&ctPasses(c))?'':'none';
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-qrow]'),function(el){
+      var id=el.getAttribute('data-qrow');
+      var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0];
+      el.style.display=(c&&ctPasses(c))?'':'none';
     });
   }
   var me=document.getElementById('ctMes'); if(me) me.oninput=function(){ CT_MES=me.value; applyLiveFilter(); };
   var de=document.getElementById('ctData'); if(de) de.oninput=function(){ CT_DATA=de.value; applyLiveFilter(); };
+  var ie=document.getElementById('ctIni'); if(ie) ie.oninput=function(){ CT_INI=ie.value; applyLiveFilter(); };
+  var fe=document.getElementById('ctFim'); if(fe) fe.oninput=function(){ CT_FIM=fe.value; applyLiveFilter(); };
   var se=document.getElementById('ctSearch'); if(se) se.oninput=function(){ CT_SEARCH=se.value; applyLiveFilter(); };
-  var cf=document.getElementById('ctClearFilters'); if(cf) cf.onclick=function(){ CT_MES=''; CT_DATA=''; CT_SEARCH=''; document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); };
+  var qEmp=document.getElementById('qEmp'); if(qEmp) qEmp.onchange=function(){ CT_COL_EMP=qEmp.value; applyLiveFilter(); };
+  var qNeg=document.getElementById('qNeg'); if(qNeg) qNeg.onchange=function(){ CT_COL_NEG=qNeg.value; applyLiveFilter(); };
+  var qTipo=document.getElementById('qTipo'); if(qTipo) qTipo.onchange=function(){ CT_COL_TIPO=qTipo.value; applyLiveFilter(); };
+  var qSub=document.getElementById('qSub'); if(qSub) qSub.onchange=function(){ CT_COL_SUB=qSub.value; applyLiveFilter(); };
+  var qFonte=document.getElementById('qFonte'); if(qFonte) qFonte.onchange=function(){ CT_COL_FONTE=qFonte.value; applyLiveFilter(); };
+  var qClassif=document.getElementById('qClassif'); if(qClassif) qClassif.onchange=function(){ CT_COL_CLASSIF=qClassif.value; applyLiveFilter(); };
+  var qStatus=document.getElementById('qStatus'); if(qStatus) qStatus.onchange=function(){ CT_COL_STATUS=qStatus.value; applyLiveFilter(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-qrow]'),function(el){
+    el.onclick=function(){ var id=el.getAttribute('data-qrow'); var body=document.querySelector('[data-body="'+id+'"]'); var arrow=document.querySelector('[data-arrow="'+id+'"]'); var ficha=document.querySelector('[data-ficha="'+id+'"]'); if(body){ body.style.display='block'; if(arrow) arrow.textContent='▼'; } if(ficha) ficha.scrollIntoView({behavior:'smooth',block:'center'}); };
+  });
+  var cf=document.getElementById('ctClearFilters'); if(cf) cf.onclick=function(){ CT_MES=''; CT_DATA=''; CT_INI=''; CT_FIM=''; CT_SEARCH=''; CT_COL_EMP=''; CT_COL_NEG=''; CT_COL_TIPO=''; CT_COL_SUB=''; CT_COL_FONTE=''; CT_COL_CLASSIF=''; CT_COL_STATUS=''; document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-cancel]'),function(el){ el.onclick=function(e){ e.stopPropagation(); var id=el.getAttribute('data-cancel'); var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0]; if(!c) return; c.cancelado=!c.cancelado; saveContracts(); document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); }; });
   Array.prototype.forEach.call(document.querySelectorAll('[data-delc]'),function(el){ el.onclick=function(e){ e.stopPropagation(); var id=el.getAttribute('data-delc'); var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0]; if(!c) return;
     if(c.faturar){ alert('Este contrato está marcado para faturamento. Remova a marcação na aba Financeiro ou utilize "Cancelar".'); return; }
