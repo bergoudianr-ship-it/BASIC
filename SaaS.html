@@ -107,6 +107,21 @@
   .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 17px; box-shadow: var(--shadow); transition: border-color .2s var(--ease), box-shadow .2s var(--ease); }
   .chart-card:hover { border-color: var(--border-hover); }
   .chart-title { font-size: 12px; color: var(--text-2); margin-bottom: 14px; font-weight: 600; }
+  .board { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 18px; align-items: start; }
+  .board-item { position: relative; border-radius: var(--radius); transition: opacity .15s var(--ease); }
+  .board-item.span2 { grid-column: span 2; }
+  .board-item.dragging { opacity: .45; }
+  .board-item.dragover { outline: 2px dashed #3b82f6; outline-offset: 4px; border-radius: var(--radius); }
+  .board-head { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; font-size: 11px; }
+  .board-grip { cursor: grab; color: #475569; font-size: 13px; }
+  .board-item[draggable="true"] { cursor: default; }
+  .board-head .sp { margin-left: auto; display: flex; gap: 4px; }
+  .board-btn { background: #11151c; border: 1px solid #232834; border-radius: 5px; color: #94a3b8; font-size: 11px; line-height: 1; padding: 3px 7px; cursor: pointer; }
+  .board-btn:hover { color: #e2e8f0; border-color: #3b4252; }
+  .widget-tray { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tray-chip { background: #11151c; border: 1px solid #232834; border-radius: 999px; color: #cbd5e1; font-size: 12px; padding: 5px 12px; cursor: pointer; transition: border-color .15s var(--ease), background .15s var(--ease); }
+  .tray-chip:hover { border-color: #3b82f6; background: #131a26; }
+  @media (max-width: 720px) { .board { grid-template-columns: 1fr; } .board-item.span2 { grid-column: span 1; } }
 
   .ficha { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 11px; box-shadow: var(--shadow); transition: border-color .2s var(--ease), box-shadow .2s var(--ease); overflow: hidden; }
   .ficha:hover { border-color: var(--border-hover); box-shadow: var(--shadow-hover); }
@@ -366,60 +381,128 @@ function computeStats(cs){
     nfPend:ativos.filter(function(c){return c.valorNF===0;}).length, months:months };
 }
 
+// ── Dashboard interativo: registro de widgets ─────────────────────────────
+// Qualquer aba pode publicar informações no dashboard chamando registerWidget.
+// Widgets novos aparecem automaticamente e são anexados ao painel do usuário.
+var WIDGETS=[]; var WIDGET_MAP={};
+function registerWidget(o){ if(!WIDGET_MAP[o.id]) WIDGETS.push(o); WIDGET_MAP[o.id]=o; }
+var DEFAULT_LAYOUT=[
+  {id:'kpi_total',span:1},{id:'kpi_volc',span:1},{id:'kpi_volv',span:1},{id:'kpi_posliq',span:1},
+  {id:'kpi_rec',span:1},{id:'kpi_custo',span:1},{id:'kpi_margem',span:1},{id:'kpi_ticket',span:1},
+  {id:'chart_sub',span:1},{id:'table_sub',span:1},{id:'chart_fonte',span:1},{id:'table_fonte',span:1},
+  {id:'kpi_ajvol',span:1},{id:'kpi_ajprec',span:1},{id:'kpi_semccee',span:1},{id:'kpi_nfpend',span:1},
+  {id:'table_neg',span:2},{id:'chart_saldo',span:2},{id:'table_mensal',span:2}
+];
+function loadDashLayout(){ try{ var a=JSON.parse(localStorage.getItem('saas_dashboard_layout')||'null'); if(a&&a.length) return a; }catch(e){} return DEFAULT_LAYOUT.map(function(x){return {id:x.id,span:x.span};}); }
+function saveDashLayout(a){ try{ localStorage.setItem('saas_dashboard_layout',JSON.stringify(a)); }catch(e){} }
+function layoutHasId(l,id){ for(var i=0;i<l.length;i++) if(l[i].id===id) return true; return false; }
+function layoutIdx(l,id){ for(var i=0;i<l.length;i++) if(l[i].id===id) return i; return -1; }
+// Reconcilia widgets recém-registrados: na 1ª execução semeia "conhecidos";
+// depois, todo widget novo é anexado automaticamente ao painel.
+function reconcileWidgets(layout){
+  var raw=null; try{ raw=localStorage.getItem('saas_dashboard_known'); }catch(e){}
+  if(raw==null){ var k0={}; WIDGETS.forEach(function(w){k0[w.id]=1;}); try{ localStorage.setItem('saas_dashboard_known',JSON.stringify(k0)); }catch(e){} return layout; }
+  var known={}; try{ known=JSON.parse(raw)||{}; }catch(e){}
+  var changed=false;
+  WIDGETS.forEach(function(w){ if(!known[w.id]){ known[w.id]=1; changed=true; if(!layoutHasId(layout,w.id)) layout.push({id:w.id,span:w.span||1}); } });
+  if(changed){ try{ localStorage.setItem('saas_dashboard_known',JSON.stringify(known)); }catch(e){} saveDashLayout(layout); }
+  return layout;
+}
+
+// ── Registro dos widgets (KPIs, gráficos e tabelas de todas as abas) ──────
+function registerCoreWidgets(){
+  function kpi(id,title,fn){ registerWidget({id:id,title:title,source:'Dashboard',span:1,render:fn}); }
+  kpi('kpi_total','Total de Contratos',function(s){ return metric('Total de Contratos',s.total,s.ativos+' ativos · '+s.ainc+' a iniciar · '+s.enc+' encerrados'); });
+  kpi('kpi_volc','Volume Comprado',function(s){ return metric('Vol. Comprado',fmtMW(s.volC),fmt(s.volCh,0)+' MWh'); });
+  kpi('kpi_volv','Volume Vendido',function(s){ return metric('Vol. Vendido',fmtMW(s.volV),fmt(s.volVh,0)+' MWh'); });
+  kpi('kpi_posliq','Posição Líquida',function(s){ return metric('Posição Líquida',fmtMW(s.posLiq),s.posLiq>=0?'Long (sobrecontratado)':'Short (descoberto)',s.posLiq>=0?'LONG':'SHORT',s.posLiq); });
+  kpi('kpi_rec','Receita (Venda)',function(s){ return metric('Receita (Venda)',fmtR(s.rec)); });
+  kpi('kpi_custo','Custo (Compra)',function(s){ return metric('Custo (Compra)',fmtR(s.custo)); });
+  kpi('kpi_margem','Margem Bruta',function(s){ return metric('Margem Bruta',fmtR(s.margem),fmt(s.margemPct,1)+'%',null,s.margem); });
+  kpi('kpi_ticket','Ticket Médio',function(s){ return metric('Ticket Médio',fmtR(s.ticket)); });
+  kpi('kpi_pmc','Preço Médio Compra',function(s){ return metric('Preço Médio Compra','R$ '+fmt(s.pmC)+'/MWh'); });
+  kpi('kpi_pmv','Preço Médio Venda',function(s){ return metric('Preço Médio Venda','R$ '+fmt(s.pmV)+'/MWh'); });
+  kpi('kpi_spread','Spread Médio',function(s){ return metric('Spread Médio','R$ '+fmt(s.pmV-s.pmC)+'/MWh',null,null,s.pmV-s.pmC); });
+  kpi('kpi_retusd','Contratos RETUSD',function(s){ return metric('Contratos RETUSD',s.retCount,'Exp. aprox.: '+fmtR(s.expUSD)); });
+  kpi('kpi_ajvol','Ajustes Vol. Pendentes',function(s){ return metric('Ajustes Vol. Pendentes',s.ajVol,'sem volume ajustado',s.ajVol>0?'Atenção':'OK',-s.ajVol); });
+  kpi('kpi_ajprec','Ajustes Preço Pend.',function(s){ return metric('Ajustes Preço Pend.',s.ajPrec,'sem preço ajustado',s.ajPrec>0?'Atenção':'OK',-s.ajPrec); });
+  kpi('kpi_semccee','Sem Contrato CCEE',function(s){ return metric('Sem Contrato CCEE',s.semCCEE,'risco regulatório',s.semCCEE>0?'Crítico':'OK',-s.semCCEE); });
+  kpi('kpi_nfpend','NF Pendente (Ativos)',function(s){ return metric('NF Pendente (Ativos)',s.nfPend,'fornec. ativo sem NF',s.nfPend>0?'Crítico':'OK',-s.nfPend); });
+  // Submercado
+  registerWidget({id:'chart_sub',title:'Volume por Submercado',source:'Dashboard',span:1,render:function(s){ var d=Object.keys(s.bySub).map(function(k){var v=s.bySub[k];return {name:k,compra:+v.compra.toFixed(2),venda:+v.venda.toFixed(2)};}); return '<div class="chart-card"><div class="chart-title">Volume por Submercado (MWm)</div>'+(d.length?cssBars(d,['compra','venda'],['#3b82f6','#22c55e'],['Compra','Venda']):'<div style="color:#64748b">—</div>')+'</div>'; }});
+  registerWidget({id:'table_sub',title:'Posição Líquida por Submercado',source:'Portfólio',span:1,render:function(s){ var d=Object.keys(s.bySub).map(function(k){var v=s.bySub[k];return {name:k,compra:v.compra,venda:v.venda,saldo:v.venda-v.compra};}); var h='<div class="card"><div class="card-title">Posição Líquida por Submercado</div><table><thead><tr><th>Submercado</th><th>Compra</th><th>Venda</th><th>Líquido</th></tr></thead><tbody>'; d.forEach(function(x){ h+='<tr><td><span class="badge badge-blue">'+esc(x.name)+'</span></td><td class="td-num">'+fmt(x.compra)+'</td><td class="td-num">'+fmt(x.venda)+'</td><td class="td-num '+(x.saldo>=0?'pos-long':'pos-short')+'">'+fmt(x.saldo)+'</td></tr>'; }); if(!d.length) h+='<tr><td colspan="4" style="text-align:center;color:#64748b">—</td></tr>'; return h+'</tbody></table></div>'; }});
+  // Fonte
+  registerWidget({id:'chart_fonte',title:'Volume por Fonte (gráfico)',source:'Dashboard',span:1,render:function(s){ var d=Object.keys(s.byFonte).map(function(k){return {name:k,v:+s.byFonte[k].toFixed(2)};}); return '<div class="chart-card"><div class="chart-title">Volume por Fonte (MWm)</div>'+(d.length?cssBars(d,['v'],['#a78bfa'],['MWm']):'<div style="color:#64748b">—</div>')+'</div>'; }});
+  registerWidget({id:'table_fonte',title:'Volume por Fonte (tabela)',source:'Portfólio',span:1,render:function(s){ var d=Object.keys(s.byFonte).map(function(k){return {name:k,value:+s.byFonte[k].toFixed(2)};}); return '<div class="card"><div class="card-title">Volume por Fonte</div>'+(d.length?pieList(d):'<div style="color:#64748b">—</div>')+'</div>'; }});
+  // Ranking negociantes
+  registerWidget({id:'table_neg',title:'Ranking de Negociantes',source:'Dashboard',span:2,render:function(s){ var negArr=Object.keys(s.byNeg).map(function(k){return [k,s.byNeg[k]];}).sort(function(a,b){return b[1].vol-a[1].vol;}); var totNeg=negArr.reduce(function(t,x){return t+x[1].vol;},0)||1; var h='<div class="card"><div class="card-title">Performance Comercial — Negociantes</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Negociante</th><th>Contratos</th><th>Volume MWm</th><th>Valor R$</th><th>% Vol</th></tr></thead><tbody>'; negArr.slice(0,10).forEach(function(x,i){ h+='<tr><td style="color:#475569">'+(i+1)+'</td><td>'+esc(x[0])+'</td><td class="td-num">'+x[1].count+'</td><td class="td-num">'+fmt(x[1].vol)+'</td><td class="td-num">'+fmtR(x[1].val)+'</td><td class="td-num">'+fmt(x[1].vol/totNeg*100,1)+'%</td></tr>'; }); if(!negArr.length) h+='<tr><td colspan="6" style="text-align:center;color:#64748b">—</td></tr>'; return h+'</tbody></table></div></div>'; }});
+  // Ranking contrapartes
+  registerWidget({id:'table_contrapartes',title:'Ranking de Contrapartes',source:'Financeiro',span:2,render:function(s){ var arr=Object.keys(s.byEmp).map(function(k){return [k,s.byEmp[k]];}).sort(function(a,b){return b[1].val-a[1].val;}); var tot=arr.reduce(function(t,x){return t+Math.abs(x[1].val);},0)||1; var h='<div class="card"><div class="card-title">Concentração por Contraparte</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Contraparte</th><th>Contratos</th><th>Volume MWm</th><th>Valor R$</th><th>% Valor</th></tr></thead><tbody>'; arr.slice(0,10).forEach(function(x,i){ h+='<tr><td style="color:#475569">'+(i+1)+'</td><td>'+esc(x[0])+'</td><td class="td-num">'+x[1].count+'</td><td class="td-num">'+fmt(x[1].vol)+'</td><td class="td-num">'+fmtR(x[1].val)+'</td><td class="td-num">'+fmt(Math.abs(x[1].val)/tot*100,1)+'%</td></tr>'; }); if(!arr.length) h+='<tr><td colspan="6" style="text-align:center;color:#64748b">—</td></tr>'; return h+'</tbody></table></div></div>'; }});
+  // Saldo mensal + tabela consolidada
+  registerWidget({id:'chart_saldo',title:'Saldo Líquido Mensal',source:'Dashboard',span:2,render:function(s){ return '<div class="chart-card"><div class="chart-title">Saldo Líquido Mensal (MWm) — 24 meses</div>'+lineChart(s.months,'saldo','#f59e0b')+'</div>'; }});
+  registerWidget({id:'table_mensal',title:'Posição Consolidada Mensal',source:'Portfólio',span:2,render:function(s){ var h='<div class="card"><div class="card-title">Posição Consolidada — 24 Meses</div><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Compra</th><th>Venda</th><th>Saldo</th><th>PM Compra</th><th>PM Venda</th><th>Resultado R$</th></tr></thead><tbody>'; s.months.forEach(function(m){ h+='<tr><td>'+esc(m.label)+'</td><td class="td-num">'+fmt(m.comp)+'</td><td class="td-num">'+fmt(m.vend)+'</td><td class="td-num '+(m.saldo>0?'pos-long':m.saldo<0?'pos-short':'pos-zero')+'">'+fmt(m.saldo)+'</td><td class="td-num">'+(m.pmComp>0?'R$ '+fmt(m.pmComp):'—')+'</td><td class="td-num">'+(m.pmVend>0?'R$ '+fmt(m.pmVend):'—')+'</td><td class="td-num '+(m.resultado>=0?'pos-long':'pos-short')+'">'+fmtR(m.resultado)+'</td></tr>'; }); return h+'</tbody></table></div></div>'; }});
+  // Alertas
+  registerWidget({id:'kpi_alertas_crit',title:'Alertas Críticos',source:'Alertas',span:1,render:function(){ var crit=0,aten=0; STATE.contracts.forEach(function(c){ alerts(c).forEach(function(a){ if(a.crit==='Crítico')crit++; else if(a.crit==='Atenção')aten++; }); }); return metric('Alertas Críticos',crit,aten+' em atenção',crit>0?'Ação imediata':'OK',-crit); }});
+  registerWidget({id:'list_alertas',title:'Lista de Alertas',source:'Alertas',span:2,render:function(){ var rows=[]; STATE.contracts.forEach(function(c){ alerts(c).forEach(function(a){ rows.push({negocio:c.negocio,empresa:c.empresa,msg:a.msg,crit:a.crit}); }); }); var ord={'Crítico':0,'Atenção':1,'Informativo':2}; rows.sort(function(a,b){return (ord[a.crit]||3)-(ord[b.crit]||3);}); var h='<div class="card"><div class="card-title">Alertas do Portfólio</div><div class="table-wrap"><table><thead><tr><th>Negócio</th><th>Empresa</th><th>Alerta</th><th>Criticidade</th></tr></thead><tbody>'; rows.slice(0,12).forEach(function(r){ h+='<tr><td style="font-weight:500">'+esc(r.negocio)+'</td><td>'+esc(r.empresa)+'</td><td>'+esc(r.msg)+'</td><td><span class="badge '+(r.crit==='Crítico'?'badge-red':r.crit==='Atenção'?'badge-yellow':'badge-gray')+'">'+esc(r.crit)+'</span></td></tr>'; }); if(!rows.length) h+='<tr><td colspan="4" style="text-align:center;color:#64748b">Nenhum alerta</td></tr>'; return h+'</tbody></table></div></div>'; }});
+  // MtM
+  registerWidget({id:'kpi_mtm_total',title:'MtM Total do Portfólio',source:'MtM',span:1,render:function(){ var M=loadMtM(),t=0; STATE.contracts.forEach(function(c){ t+=mtmContractCurve(c,M); }); return metric('MtM Total',fmtR(t),'marcado pela curva',t>=0?'A favor':'Contra',t); }});
+  registerWidget({id:'table_mtm_produto',title:'MtM por Produto',source:'MtM',span:2,render:function(){ var M=loadMtM(); var byP={}; STATE.contracts.forEach(function(c){ var k=(c.submercado||'N/D')+'|'+(c.fonte||'N/D'); if(!byP[k])byP[k]={mtm:0,vol:0,n:0}; byP[k].mtm+=mtmContractCurve(c,M); byP[k].vol+=(isVenda(c)?volMWm(c):-volMWm(c)); byP[k].n++; }); var arr=Object.keys(byP).map(function(k){var p=k.split('|');return {sub:p[0],fonte:p[1],mtm:byP[k].mtm,vol:byP[k].vol,n:byP[k].n};}); arr.sort(function(a,b){ if(a.fonte!==b.fonte) return a.fonte<b.fonte?-1:1; return a.sub<b.sub?-1:1; }); var h='<div class="card"><div class="card-title">MtM por Produto (submercado × fonte)</div><div class="table-wrap"><table><thead><tr><th>Fonte</th><th>Submercado</th><th>Contratos</th><th>Pos. líq. MWm</th><th>MtM R$</th></tr></thead><tbody>'; arr.forEach(function(x){ h+='<tr><td><span class="badge badge-purple">'+esc(x.fonte)+'</span></td><td><span class="badge badge-blue">'+esc(x.sub)+'</span></td><td class="td-num">'+x.n+'</td><td class="td-num '+(x.vol>0?'pos-long':x.vol<0?'pos-short':'pos-zero')+'">'+fmt(x.vol)+'</td><td class="td-num '+(x.mtm>=0?'pos-long':'pos-short')+'">'+fmtR(x.mtm)+'</td></tr>'; }); if(!arr.length) h+='<tr><td colspan="5" style="text-align:center;color:#64748b">—</td></tr>'; return h+'</tbody></table></div></div>'; }});
+  // Backoffice
+  registerWidget({id:'kpi_bo_contratado',title:'Volume Contratado (base)',source:'Backoffice',span:1,render:function(){ var b=0; STATE.contracts.forEach(function(c){ b+=backofficeRow(c).base; }); return metric('Vol. Contratado (base)',fmtMW(b)); }});
+  registerWidget({id:'kpi_bo_fora',title:'Contratos Fora do Envelope',source:'Backoffice',span:1,render:function(){ var fora=0; STATE.contracts.forEach(function(c){ var r=backofficeRow(c); if(r.has&&!r.within)fora++; }); return metric('Fora do Envelope',fora,'flex/sazonalidade',fora>0?'Atenção':'OK',-fora); }});
+  // Financeiro
+  registerWidget({id:'card_dre',title:'DRE Simplificado',source:'Financeiro',span:1,render:function(s){ return '<div class="card"><div class="card-title">DRE Simplificado</div><table><tbody>'+
+    '<tr><td>Receita bruta (vendas)</td><td class="td-num pos-long">'+fmtR(s.rec)+'</td></tr>'+
+    '<tr><td>(−) Custo de aquisição</td><td class="td-num pos-short">'+fmtR(-s.custo)+'</td></tr>'+
+    '<tr style="border-top:2px solid #232834"><td><b>(=) Margem bruta</b></td><td class="td-num" style="font-weight:700;color:'+(s.margem>=0?'#34d399':'#f87171')+'">'+fmtR(s.margem)+'</td></tr>'+
+    '<tr><td>Margem bruta (%)</td><td class="td-num">'+fmt(s.margemPct,1)+'%</td></tr></tbody></table></div>'; }});
+}
+registerCoreWidgets();
+
 // ── Views ────────────────────────────────────────────────────────────────
 function viewDashboard(){
   var s=computeStats(STATE.contracts);
-  var subData=Object.keys(s.bySub).map(function(k){var v=s.bySub[k];return {name:k,compra:+v.compra.toFixed(2),venda:+v.venda.toFixed(2),saldo:+(v.venda-v.compra).toFixed(2)};});
-  var fonteData=Object.keys(s.byFonte).map(function(k){return {name:k,value:+s.byFonte[k].toFixed(2)};});
-  var h='';
-  h+='<div class="section-header"><span class="section-title">1.1 Visão Geral do Portfólio</span></div>';
-  h+='<div class="grid-4">'+
-    metric('Total de Contratos',s.total,s.ativos+' ativos · '+s.ainc+' a iniciar · '+s.enc+' encerrados')+
-    metric('Vol. Comprado',fmtMW(s.volC),fmt(s.volCh,0)+' MWh')+
-    metric('Vol. Vendido',fmtMW(s.volV),fmt(s.volVh,0)+' MWh')+
-    metric('Posição Líquida',fmtMW(s.posLiq),s.posLiq>=0?'Long (sobrecontratado)':'Short (descoberto)',s.posLiq>=0?'LONG':'SHORT',s.posLiq)+'</div>';
-  h+='<div class="grid-4">'+
-    metric('Receita (Venda)',fmtR(s.rec))+
-    metric('Custo (Compra)',fmtR(s.custo))+
-    metric('Margem Bruta',fmtR(s.margem),fmt(s.margemPct,1)+'%',null,s.margem)+
-    metric('Ticket Médio',fmtR(s.ticket))+'</div>';
-  h+='<div class="grid-4">'+
-    metric('Preço Médio Compra','R$ '+fmt(s.pmC)+'/MWh')+
-    metric('Preço Médio Venda','R$ '+fmt(s.pmV)+'/MWh')+
-    metric('Spread Médio','R$ '+fmt(s.pmV-s.pmC)+'/MWh',null,null,s.pmV-s.pmC)+
-    metric('Contratos RETUSD',s.retCount,'Exp. aprox.: '+fmtR(s.expUSD))+'</div>';
-
-  h+='<div class="section-header"><span class="section-title">1.2 Posição por Submercado</span></div>';
-  if(subData.length){
-    h+='<div class="grid-2"><div class="chart-card"><div class="chart-title">Volume por Submercado (MWm)</div>'+cssBars(subData,['compra','venda'],['#3b82f6','#22c55e'],['Compra','Venda'])+'</div>';
-    h+='<div class="card"><div class="card-title">Posição Líquida por Submercado</div><table><thead><tr><th>Submercado</th><th>Compra</th><th>Venda</th><th>Líquido</th></tr></thead><tbody>';
-    subData.forEach(function(x){ h+='<tr><td><span class="badge badge-blue">'+esc(x.name)+'</span></td><td class="td-num">'+fmt(x.compra)+'</td><td class="td-num">'+fmt(x.venda)+'</td><td class="td-num '+(x.saldo>=0?'pos-long':'pos-short')+'">'+fmt(x.saldo)+'</td></tr>'; });
-    h+='</tbody></table></div></div>';
-  }
-
-  h+='<div class="section-header"><span class="section-title">1.3 Posição por Fonte de Energia</span></div>';
-  if(fonteData.length){ h+='<div class="grid-2"><div class="chart-card"><div class="chart-title">Volume por Fonte (MWm)</div>'+cssBars(fonteData.map(function(f){return {name:f.name,v:f.value};}),['v'],['#a78bfa'],['MWm'])+'</div><div class="card"><div class="card-title">Volume por Fonte</div>'+pieList(fonteData)+'</div></div>'; }
-
-  h+='<div class="section-header"><span class="section-title">1.7 Indicadores de Risco</span></div>';
-  h+='<div class="grid-4">'+
-    metric('Ajustes Vol. Pendentes',s.ajVol,'sem volume ajustado',s.ajVol>0?'Atenção':'OK',-s.ajVol)+
-    metric('Ajustes Preço Pend.',s.ajPrec,'sem preço ajustado',s.ajPrec>0?'Atenção':'OK',-s.ajPrec)+
-    metric('Sem Contrato CCEE',s.semCCEE,'risco regulatório',s.semCCEE>0?'Crítico':'OK',-s.semCCEE)+
-    metric('NF Pendente (Ativos)',s.nfPend,'fornec. ativo sem NF',s.nfPend>0?'Crítico':'OK',-s.nfPend)+'</div>';
-
-  h+='<div class="section-header"><span class="section-title">1.9 Performance Comercial — Ranking Negociantes</span></div>';
-  var negArr=Object.keys(s.byNeg).map(function(k){return [k,s.byNeg[k]];}).sort(function(a,b){return b[1].vol-a[1].vol;});
-  var totNeg=negArr.reduce(function(t,x){return t+x[1].vol;},0)||1;
-  h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>#</th><th>Negociante</th><th>Contratos</th><th>Volume MWm</th><th>Valor R$</th><th>% Vol</th></tr></thead><tbody>';
-  negArr.slice(0,10).forEach(function(x,i){ h+='<tr><td style="color:#475569">'+(i+1)+'</td><td>'+esc(x[0])+'</td><td class="td-num">'+x[1].count+'</td><td class="td-num">'+fmt(x[1].vol)+'</td><td class="td-num">'+fmtR(x[1].val)+'</td><td class="td-num">'+fmt(x[1].vol/totNeg*100,1)+'%</td></tr>'; });
-  h+='</tbody></table></div></div>';
-
-  h+='<div class="section-header"><span class="section-title">1.10 Posição Consolidada — Próximos 24 Meses</span></div>';
-  h+='<div class="chart-card" style="margin-bottom:16px"><div class="chart-title">Saldo Líquido Mensal (MWm)</div>'+lineChart(s.months,'saldo','#f59e0b')+'</div>';
-  h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Compra</th><th>Venda</th><th>Saldo</th><th>PM Compra</th><th>PM Venda</th><th>Resultado R$</th></tr></thead><tbody>';
-  s.months.forEach(function(m){ h+='<tr><td>'+esc(m.label)+'</td><td class="td-num">'+fmt(m.comp)+'</td><td class="td-num">'+fmt(m.vend)+'</td><td class="td-num '+(m.saldo>0?'pos-long':m.saldo<0?'pos-short':'pos-zero')+'">'+fmt(m.saldo)+'</td><td class="td-num">'+(m.pmComp>0?'R$ '+fmt(m.pmComp):'—')+'</td><td class="td-num">'+(m.pmVend>0?'R$ '+fmt(m.pmVend):'—')+'</td><td class="td-num '+(m.resultado>=0?'pos-long':'pos-short')+'">'+fmtR(m.resultado)+'</td></tr>'; });
-  h+='</tbody></table></div></div>';
+  var layout=reconcileWidgets(loadDashLayout().filter(function(it){return WIDGET_MAP[it.id];}));
+  var inL={}; layout.forEach(function(it){inL[it.id]=true;});
+  var avail=WIDGETS.filter(function(w){return !inL[w.id];});
+  var h='<div class="section-header"><span class="section-title">Dashboard personalizável</span>'+
+    '<span style="margin-left:auto;display:flex;gap:8px">'+
+    '<button class="btn btn-ghost" id="dashAddToggle">＋ Adicionar informação ('+avail.length+')</button>'+
+    '<button class="btn btn-ghost" id="dashReset">Restaurar padrão</button></span></div>';
+  h+='<div id="dashTray" class="card" style="display:none;margin-bottom:14px"><div class="card-title">Informações disponíveis — clique para adicionar ao painel</div>';
+  if(avail.length){ h+='<div class="widget-tray">'; avail.forEach(function(w){ h+='<button class="tray-chip" data-add="'+w.id+'">＋ '+esc(w.title)+' <span style="color:#475569">· '+esc(w.source)+'</span></button>'; }); h+='</div>'; }
+  else { h+='<div style="color:#64748b;font-size:12px">Todas as informações já estão no painel.</div>'; }
+  h+='</div>';
+  h+='<div style="color:#5b6678;font-size:11px;margin-bottom:10px">Arraste pelos cards (ou use ↑ ↓) para reordenar · ▭/▣ alterna largura · ✕ remove. O layout fica salvo neste navegador.</div>';
+  h+='<div class="board" id="dashBoard">';
+  layout.forEach(function(it){ var w=WIDGET_MAP[it.id]; if(!w) return; var span=it.span||w.span||1;
+    h+='<div class="board-item'+(span>=2?' span2':'')+'" draggable="true" data-wid="'+it.id+'">'+
+      '<div class="board-head"><span class="board-grip" title="Arraste para reordenar">⠿</span><span style="color:#94a3b8">'+esc(w.title)+'</span><span style="color:#3b4252">· '+esc(w.source)+'</span>'+
+      '<span class="sp"><button class="board-btn" data-move="up" data-wid="'+it.id+'" title="Subir">↑</button><button class="board-btn" data-move="down" data-wid="'+it.id+'" title="Descer">↓</button><button class="board-btn" data-size data-wid="'+it.id+'" title="Largura">'+(span>=2?'▣':'▭')+'</button><button class="board-btn" data-remove data-wid="'+it.id+'" title="Remover">✕</button></span></div>'+
+      '<div class="board-body">'+w.render(s)+'</div></div>';
+  });
+  h+='</div>';
+  if(!layout.length) h+='<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Painel vazio. Clique em "Adicionar informação" para montar seu dashboard.</div></div>';
   return h;
+}
+function bindDashboard(){
+  function rerender(l){ if(l) saveDashLayout(l); document.getElementById('viewBody').innerHTML=viewDashboard(); bindDashboard(); }
+  var tg=document.getElementById('dashAddToggle'), tray=document.getElementById('dashTray');
+  if(tg&&tray) tg.onclick=function(){ tray.style.display=tray.style.display==='none'?'block':'none'; };
+  var rs=document.getElementById('dashReset'); if(rs) rs.onclick=function(){ rerender(DEFAULT_LAYOUT.map(function(x){return {id:x.id,span:x.span};})); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-add]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-add'); var l=loadDashLayout().filter(function(it){return WIDGET_MAP[it.id];}); if(!layoutHasId(l,id)){ var w=WIDGET_MAP[id]; l.push({id:id,span:w?(w.span||1):1}); } rerender(l); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-remove]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-wid'); var l=loadDashLayout().filter(function(it){return WIDGET_MAP[it.id]&&it.id!==id;}); rerender(l); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-size]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-wid'); var l=loadDashLayout().filter(function(it){return WIDGET_MAP[it.id];}); var i=layoutIdx(l,id); if(i>=0) l[i].span=(l[i].span>=2?1:2); rerender(l); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-move]'),function(el){ el.onclick=function(){ var id=el.getAttribute('data-wid'), dir=el.getAttribute('data-move'); var l=loadDashLayout().filter(function(it){return WIDGET_MAP[it.id];}); var i=layoutIdx(l,id); if(i<0) return; var j=dir==='up'?i-1:i+1; if(j<0||j>=l.length) return; var tmp=l[i]; l[i]=l[j]; l[j]=tmp; rerender(l); }; });
+  // drag & drop
+  var dragId=null;
+  Array.prototype.forEach.call(document.querySelectorAll('#dashBoard .board-item'),function(el){
+    el.addEventListener('dragstart',function(e){ dragId=el.getAttribute('data-wid'); el.classList.add('dragging'); try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',dragId); }catch(x){} });
+    el.addEventListener('dragend',function(){ el.classList.remove('dragging'); Array.prototype.forEach.call(document.querySelectorAll('#dashBoard .board-item'),function(i){i.classList.remove('dragover');}); });
+    el.addEventListener('dragover',function(e){ e.preventDefault(); el.classList.add('dragover'); });
+    el.addEventListener('dragleave',function(){ el.classList.remove('dragover'); });
+    el.addEventListener('drop',function(e){ e.preventDefault(); var tid=el.getAttribute('data-wid'); if(!dragId||dragId===tid) return; var l=loadDashLayout().filter(function(it){return WIDGET_MAP[it.id];}); var from=layoutIdx(l,dragId), to=layoutIdx(l,tid); if(from<0||to<0) return; var moved=l.splice(from,1)[0]; l.splice(to,0,moved); rerender(l); });
+  });
 }
 
 function viewAlertas(){
@@ -1370,6 +1453,7 @@ function bindApp(){
   if(STATE.tab==='financeiro') bindFinanceiro();
   if(STATE.tab==='config') bindConfig();
   if(STATE.tab==='backoffice') bindBackoffice();
+  if(STATE.tab==='dashboard') bindDashboard();
 }
 function bindExport(){ var e=document.getElementById('exportBtn'); if(e) e.onclick=function(){ downloadFile('operacoes_companhia.csv', contractsToCSV(STATE.contracts)); }; }
 function bindMtM(){
