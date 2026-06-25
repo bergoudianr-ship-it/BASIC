@@ -180,6 +180,8 @@ function lc(s){ return (s||'').toLowerCase(); }
 function isCompra(c){ return lc(c.tipoOp).indexOf('compra')>=0; }
 function isVenda(c){ return lc(c.tipoOp).indexOf('venda')>=0; }
 function monthOverlap(c,mkey){ if(!mkey) return true; if(!c.inicioForn||!c.fimForn) return false; var p=mkey.split('-'); var ms=new Date(+p[0],(+p[1]||1)-1,1), me=new Date(+p[0],(+p[1]||1),0); return c.inicioForn<=me && c.fimForn>=ms; }
+function dateOverlap(c,dkey){ if(!dkey) return true; if(!c.inicioForn||!c.fimForn) return false; var p=dkey.split('-'); var d=new Date(+p[0],(+p[1]||1)-1,+p[2]||1); return c.inicioForn<=d && c.fimForn>=d; }
+function rangeOverlap(c,ini,fim){ if(!ini&&!fim) return true; if(!c.inicioForn||!c.fimForn) return false; function pd(s){ var p=s.split('-'); return new Date(+p[0],(+p[1]||1)-1,+p[2]||1); } var s=ini?pd(ini):null, e=fim?pd(fim):null; if(s&&c.fimForn<s) return false; if(e&&c.inicioForn>e) return false; return true; }
 function matchesSearch(c,q){ if(!q) return true; q=q.toLowerCase(); var fields=[c.negocio,c.empresa,c.negociante,c.operador,c.origem,c.contratoCCEE,c.submercado,c.fonte,c.classificacao,c.unidadeNegocio,c.natureza,c.condPag,c.entrega]; return fields.some(function(f){return (f||'').toString().toLowerCase().indexOf(q)>=0;}); }
 // Padroniza a fonte de energia conforme os produtos da BBCE
 function normFonte(raw){
@@ -528,8 +530,10 @@ function viewAlertas(){
 }
 
 var FILTER='todos';
-var CT_MES=''; var CT_SEARCH=''; var CT_SHOW_CREATE=false; var CT_SHOW_AJUSTE=false;
-var FIN_MES=''; var FIN_SEARCH='';
+var CT_MES=''; var CT_DATA=''; var CT_SEARCH=''; var CT_SHOW_CREATE=false; var CT_SHOW_AJUSTE=false;
+var FIN_MES=''; var FIN_DATA=''; var FIN_SEARCH='';
+var BO_MES=''; var BO_DATA=''; var BO_SEARCH='';
+var PF_INI=''; var PF_FIM=''; var PF_SEARCH='';
 function viewContratos(){
   var csAll=STATE.contracts;
   var cs=csAll.filter(function(c){return !c.cancelado;});
@@ -553,13 +557,14 @@ function viewContratos(){
   var filters=[['todos','Todos'],['ativo','Ativos'],['ainc','A iniciar'],['enc','Encerrados'],['alerta','Com alertas'],['cancelado','Cancelados']];
   h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de suprimento</span><input type="month" id="ctMes" value="'+esc(CT_MES)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:170px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Data específica</span><input type="date" id="ctData" value="'+esc(CT_DATA)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
     '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span class="ficha-label">Buscar (negócio, empresa, CCEE, submercado, fonte, negociante...)</span><input type="text" id="ctSearch" value="'+esc(CT_SEARCH)+'" placeholder="Pesquisa rápida" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:100%"></label>'+
-    (CT_MES||CT_SEARCH?'<button class="btn btn-ghost" id="ctClearFilters">Limpar filtros</button>':'')+
+    (CT_MES||CT_DATA||CT_SEARCH?'<button class="btn btn-ghost" id="ctClearFilters">Limpar filtros</button>':'')+
     '</div>';
   h+='<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
   filters.forEach(function(f){ h+='<button class="btn '+(FILTER===f[0]?'btn-primary':'btn-ghost')+'" data-filter="'+f[0]+'">'+f[1]+'</button>'; });
   var filtered=csAll.filter(function(c){ var st=status(c).code; if(FILTER==='ativo')return st==='ativo'; if(FILTER==='ainc')return st==='ainc'; if(FILTER==='enc')return st==='enc'; if(FILTER==='alerta')return alerts(c).length>0; if(FILTER==='cancelado')return st==='cancelado'; return st!=='cancelado'; });
-  filtered=filtered.filter(function(c){ return monthOverlap(c,CT_MES)&&matchesSearch(c,CT_SEARCH); });
+  filtered=filtered.filter(function(c){ return monthOverlap(c,CT_MES)&&dateOverlap(c,CT_DATA)&&matchesSearch(c,CT_SEARCH); });
   h+='<button class="btn btn-ghost" id="exportBtn" style="margin-left:auto">Baixar CSV (modelo da base)</button>';
   h+='<span style="color:#64748b;font-size:12px;display:flex;align-items:center">'+filtered.length+' contrato(s)</span></div>';
   if(!filtered.length){ return h+'<div class="empty-state"><div class="empty-text">Nenhum contrato nesta categoria/filtro</div></div>'; }
@@ -793,10 +798,19 @@ function fichaHTML(c){
 }
 
 function viewPortfolio(){
-  var cs=STATE.contracts;
+  var csAll=STATE.contracts;
+  var cs=csAll.filter(function(c){ return rangeOverlap(c,PF_INI,PF_FIM)&&matchesSearch(c,PF_SEARCH); });
   function agg(key){ var m={}; cs.forEach(function(c){ var k=c[key]||'N/D'; if(!m[k])m[k]={vol:0,val:0,count:0}; m[k].vol+=volMWm(c); m[k].val+=expFin(c); m[k].count++; }); return Object.keys(m).map(function(k){return [k,m[k]];}).sort(function(a,b){return b[1].vol-a[1].vol;}); }
   function tbl(data,label){ var tot=data.reduce(function(s,x){return s+x[1].vol;},0)||1; var h='<div class="card" style="margin-bottom:12px"><div class="card-title">Concentração por '+label+'</div><div class="table-wrap"><table><thead><tr><th>'+label+'</th><th>Contratos</th><th>Volume MWm</th><th>Valor R$</th><th>% Vol</th></tr></thead><tbody>'; data.slice(0,10).forEach(function(x){ h+='<tr><td>'+esc(x[0])+'</td><td class="td-num">'+x[1].count+'</td><td class="td-num">'+fmt(x[1].vol)+'</td><td class="td-num">'+fmtR(x[1].val)+'</td><td class="td-num">'+fmt(x[1].vol/tot*100,1)+'%</td></tr>'; }); return h+'</tbody></table></div></div>'; }
-  var h='<div class="section-header"><span class="section-title">Concentração de Contraparte</span></div>'+tbl(agg('empresa'),'Empresa')+tbl(agg('negociante'),'Negociante');
+  var h='<div class="section-header"><span class="section-title">Filtro de Contratos — Portfólio</span></div>';
+  h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Início do suprimento (de)</span><input type="date" id="pfIni" value="'+esc(PF_INI)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Fim do suprimento (até)</span><input type="date" id="pfFim" value="'+esc(PF_FIM)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span class="ficha-label">Buscar (negócio, empresa, CCEE, submercado, fonte, negociante...)</span><input type="text" id="pfSearch" value="'+esc(PF_SEARCH)+'" placeholder="Pesquisa rápida" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:100%"></label>'+
+    (PF_INI||PF_FIM||PF_SEARCH?'<button class="btn btn-ghost" id="pfClearFilters">Limpar filtros</button>':'')+
+    '<span style="color:#64748b;font-size:11px">'+cs.length+' de '+csAll.length+' contrato(s)</span>'+
+    '</div>';
+  h+='<div class="section-header"><span class="section-title">Concentração de Contraparte</span></div>'+tbl(agg('empresa'),'Empresa')+tbl(agg('negociante'),'Negociante');
   var ret=cs.filter(function(c){return c.retusd==='sim';});
   h+='<div class="section-header"><span class="section-title">Exposição Cambial (RETUSD)</span></div>';
   if(ret.length){ h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>Negócio</th><th>Empresa</th><th>Tipo</th><th>Volume MWm</th><th>Exposição R$</th></tr></thead><tbody>'; ret.forEach(function(c){ h+='<tr><td>'+esc(c.negocio)+'</td><td>'+esc(c.empresa)+'</td><td><span class="badge '+(isVenda(c)?'badge-green':'badge-blue')+'">'+esc(c.tipoOp)+'</span></td><td class="td-num">'+fmt(volMWm(c))+'</td><td class="td-num">'+fmtR(expFin(c))+'</td></tr>'; }); h+='</tbody></table></div></div>'; }
@@ -1237,12 +1251,13 @@ function viewFinanceiro(){
 }
 function viewFaturamento(cs){
   var list=cs.filter(function(c){return !c.cancelado;});
-  var filtered=list.filter(function(c){ return monthOverlap(c,FIN_MES)&&matchesSearch(c,FIN_SEARCH); });
+  var filtered=list.filter(function(c){ return monthOverlap(c,FIN_MES)&&dateOverlap(c,FIN_DATA)&&matchesSearch(c,FIN_SEARCH); });
   var h='<div class="section-header"><span class="section-title">Faturamento</span></div>';
   h+='<div class="card" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">'+
      '<label style="font-size:12px;color:#94a3b8">Mês de suprimento<br><input type="month" id="finMes" value="'+esc(FIN_MES)+'" class="input"></label>'+
+     '<label style="font-size:12px;color:#94a3b8">Data específica<br><input type="date" id="finData" value="'+esc(FIN_DATA)+'" class="input"></label>'+
      '<label style="font-size:12px;color:#94a3b8">Buscar (negócio, empresa, CCEE, submercado...)<br><input type="text" id="finSearch" value="'+esc(FIN_SEARCH)+'" class="input" placeholder="digite para pesquisar" style="min-width:260px"></label>'+
-     (FIN_MES||FIN_SEARCH?'<button class="btn btn-ghost" id="finClearFilters">Limpar filtros</button>':'')+
+     (FIN_MES||FIN_DATA||FIN_SEARCH?'<button class="btn btn-ghost" id="finClearFilters">Limpar filtros</button>':'')+
      '<div style="margin-left:auto;display:flex;gap:8px">'+
      '<button class="btn btn-primary" id="finMarkAll">Marcar todos para faturamento</button>'+
      '<button class="btn btn-ghost" id="finUnmarkAll">Desmarcar todos</button>'+
@@ -1261,11 +1276,12 @@ function viewFaturamento(cs){
   return h;
 }
 function bindFaturamento(){
-  var mesEl=document.getElementById('finMes'), searchEl=document.getElementById('finSearch');
+  var mesEl=document.getElementById('finMes'), dataEl=document.getElementById('finData'), searchEl=document.getElementById('finSearch');
   if(mesEl) mesEl.onchange=function(){ FIN_MES=mesEl.value; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
+  if(dataEl) dataEl.onchange=function(){ FIN_DATA=dataEl.value; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
   if(searchEl) searchEl.oninput=function(){ FIN_SEARCH=searchEl.value; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); searchEl.focus(); };
   var clr=document.getElementById('finClearFilters');
-  if(clr) clr.onclick=function(){ FIN_MES=''; FIN_SEARCH=''; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
+  if(clr) clr.onclick=function(){ FIN_MES=''; FIN_DATA=''; FIN_SEARCH=''; document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro(); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-fat]'),function(el){
     el.onchange=function(){
       var c=STATE.contracts.find(function(x){return x._id===el.getAttribute('data-fat');});
@@ -1275,13 +1291,13 @@ function bindFaturamento(){
   });
   var markAll=document.getElementById('finMarkAll');
   if(markAll) markAll.onclick=function(){
-    var list=STATE.contracts.filter(function(c){return !c.cancelado;}).filter(function(c){return monthOverlap(c,FIN_MES)&&matchesSearch(c,FIN_SEARCH);});
+    var list=STATE.contracts.filter(function(c){return !c.cancelado;}).filter(function(c){return monthOverlap(c,FIN_MES)&&dateOverlap(c,FIN_DATA)&&matchesSearch(c,FIN_SEARCH);});
     list.forEach(function(c){ c.faturar=true; });
     saveContracts(); document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro();
   };
   var unmarkAll=document.getElementById('finUnmarkAll');
   if(unmarkAll) unmarkAll.onclick=function(){
-    var list=STATE.contracts.filter(function(c){return !c.cancelado;}).filter(function(c){return monthOverlap(c,FIN_MES)&&matchesSearch(c,FIN_SEARCH);});
+    var list=STATE.contracts.filter(function(c){return !c.cancelado;}).filter(function(c){return monthOverlap(c,FIN_MES)&&dateOverlap(c,FIN_DATA)&&matchesSearch(c,FIN_SEARCH);});
     list.forEach(function(c){ c.faturar=false; });
     saveContracts(); document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro();
   };
@@ -1308,8 +1324,15 @@ function backofficeRow(c){
   return {base:base,sazMin:sazMin,sazMax:sazMax,flexMin:flexMin,flexMax:flexMax,envMin:envMin,envMax:envMax,exercido:exercido,has:has,delta:delta,deltaPct:deltaPct,within:within};
 }
 function viewBackoffice(){
-  var cs=STATE.contracts;
+  var csAll=STATE.contracts;
+  var cs=csAll.filter(function(c){ return monthOverlap(c,BO_MES)&&dateOverlap(c,BO_DATA)&&matchesSearch(c,BO_SEARCH); });
   var h='<div class="section-header"><span class="section-title">Backoffice — Contratado x Flexibilidade / Sazonalidade Exercida</span></div>';
+  h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de suprimento</span><input type="month" id="boMes" value="'+esc(BO_MES)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:170px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Data específica</span><input type="date" id="boData" value="'+esc(BO_DATA)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span class="ficha-label">Buscar (negócio, empresa, CCEE, submercado, fonte, negociante...)</span><input type="text" id="boSearch" value="'+esc(BO_SEARCH)+'" placeholder="Pesquisa rápida" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:100%"></label>'+
+    (BO_MES||BO_DATA||BO_SEARCH?'<button class="btn btn-ghost" id="boClearFilters">Limpar filtros</button>':'')+
+    '</div>';
   var totBase=0,totEx=0,totDelta=0,fora=0,comEx=0;
   cs.forEach(function(c){ var r=backofficeRow(c); totBase+=r.base; if(r.has){ totEx+=r.exercido; totDelta+=r.delta; comEx++; if(!r.within) fora++; } });
   h+='<div class="grid-4" style="margin-bottom:8px">'+
@@ -1329,7 +1352,7 @@ function viewBackoffice(){
       '<td class="td-num '+(r.delta>0?'pos-long':r.delta<0?'pos-short':'pos-zero')+'">'+(r.has?(fmt(r.delta)+' ('+fmt(r.deltaPct,1)+'%)'):'—')+'</td>'+
       '<td>'+(!r.has?'<span class="badge badge-gray">Não exercido</span>':(r.within?'<span class="badge badge-green">Dentro</span>':'<span class="badge badge-red">Fora do envelope</span>'))+'</td></tr>';
   });
-  if(!cs.length) h+='<tr><td colspan="10" style="text-align:center;color:#64748b">Sem contratos.</td></tr>';
+  if(!cs.length) h+='<tr><td colspan="10" style="text-align:center;color:#64748b">Nenhum contrato encontrado para os filtros aplicados</td></tr>';
   h+='</tbody></table></div></div>';
   // ── Curva horária de consumo / geração ──
   h+='<div class="section-header"><span class="section-title">Modulação Horária — Curva de Consumo / Geração</span></div>';
@@ -1388,6 +1411,10 @@ function parseHourly(raw){
 function bindBackoffice(){
   function err(m){ var e=document.getElementById('hrErr'); if(e){ e.textContent=m; e.style.display='inline'; } }
   function rerender(){ document.getElementById('viewBody').innerHTML=viewBackoffice(); bindBackoffice(); }
+  var boMes=document.getElementById('boMes'); if(boMes) boMes.onchange=function(){ BO_MES=boMes.value; rerender(); };
+  var boData=document.getElementById('boData'); if(boData) boData.onchange=function(){ BO_DATA=boData.value; rerender(); };
+  var boSearch=document.getElementById('boSearch'); if(boSearch) boSearch.oninput=function(){ BO_SEARCH=boSearch.value; rerender(); document.getElementById('boSearch').focus(); };
+  var boClr=document.getElementById('boClearFilters'); if(boClr) boClr.onclick=function(){ BO_MES=''; BO_DATA=''; BO_SEARCH=''; rerender(); };
   var tb=document.getElementById('hrTmplBtn'); if(tb) tb.onclick=function(){ downloadFile('modelo_curva_horaria.csv', hourlyTemplateCSV()); };
   var ub=document.getElementById('hrUploadBtn'), ui=document.getElementById('hrUploadInput');
   if(ub&&ui){ ub.onclick=function(){ ui.click(); };
@@ -1664,6 +1691,14 @@ function bindApp(){
   if(STATE.tab==='config') bindConfig();
   if(STATE.tab==='backoffice') bindBackoffice();
   if(STATE.tab==='dashboard') bindDashboard();
+  if(STATE.tab==='portfolio') bindPortfolio();
+}
+function bindPortfolio(){
+  function rerender(){ document.getElementById('viewBody').innerHTML=viewPortfolio(); bindPortfolio(); }
+  var ini=document.getElementById('pfIni'); if(ini) ini.onchange=function(){ PF_INI=ini.value; rerender(); };
+  var fim=document.getElementById('pfFim'); if(fim) fim.onchange=function(){ PF_FIM=fim.value; rerender(); };
+  var se=document.getElementById('pfSearch'); if(se) se.oninput=function(){ PF_SEARCH=se.value; rerender(); document.getElementById('pfSearch').focus(); };
+  var cf=document.getElementById('pfClearFilters'); if(cf) cf.onclick=function(){ PF_INI=''; PF_FIM=''; PF_SEARCH=''; rerender(); };
 }
 function bindExport(){ var e=document.getElementById('exportBtn'); if(e) e.onclick=function(){ downloadFile('operacoes_companhia.csv', contractsToCSV(STATE.contracts)); }; }
 function bindMtM(){
@@ -1716,12 +1751,13 @@ function bindContratosTab(){
     Array.prototype.forEach.call(document.querySelectorAll('[data-ficha]'),function(el){
       var id=el.getAttribute('data-ficha');
       var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0];
-      el.style.display=(c&&monthOverlap(c,CT_MES)&&matchesSearch(c,CT_SEARCH))?'':'none';
+      el.style.display=(c&&monthOverlap(c,CT_MES)&&dateOverlap(c,CT_DATA)&&matchesSearch(c,CT_SEARCH))?'':'none';
     });
   }
   var me=document.getElementById('ctMes'); if(me) me.oninput=function(){ CT_MES=me.value; applyLiveFilter(); };
+  var de=document.getElementById('ctData'); if(de) de.oninput=function(){ CT_DATA=de.value; applyLiveFilter(); };
   var se=document.getElementById('ctSearch'); if(se) se.oninput=function(){ CT_SEARCH=se.value; applyLiveFilter(); };
-  var cf=document.getElementById('ctClearFilters'); if(cf) cf.onclick=function(){ CT_MES=''; CT_SEARCH=''; document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); };
+  var cf=document.getElementById('ctClearFilters'); if(cf) cf.onclick=function(){ CT_MES=''; CT_DATA=''; CT_SEARCH=''; document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-cancel]'),function(el){ el.onclick=function(e){ e.stopPropagation(); var id=el.getAttribute('data-cancel'); var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0]; if(!c) return; c.cancelado=!c.cancelado; saveContracts(); document.getElementById('viewBody').innerHTML=viewContratos(); bindContratosTab(); }; });
   Array.prototype.forEach.call(document.querySelectorAll('[data-delc]'),function(el){ el.onclick=function(e){ e.stopPropagation(); var id=el.getAttribute('data-delc'); var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0]; if(!c) return;
     if(c.faturar){ alert('Este contrato está marcado para faturamento. Remova a marcação na aba Financeiro ou utilize "Cancelar".'); return; }
