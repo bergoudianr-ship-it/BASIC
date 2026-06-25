@@ -512,21 +512,35 @@ function bindDashboard(){
 }
 
 function viewAlertas(){
-  var rows=[];
-  STATE.contracts.forEach(function(c){ alerts(c).forEach(function(a){ rows.push({negocio:c.negocio,ccee:c.contratoCCEE,empresa:c.empresa,msg:a.msg,crit:a.crit}); }); });
+  var rowsAll=[];
+  STATE.contracts.forEach(function(c){ alerts(c).forEach(function(a){ rowsAll.push({c:c,negocio:c.negocio,ccee:c.contratoCCEE,empresa:c.empresa,msg:a.msg,crit:a.crit}); }); });
+  var rows=rowsAll.filter(function(r){ return monthOverlap(r.c,AL_MES)&&dateOverlap(r.c,AL_DATA)&&matchesSearch(r.c,AL_SEARCH); });
   var ord={'Crítico':0,'Atenção':1,'Informativo':2};
   rows.sort(function(a,b){return (ord[a.crit]||3)-(ord[b.crit]||3);});
   var crit=rows.filter(function(r){return r.crit==='Crítico';}).length;
   var aten=rows.filter(function(r){return r.crit==='Atenção';}).length;
-  var h='<div class="grid-3" style="margin-bottom:20px">'+
+  var h='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de suprimento</span><input type="month" id="alMes" value="'+esc(AL_MES)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:170px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Data específica</span><input type="date" id="alData" value="'+esc(AL_DATA)+'" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span class="ficha-label">Buscar (negócio, empresa, CCEE, submercado, fonte, negociante...)</span><input type="text" id="alSearch" value="'+esc(AL_SEARCH)+'" placeholder="Pesquisa rápida" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:100%"></label>'+
+    (AL_MES||AL_DATA||AL_SEARCH?'<button class="btn btn-ghost" id="alClearFilters">Limpar filtros</button>':'')+
+    '</div>';
+  h+='<div class="grid-3" style="margin-bottom:20px">'+
     metric('Alertas Críticos',crit,null,crit>0?'Ação imediata':'Nenhum',-crit)+
     metric('Alertas Atenção',aten,null,aten>0?'Monitorar':'Nenhum',aten>0?-1:0)+
     metric('Total de Alertas',rows.length)+'</div>';
-  if(!rows.length){ return h+'<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Nenhum alerta identificado</div></div>'; }
+  if(!rows.length){ return h+'<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Nenhum alerta identificado para os filtros aplicados</div></div>'; }
   h+='<div class="card"><div class="table-wrap"><table><thead><tr><th>Negócio</th><th>CCEE</th><th>Empresa</th><th>Alerta</th><th>Criticidade</th></tr></thead><tbody>';
   rows.forEach(function(r){ h+='<tr class="'+(r.crit==='Crítico'?'alert-row-crit':r.crit==='Atenção'?'alert-row-warn':'')+'"><td style="font-weight:500">'+esc(r.negocio)+'</td><td style="color:#64748b">'+esc(r.ccee||'—')+'</td><td>'+esc(r.empresa)+'</td><td>'+esc(r.msg)+'</td><td><span class="badge '+(r.crit==='Crítico'?'badge-red':r.crit==='Atenção'?'badge-yellow':'badge-gray')+'">'+esc(r.crit)+'</span></td></tr>'; });
   h+='</tbody></table></div></div>';
   return h;
+}
+function bindAlertas(){
+  function rerender(){ document.getElementById('viewBody').innerHTML=viewAlertas(); bindAlertas(); }
+  var me=document.getElementById('alMes'); if(me) me.onchange=function(){ AL_MES=me.value; rerender(); };
+  var de=document.getElementById('alData'); if(de) de.onchange=function(){ AL_DATA=de.value; rerender(); };
+  var se=document.getElementById('alSearch'); if(se) se.oninput=function(){ AL_SEARCH=se.value; rerender(); document.getElementById('alSearch').focus(); };
+  var cf=document.getElementById('alClearFilters'); if(cf) cf.onclick=function(){ AL_MES=''; AL_DATA=''; AL_SEARCH=''; rerender(); };
 }
 
 var FILTER='todos';
@@ -534,6 +548,9 @@ var CT_MES=''; var CT_DATA=''; var CT_SEARCH=''; var CT_SHOW_CREATE=false; var C
 var FIN_MES=''; var FIN_DATA=''; var FIN_SEARCH='';
 var BO_MES=''; var BO_DATA=''; var BO_SEARCH='';
 var PF_INI=''; var PF_FIM=''; var PF_SEARCH='';
+var MTM_MES=''; var MTM_DATA=''; var MTM_SEARCH='';
+var AL_MES=''; var AL_DATA=''; var AL_SEARCH='';
+var CFG_SEARCH='';
 function viewContratos(){
   var csAll=STATE.contracts;
   var cs=csAll.filter(function(c){return !c.cancelado;});
@@ -989,10 +1006,19 @@ function applyMtMCSV(raw,cs,M){
   });
 }
 function viewMtM(){
-  var cs=STATE.contracts, M=loadMtM();
+  var csAll=STATE.contracts, M=loadMtM();
+  var cs=csAll.filter(function(c){ return monthOverlap(c,MTM_MES)&&dateOverlap(c,MTM_DATA)&&matchesSearch(c,MTM_SEARCH); });
   var prods=MTM_PRODUCTS(cs), months=curveMonths(cs,M);
   var ist='background:#0a0c10;border:1px solid #232834;border-radius:6px;color:#e6ebf2;padding:6px 9px;font-size:12px;outline:none;width:100%';
-  var h='<div class="section-header"><span class="section-title">Curva de Preços — Base SE/CO + Spread de Submercado + Spread de Fonte</span></div>';
+  var h='<div class="section-header"><span class="section-title">Filtro de Contratos</span></div>';
+  h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de suprimento</span><input type="month" id="mtmFiltMes" value="'+esc(MTM_MES)+'" style="'+ist+';width:170px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Data específica</span><input type="date" id="mtmFiltData" value="'+esc(MTM_DATA)+'" style="'+ist+';width:150px"></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px"><span class="ficha-label">Buscar (negócio, empresa, CCEE, submercado, fonte, negociante...)</span><input type="text" id="mtmFiltSearch" value="'+esc(MTM_SEARCH)+'" placeholder="Pesquisa rápida" style="'+ist+'"></label>'+
+    (MTM_MES||MTM_DATA||MTM_SEARCH?'<button class="btn btn-ghost" id="mtmFiltClear">Limpar filtros</button>':'')+
+    '<span style="color:#64748b;font-size:11px">'+cs.length+' de '+csAll.length+' contrato(s)</span>'+
+    '</div>';
+  h+='<div class="section-header"><span class="section-title">Curva de Preços — Base SE/CO + Spread de Submercado + Spread de Fonte</span></div>';
   h+='<div class="card" style="margin-bottom:14px;display:flex;gap:14px;align-items:end;flex-wrap:wrap">'+
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Mês de referência (PLD fechado)</span><input id="mtmRef" type="month" value="'+esc(M.refMonth)+'" style="'+ist+';width:170px"></label>'+
     '<button class="btn btn-primary" id="mtmApply">Salvar tudo e recalcular</button>'+
@@ -1123,7 +1149,14 @@ function viewConfig(){
     '<div id="cErr" class="err" style="display:none"></div></div>';
   h+='<div class="section-header"><span class="section-title">Contrapartes Cadastradas ('+cps.length+')</span></div>';
   if(!cps.length){ h+='<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma contraparte cadastrada ainda.</div></div>'; return h; }
-  cps.forEach(function(c){
+  h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    fld('Buscar (razão social, fantasia, CNPJ, perfil CCEE, submercado, contato...)','<input id="cfgSearch" type="text" value="'+esc(CFG_SEARCH)+'" placeholder="Pesquisa rápida" '+inp+'>')+
+    (CFG_SEARCH?'<button class="btn btn-ghost" id="cfgClearFilters">Limpar filtro</button>':'')+
+    '</div>';
+  var q=CFG_SEARCH.toLowerCase();
+  var cpsFiltered=q?cps.filter(function(c){ var fields=[c.razaoSocial,c.nomeFantasia,c.cnpj,c.cceePerfil,c.cceeSub,c.cceePerfiliz,c.contatoNome,c.cceeCod]; return fields.some(function(f){return (f||'').toString().toLowerCase().indexOf(q)>=0;}); }):cps;
+  if(!cpsFiltered.length) h+='<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma contraparte encontrada para a busca.</div></div>';
+  cpsFiltered.forEach(function(c){
     h+='<div class="card" style="margin-bottom:14px">'+
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
       '<span style="font-weight:600;color:#f1f5f9">'+esc(c.razaoSocial)+'</span>'+
@@ -1176,6 +1209,8 @@ function bindConfig(){
       pagamentos:[] });
     saveCP(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig();
   };
+  var se=document.getElementById('cfgSearch'); if(se) se.oninput=function(){ CFG_SEARCH=se.value; document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig(); document.getElementById('cfgSearch').focus(); };
+  var cf=document.getElementById('cfgClearFilters'); if(cf) cf.onclick=function(){ CFG_SEARCH=''; document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig(); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-addpag]'),function(el){
     el.onclick=function(){ var cpId=el.getAttribute('data-addpag'); var list=loadCP(); var c=list.filter(function(x){return x.id===cpId;})[0]; if(!c) return;
       var tipo=v('pf_'+cpId+'_tipo'); if(!tipo) return;
@@ -1692,6 +1727,7 @@ function bindApp(){
   if(STATE.tab==='backoffice') bindBackoffice();
   if(STATE.tab==='dashboard') bindDashboard();
   if(STATE.tab==='portfolio') bindPortfolio();
+  if(STATE.tab==='alertas') bindAlertas();
 }
 function bindPortfolio(){
   function rerender(){ document.getElementById('viewBody').innerHTML=viewPortfolio(); bindPortfolio(); }
@@ -1702,10 +1738,14 @@ function bindPortfolio(){
 }
 function bindExport(){ var e=document.getElementById('exportBtn'); if(e) e.onclick=function(){ downloadFile('operacoes_companhia.csv', contractsToCSV(STATE.contracts)); }; }
 function bindMtM(){
-  var cs=STATE.contracts, M=loadMtM();
+  var cs=STATE.contracts.filter(function(c){ return monthOverlap(c,MTM_MES)&&dateOverlap(c,MTM_DATA)&&matchesSearch(c,MTM_SEARCH); }), M=loadMtM();
   function val(id){ var e=document.getElementById(id); return e?e.value:''; }
   function err(m){ var e=document.getElementById('mtmErr'); if(e){ e.textContent=m; e.style.display='inline'; } }
   function rerender(){ saveMtM(M); document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); }
+  var fm=document.getElementById('mtmFiltMes'); if(fm) fm.onchange=function(){ MTM_MES=fm.value; document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); };
+  var fd=document.getElementById('mtmFiltData'); if(fd) fd.onchange=function(){ MTM_DATA=fd.value; document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); };
+  var fs=document.getElementById('mtmFiltSearch'); if(fs) fs.oninput=function(){ MTM_SEARCH=fs.value; document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); document.getElementById('mtmFiltSearch').focus(); };
+  var fc=document.getElementById('mtmFiltClear'); if(fc) fc.onclick=function(){ MTM_MES=''; MTM_DATA=''; MTM_SEARCH=''; document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM(); };
   function num2(v){ return parseFloat(String(v).replace(',','.')); }
   function readRef(){ M.refMonth=val('mtmRef')||M.refMonth; }
   function readConv(){ var months=curveMonths(cs,M);
