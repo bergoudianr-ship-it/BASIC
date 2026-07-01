@@ -1288,7 +1288,8 @@ function viewConfig(){
   function sec(t){ return '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">'+t+'</div>'; }
   function opt(arr){ return '<option></option>'+arr.map(function(x){return '<option>'+esc(x)+'</option>';}).join(''); }
   var g3='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
-  var h='<div class="section-header"><span class="section-title">Configurações — Contrapartes</span></div>';
+  var h=cfgUsersSection();
+  h+='<div class="section-header"><span class="section-title">Configurações — Contrapartes</span></div>';
   h+='<div class="card" style="margin-bottom:20px">'+
     sec('Identificação')+g3+
     fld('Razão social*','<input id="cRazao" type="text" '+inp+'>')+
@@ -1363,6 +1364,7 @@ function viewConfig(){
   return h;
 }
 function bindConfig(){
+  cfgUsersBind();
   function v(id){ var e=document.getElementById(id); return e?e.value:''; }
   function err(m){ var e=document.getElementById('cErr'); if(e){ e.textContent=m; e.style.display='block'; } }
   var cr=document.getElementById('cCreate');
@@ -1934,7 +1936,7 @@ function render(){
   var h='<div class="app"><div class="header"><div class="logo">Energia<span>SaaS</span></div>';
   if(STATE.contracts.length){ h+='<span class="header-info">'+STATE.contracts.length+' contratos carregados</span>'; if(critCount) h+='<span class="badge badge-red">'+critCount+' crítico(s)</span>'; h+='<button class="btn btn-ghost" id="clearBtn" style="margin-left:8px">Limpar</button>'; }
   h+='<div class="header-date">'+TODAY.toLocaleDateString('pt-BR',{weekday:'short',year:'numeric',month:'long',day:'numeric'});
-  var _sess=authLoadSession(); if(_sess){ h+='<span style="margin:0 10px;color:var(--text-2)">'+esc(_sess.nome||_sess.email)+(isAdmin()?' <span class="badge badge-red" style="font-size:9px">Admin</span>':'')+'</span>'; if(isAdmin()) h+='<button class="btn btn-ghost" id="usersBtn" style="margin-right:6px">Usuários</button>'; h+='<button class="btn btn-ghost" id="logoutBtn">Sair</button>'; }
+  var _sess=authLoadSession(); if(_sess){ h+='<span style="margin:0 10px;color:var(--text-2)">'+esc(_sess.nome||_sess.email)+(isAdmin()?' <span class="badge badge-red" style="font-size:9px">Admin</span>':'')+'</span>'; h+='<button class="btn btn-ghost" id="logoutBtn">Sair</button>'; }
   h+='</div></div>';
   if(!STATE.contracts.length){ h+='<div class="content">'+viewImport()+'</div></div>'; root.innerHTML=h; bindImport(); return; }
   h+='<div class="main"><div class="sidebar"><div class="nav-section">Análise</div>';
@@ -1965,9 +1967,7 @@ function bindImport(){
   var ab=document.getElementById('analyzeBtn'), sb=document.getElementById('sampleBtn'), pa=document.getElementById('pasteArea');
   function load(raw){ try{ var cs=parseContracts(raw); if(!cs.length){ showErr('Nenhum contrato encontrado. Verifique o formato.'); return; } STATE.contracts=cs; saveContracts(); STATE.tab='dashboard'; render(); }catch(e){ showErr('Erro: '+e.message); } }
   function showErr(m){ var e=document.getElementById('importErr'); e.textContent=m; e.style.display='block'; }
-  var lo0=document.getElementById('logoutBtn'); if(lo0) lo0.onclick=authLogout;
-  var ub0=document.getElementById('usersBtn'); if(ub0) ub0.onclick=usersModalOpen;
-  pb.onclick=function(e){ e.stopPropagation(); fi.click(); };
+  var lo0=document.getElementById('logoutBtn'); if(lo0) lo0.onclick=authLogout;  pb.onclick=function(e){ e.stopPropagation(); fi.click(); };
   dz.onclick=function(){ fi.click(); };
   fi.onchange=function(){ var f=fi.files[0]; if(f){ var r=new FileReader(); r.onload=function(ev){load(ev.target.result);}; r.readAsText(f); } };
   dz.ondragover=function(e){ e.preventDefault(); dz.classList.add('dragover'); };
@@ -1982,9 +1982,7 @@ function bindApp(){
     el.onclick=function(){ var t=el.getAttribute('data-nav'); if(t==='_import'){ STATE.contracts=[]; clearStored(); render(); } else { STATE.tab=t; render(); } };
   });
   var cb=document.getElementById('clearBtn'); if(cb) cb.onclick=function(){ STATE.contracts=[]; clearStored(); render(); };
-  var lo=document.getElementById('logoutBtn'); if(lo) lo.onclick=authLogout;
-  var ub=document.getElementById('usersBtn'); if(ub) ub.onclick=usersModalOpen;
-  if(STATE.tab==='contratos') bindContratosTab();
+  var lo=document.getElementById('logoutBtn'); if(lo) lo.onclick=authLogout;  if(STATE.tab==='contratos') bindContratosTab();
   if(STATE.tab==='mtm') bindMtM();
   if(STATE.tab==='proposta') bindProposta();
   if(STATE.tab==='financeiro') bindFinanceiro();
@@ -2098,7 +2096,7 @@ var _saved=loadContracts(); if(_saved){ STATE.contracts=_saved; }
 
 // ── Acesso por e-mail (allowlist) — verificação em 2 etapas será adicionada depois ──
 // Sem autocadastro: só e-mails que o administrador cadastra conseguem entrar.
-var LOGIN_ENABLED = false; // <<< login DESLIGADO por hora. Troque para true para reativar o acesso por e-mail.
+var LOGIN_ENABLED = true; // login por e-mail + senha ativo (sem token). Troque para false para abrir sem login.
 var CURRENT_USER = null;   // {email, nome, role}
 function localSaveUser(u){ try{ if(u) localStorage.setItem('saas_local_user',JSON.stringify(u)); else localStorage.removeItem('saas_local_user'); }catch(e){} }
 function localLoadUser(){ try{ return JSON.parse(localStorage.getItem('saas_local_user')||'null'); }catch(e){ return null; } }
@@ -2110,14 +2108,16 @@ function viewLoginEmail(){
   var warn = sb ? '' : '<div class="login-err" style="display:block">Serviço indisponível (Supabase não carregou). Verifique a conexão.</div>';
   return '<div class="login-wrap"><div class="login-card">'+
     '<div class="login-brand">Energia<span>SaaS</span></div>'+
-    '<div class="login-sub">Acesse com seu e-mail</div>'+
+    '<div class="login-sub">Acesse sua conta</div>'+
     warn+'<div class="login-err" id="loginErr"></div>'+
     '<form id="emailForm">'+
     '<div class="login-field"><label class="login-label">E-mail</label>'+
-      '<input class="login-input" type="email" id="loginEmail" placeholder="seu@empresa.com" autocomplete="email" required></div>'+
+      '<input class="login-input" type="email" id="loginEmail" placeholder="seu@empresa.com" autocomplete="username" required></div>'+
+    '<div class="login-field"><label class="login-label">Senha</label>'+
+      '<input class="login-input" type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password" required></div>'+
     '<button type="submit" class="btn btn-primary login-btn" id="enterBtn">Entrar</button>'+
     '</form>'+
-    '<div class="login-meta">Somente e-mails autorizados pelo administrador têm acesso. A verificação em duas etapas será ativada em breve.</div>'+
+    '<div class="login-meta">Acesso restrito aos usuários cadastrados pelo administrador.</div>'+
     '</div></div>';
 }
 function bindLoginEmail(){
@@ -2126,94 +2126,105 @@ function bindLoginEmail(){
     var err=document.getElementById('loginErr'); err.style.display='none';
     var btn=document.getElementById('enterBtn');
     var email=(document.getElementById('loginEmail').value||'').trim().toLowerCase();
+    var senha=document.getElementById('loginSenha').value||'';
     if(!sb){ err.textContent='Serviço de acesso indisponível.'; err.style.display='block'; return; }
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent='Informe um e-mail válido.'; err.style.display='block'; return; }
     btn.disabled=true; btn.textContent='Entrando…';
     function fail(m){ err.textContent=m; err.style.display='block'; btn.disabled=false; btn.textContent='Entrar'; }
-    sb.rpc('fn_login_permitido',{p_email:email}).then(function(r){
-      if(r.error) return fail('Erro ao verificar acesso: '+r.error.message);
-      if(!r.data || !r.data.length) return fail('Acesso não autorizado. Solicite ao administrador da conta que cadastre seu e-mail.');
+    sb.rpc('fn_login_senha',{p_email:email,p_senha:senha}).then(function(r){
+      if(r.error) return fail('Erro ao entrar: '+r.error.message);
+      if(!r.data || !r.data.length) return fail('E-mail ou senha inválidos.');
       var row=r.data[0];
-      CURRENT_USER={ email:email, nome:row.nome||email, role:row.role||'membro' };
+      CURRENT_USER={ email:row.email, nome:row.nome||email, role:row.role||'membro' };
       localSaveUser(CURRENT_USER);
       if(typeof fetchCCEEParams==='function'){ fetchCCEEParams().then(function(){ boot(); }); } else { boot(); }
     }).catch(function(ex){ fail('Falha de conexão: '+ex.message); });
   };
 }
 
-// ── Painel de administração de usuários (somente admin) — via RPC ──────────
-function usersModalOpen(){
+// ── Gestão de usuários (aba Configurações — somente admin) ─────────────────
+function cfgUsersSection(){
+  if(!isAdmin()) return '';
+  var inp='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
+  return '<div class="section-header"><span class="section-title">Usuários da plataforma</span></div>'+
+    '<div class="card" style="margin-bottom:20px">'+
+    '<div style="color:#94a3b8;font-size:12px;margin-bottom:12px">Cadastre aqui quem pode acessar a plataforma. Só usuários ativos com senha conseguem entrar.</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1.4fr 1fr 110px auto;gap:8px;align-items:end">'+
+      '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Nome</span><input id="auNome" '+inp+'></label>'+
+      '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">E-mail</span><input id="auEmail" type="email" '+inp+'></label>'+
+      '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Senha (mín. 6)</span><input id="auSenha" type="text" '+inp+'></label>'+
+      '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Papel</span><select id="auRole" '+inp+'><option value="membro">Membro</option><option value="admin">Admin</option></select></label>'+
+      '<button class="btn btn-primary" id="auAdd">Cadastrar</button>'+
+    '</div>'+
+    '<div id="auErr" class="err" style="display:none;margin-top:8px"></div>'+
+    '<div id="cfgUsersList" style="color:#cbd5e1;font-size:12px;margin-top:16px">Carregando usuários…</div>'+
+    '</div>';
+}
+function cfgUsersBind(){
   if(!isAdmin()) return;
-  var ov=document.createElement('div');
-  ov.id='usersOverlay';
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px';
-  ov.innerHTML='<div style="width:100%;max-width:660px;max-height:86vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-hover);padding:24px">'+
-    '<div style="display:flex;align-items:center;margin-bottom:14px"><div style="font-size:16px;font-weight:700;color:#fff">Usuários da conta</div>'+
-      '<button id="usersClose" class="btn btn-ghost" style="margin-left:auto">Fechar</button></div>'+
-    '<div style="color:var(--text-3);font-size:12px;margin-bottom:14px">Cadastre aqui os e-mails autorizados. Só quem estiver nesta lista (e ativo) consegue acessar a plataforma.</div>'+
-    '<form id="addUserForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'+
-      '<input class="login-input" id="auNome" placeholder="Nome" style="flex:1;min-width:120px" required>'+
-      '<input class="login-input" id="auEmail" type="email" placeholder="email@empresa.com" style="flex:1.4;min-width:160px" required>'+
-      '<select class="login-input" id="auRole" style="width:120px"><option value="membro">Membro</option><option value="admin">Admin</option></select>'+
-      '<button class="btn btn-primary" type="submit">Adicionar</button>'+
-    '</form>'+
-    '<div class="login-err" id="auErr"></div>'+
-    '<div id="usersList" style="color:var(--text-2);font-size:12px">Carregando…</div>'+
-  '</div>';
-  document.body.appendChild(ov);
-  ov.onclick=function(e){ if(e.target===ov) usersModalClose(); };
-  document.getElementById('usersClose').onclick=usersModalClose;
-  document.getElementById('addUserForm').onsubmit=function(e){ e.preventDefault();
-    var err=document.getElementById('auErr'); err.style.display='none';
+  var add=document.getElementById('auAdd');
+  if(add) add.onclick=function(){
+    var err=document.getElementById('auErr'); if(err) err.style.display='none';
+    function fail(m){ if(err){ err.textContent=m; err.style.display='block'; } }
     var nome=(document.getElementById('auNome').value||'').trim();
     var email=(document.getElementById('auEmail').value||'').trim().toLowerCase();
+    var senha=document.getElementById('auSenha').value||'';
     var role=document.getElementById('auRole').value;
-    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent='E-mail inválido.'; err.style.display='block'; return; }
-    sb.rpc('fn_acesso_add',{p_admin:CURRENT_USER.email,p_nome:nome,p_email:email,p_role:role}).then(function(r){
-      if(r.error){ err.textContent='Erro: '+r.error.message; err.style.display='block'; return; }
-      if(r.data==='DUPLICADO'){ err.textContent='Este e-mail já está cadastrado.'; err.style.display='block'; return; }
-      if(r.data==='NAO_AUTORIZADO'){ err.textContent='Ação não autorizada.'; err.style.display='block'; return; }
-      document.getElementById('auNome').value=''; document.getElementById('auEmail').value=''; usersRefresh();
+    if(!nome) return fail('Informe o nome.');
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('E-mail inválido.');
+    if(senha.length<6) return fail('A senha deve ter ao menos 6 caracteres.');
+    sb.rpc('fn_acesso_add',{p_admin:CURRENT_USER.email,p_nome:nome,p_email:email,p_senha:senha,p_role:role}).then(function(r){
+      if(r.error) return fail('Erro: '+r.error.message);
+      if(r.data==='DUPLICADO') return fail('Este e-mail já está cadastrado.');
+      if(r.data==='SENHA_CURTA') return fail('Senha muito curta.');
+      if(r.data==='NAO_AUTORIZADO') return fail('Ação não autorizada.');
+      document.getElementById('auNome').value=''; document.getElementById('auEmail').value=''; document.getElementById('auSenha').value='';
+      cfgUsersRefresh();
     });
   };
-  usersRefresh();
+  cfgUsersRefresh();
 }
-function usersModalClose(){ var ov=document.getElementById('usersOverlay'); if(ov) ov.remove(); }
-function usersRefresh(){
-  var box=document.getElementById('usersList'); if(!box) return;
+function cfgUsersRefresh(){
+  var box=document.getElementById('cfgUsersList'); if(!box) return;
   sb.rpc('fn_acesso_listar',{p_admin:CURRENT_USER.email}).then(function(r){
     if(r.error){ box.textContent='Erro ao carregar: '+r.error.message; return; }
     var rows=r.data||[];
-    var h='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-3);border-bottom:1px solid var(--border)">'+
+    var h='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:#475569;border-bottom:1px solid #2d3148">'+
       '<th style="padding:6px 4px">Nome</th><th>E-mail</th><th>Papel</th><th>Status</th><th>Último acesso</th><th></th></tr></thead><tbody>';
     rows.forEach(function(u){
       var eu=esc(u.email), self=(u.email===CURRENT_USER.email);
-      var acesso=u.ultimo_acesso?new Date(u.ultimo_acesso).toLocaleString('pt-BR'):'<span style="color:var(--text-4)">nunca</span>';
-      h+='<tr style="border-bottom:1px solid var(--border)">'+
-        '<td style="padding:7px 4px;color:var(--text)">'+esc(u.nome||'')+'</td>'+
-        '<td style="color:var(--text-2)">'+eu+(self?' <span style="color:var(--accent)">(você)</span>':'')+'</td>'+
+      var acesso=u.ultimo_acesso?new Date(u.ultimo_acesso).toLocaleString('pt-BR'):'<span style="color:#475569">nunca</span>';
+      h+='<tr style="border-bottom:1px solid #1e2433">'+
+        '<td style="padding:7px 4px;color:#e2e8f0">'+esc(u.nome||'')+'</td>'+
+        '<td style="color:#94a3b8">'+eu+(self?' <span style="color:#4f7cff">(você)</span>':'')+'</td>'+
         '<td>'+(u.role==='admin'?'<span class="badge badge-red">Admin</span>':'Membro')+'</td>'+
-        '<td>'+(u.ativo?'<span style="color:var(--pos)">Ativo</span>':'<span style="color:var(--text-3)">Inativo</span>')+'</td>'+
-        '<td style="color:var(--text-3);font-size:11px">'+acesso+'</td>'+
+        '<td>'+(u.ativo?'<span style="color:#34d399">Ativo</span>':'<span style="color:#64748b">Inativo</span>')+'</td>'+
+        '<td style="color:#64748b;font-size:11px">'+acesso+'</td>'+
         '<td style="text-align:right;white-space:nowrap">'+
+          '<button class="login-link" data-pwd-user="'+eu+'">Redefinir senha</button> '+
           (self?'':'<button class="login-link" data-toggle-user="'+eu+'" data-ativo="'+(u.ativo?1:0)+'">'+(u.ativo?'Desativar':'Ativar')+'</button> '+
-                 '<button class="login-link" data-del-user="'+eu+'" style="color:var(--neg)">Excluir</button>')+
+                 '<button class="login-link" data-del-user="'+eu+'" style="color:#f87171">Excluir</button>')+
         '</td></tr>';
     });
     h+='</tbody></table>';
     box.innerHTML=h;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-pwd-user]'),function(el){ el.onclick=function(){
+      var email=el.getAttribute('data-pwd-user');
+      var nova=prompt('Nova senha para '+email+' (mín. 6 caracteres):'); if(nova==null) return;
+      if(nova.length<6){ alert('Senha muito curta.'); return; }
+      sb.rpc('fn_definir_senha',{p_admin:CURRENT_USER.email,p_email:email,p_senha:nova}).then(function(r){ alert(r.data==='OK'?'Senha atualizada.':'Falha: '+(r.data||(r.error&&r.error.message))); });
+    };});
     Array.prototype.forEach.call(box.querySelectorAll('[data-toggle-user]'),function(el){ el.onclick=function(){
       var email=el.getAttribute('data-toggle-user'), novo=el.getAttribute('data-ativo')!=='1';
-      sb.rpc('fn_acesso_set_ativo',{p_admin:CURRENT_USER.email,p_email:email,p_ativo:novo}).then(function(){ usersRefresh(); });
+      sb.rpc('fn_acesso_set_ativo',{p_admin:CURRENT_USER.email,p_email:email,p_ativo:novo}).then(function(){ cfgUsersRefresh(); });
     };});
     Array.prototype.forEach.call(box.querySelectorAll('[data-del-user]'),function(el){ el.onclick=function(){
       var email=el.getAttribute('data-del-user');
       if(!confirm('Excluir o acesso de '+email+'? A pessoa não poderá mais entrar.')) return;
-      sb.rpc('fn_acesso_del',{p_admin:CURRENT_USER.email,p_email:email}).then(function(){ usersRefresh(); });
+      sb.rpc('fn_acesso_del',{p_admin:CURRENT_USER.email,p_email:email}).then(function(){ cfgUsersRefresh(); });
     };});
   });
 }
-
 function boot(){
   var root=document.getElementById('root');
   if(!LOGIN_ENABLED){ if(!CURRENT_USER) CURRENT_USER={email:'bergoudianr@gmail.com',nome:'Rafael Campos',role:'admin'}; render(); return; }
