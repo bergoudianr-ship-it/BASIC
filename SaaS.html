@@ -185,8 +185,13 @@
 <body>
 <div id="root"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 "use strict";
+// ── Supabase (auth real + controle de acesso) ─────────────────────────────
+var SUPABASE_URL = 'https://pboizjwwxcnajeuteivp.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_TfkGcMtq0ffVHRdrfHl2AQ_LD3_MZln';
+var sb = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 // ── Helpers ──────────────────────────────────────────────────────────────
 var TODAY = new Date('2026-06-01');
 var COLORS = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a78bfa','#06b6d4','#f97316'];
@@ -300,8 +305,9 @@ function parseContracts(raw){
 var CCEE = {
   submercados: ['SE/CO','S','NE','N'],
   fontesIncentivadas: ['PCH','CGH','Biomassa','Eólica','Eolica','Solar'],
-  pldMin: 61.07,            // piso PLD horário (R$/MWh) — base anual CCEE
-  pldMax: 7877.84,          // teto PLD horário (R$/MWh) — base anual CCEE
+  pldMin: 57.31,            // piso PLD (R$/MWh) — atualizado do banco (CCEE) via fetchCCEEParams
+  pldMax: 785.27,           // teto PLD (R$/MWh) — atualizado do banco (CCEE) via fetchCCEEParams
+  pldRef: null,             // último PLD verificado por submercado {SE/CO:.., S:.., ...}
   flexPadraoSup: 10, flexPadraoInf: 10,   // flexibilidade típica de CCEAL (±%)
   sazPadrao: 20,            // sazonalização típica (±%) sobre o montante mensal médio
   tolVolume: 0.05           // tolerância na coerência MWm×horas vs MWh (5%)
@@ -334,7 +340,45 @@ function cceeValidate(c){
   var cl=String(c.classificacao||'').toLowerCase();
   if(cl.indexOf('especial')>=0 && c.fonte && !isIncentivada(c.fonte))
     a.push({msg:'Classificação especial com fonte não incentivada ("'+c.fonte+'") — incompatível com energia incentivada CCEE',crit:'Crítico',regra:'CCEE · Fonte incentivada'});
+  // ── Bloco 2 · Medição & Liquidação ──
+  var idx=(String(c.indice||'')+' '+String(c.indiceReaj||'')+' '+String(c.tipoSpread||'')).toLowerCase();
+  var preco=c.precAj||c.precPrev;
+  // Contrato indexado ao PLD: exposição à liquidação de curto prazo entre piso e teto CCEE.
+  if(idx.indexOf('pld')>=0)
+    a.push({msg:'Indexado ao PLD: exposto à liquidação de curto prazo (piso R$ '+fmt(CCEE.pldMin,2)+' / teto R$ '+fmt(CCEE.pldMax,2)+' — '+(c.submercado||'SE/CO')+')',crit:'Atenção',regra:'CCEE · Liquidação'});
+  // Preço fixo fora da banda regulatória de PLD é atípico para hedge de longo prazo.
+  if(preco>0 && idx.indexOf('pld')<0){
+    if(preco>CCEE.pldMax)
+      a.push({msg:'Preço fixo (R$ '+fmt(preco,2)+') acima do teto de PLD (R$ '+fmt(CCEE.pldMax,2)+') — revisar precificação',crit:'Atenção',regra:'CCEE · Liquidação'});
+    else if(preco<CCEE.pldMin)
+      a.push({msg:'Preço fixo (R$ '+fmt(preco,2)+') abaixo do piso de PLD (R$ '+fmt(CCEE.pldMin,2)+') — revisar precificação',crit:'Atenção',regra:'CCEE · Liquidação'});
+  }
+  // Risco de submercado (base): liquidação ocorre no PLD do submercado do contrato.
+  if(c.submercado && c.submercado!=='SE/CO' && CCEE.submercados.indexOf(c.submercado)>=0){
+    var refc=CCEE.pldRef&&CCEE.pldRef[c.submercado], refse=CCEE.pldRef&&CCEE.pldRef['SE/CO'];
+    var spreadTxt = (refc!=null&&refse!=null) ? ' (spread atual vs SE/CO: R$ '+fmt(refc-refse,2)+'/MWh)' : '';
+    a.push({msg:'Liquidação no submercado '+c.submercado+' — risco de base/spread de PLD frente a SE/CO'+spreadTxt,crit:'Atenção',regra:'CCEE · Submercado'});
+  }
   return a;
+}
+// Atualiza parâmetros CCEE com dados reais do banco (PLD piso/teto/ref por submercado).
+function fetchCCEEParams(){
+  if(!sb) return Promise.resolve();
+  var normSub={'sudeste/centro-oeste':'SE/CO','se/co':'SE/CO','sul':'S','sudeste':'SE/CO','nordeste':'NE','norte':'N','ne':'NE','n':'N','s':'S'};
+  return sb.from('ipdo_cmo_pld').select('subsistema,data_operacao,pld,pld_piso,pld_teto')
+    .order('data_operacao',{ascending:false}).limit(400).then(function(r){
+      if(r.error||!r.data) return;
+      var ref={}, piso=null, teto=null;
+      r.data.forEach(function(row){
+        var sub=normSub[String(row.subsistema||'').toLowerCase()]||row.subsistema;
+        if(row.pld!=null && ref[sub]==null) ref[sub]=Number(row.pld);
+        if(piso==null && row.pld_piso!=null){ piso=Number(row.pld_piso); }
+        if(teto==null && row.pld_teto!=null){ teto=Number(row.pld_teto); }
+      });
+      if(piso!=null) CCEE.pldMin=piso;
+      if(teto!=null) CCEE.pldMax=teto;
+      CCEE.pldRef=ref;
+    }).catch(function(){});
 }
 function status(c){
   if(c.cancelado) return {label:'Cancelado',cls:'status-enc',code:'cancelado'};
@@ -1890,7 +1934,7 @@ function render(){
   var h='<div class="app"><div class="header"><div class="logo">Energia<span>SaaS</span></div>';
   if(STATE.contracts.length){ h+='<span class="header-info">'+STATE.contracts.length+' contratos carregados</span>'; if(critCount) h+='<span class="badge badge-red">'+critCount+' crítico(s)</span>'; h+='<button class="btn btn-ghost" id="clearBtn" style="margin-left:8px">Limpar</button>'; }
   h+='<div class="header-date">'+TODAY.toLocaleDateString('pt-BR',{weekday:'short',year:'numeric',month:'long',day:'numeric'});
-  var _sess=authLoadSession(); if(_sess){ h+='<span style="margin:0 10px;color:var(--text-2)">'+esc(_sess.nome||_sess.email)+'</span><button class="btn btn-ghost" id="logoutBtn">Sair</button>'; }
+  var _sess=authLoadSession(); if(_sess){ h+='<span style="margin:0 10px;color:var(--text-2)">'+esc(_sess.nome||_sess.email)+(isAdmin()?' <span class="badge badge-red" style="font-size:9px">Admin</span>':'')+'</span>'; if(isAdmin()) h+='<button class="btn btn-ghost" id="usersBtn" style="margin-right:6px">Usuários</button>'; h+='<button class="btn btn-ghost" id="logoutBtn">Sair</button>'; }
   h+='</div></div>';
   if(!STATE.contracts.length){ h+='<div class="content">'+viewImport()+'</div></div>'; root.innerHTML=h; bindImport(); return; }
   h+='<div class="main"><div class="sidebar"><div class="nav-section">Análise</div>';
@@ -1922,6 +1966,7 @@ function bindImport(){
   function load(raw){ try{ var cs=parseContracts(raw); if(!cs.length){ showErr('Nenhum contrato encontrado. Verifique o formato.'); return; } STATE.contracts=cs; saveContracts(); STATE.tab='dashboard'; render(); }catch(e){ showErr('Erro: '+e.message); } }
   function showErr(m){ var e=document.getElementById('importErr'); e.textContent=m; e.style.display='block'; }
   var lo0=document.getElementById('logoutBtn'); if(lo0) lo0.onclick=authLogout;
+  var ub0=document.getElementById('usersBtn'); if(ub0) ub0.onclick=usersModalOpen;
   pb.onclick=function(e){ e.stopPropagation(); fi.click(); };
   dz.onclick=function(){ fi.click(); };
   fi.onchange=function(){ var f=fi.files[0]; if(f){ var r=new FileReader(); r.onload=function(ev){load(ev.target.result);}; r.readAsText(f); } };
@@ -1938,6 +1983,7 @@ function bindApp(){
   });
   var cb=document.getElementById('clearBtn'); if(cb) cb.onclick=function(){ STATE.contracts=[]; clearStored(); render(); };
   var lo=document.getElementById('logoutBtn'); if(lo) lo.onclick=authLogout;
+  var ub=document.getElementById('usersBtn'); if(ub) ub.onclick=usersModalOpen;
   if(STATE.tab==='contratos') bindContratosTab();
   if(STATE.tab==='mtm') bindMtM();
   if(STATE.tab==='proposta') bindProposta();
@@ -2050,183 +2096,180 @@ function bindContratosTab(){
 
 var _saved=loadContracts(); if(_saved){ STATE.contracts=_saved; }
 
-// ── Autenticação: cadastro + login com verificação em duas etapas (2FA) ────
-// SHA-256 puro (funciona em file:// sem secure context) p/ hashear senhas.
-function _sha256(ascii){
-  function rr(n,x){ return (x>>>n)|(x<<(32-n)); }
-  var maxWord=Math.pow(2,32), result='';
-  var words=[], asciiBitLength=ascii.length*8;
-  var hash=_sha256.h=_sha256.h||[], k=_sha256.k=_sha256.k||[], primeCounter=k.length;
-  var isComposite={};
-  for(var candidate=2;primeCounter<64;candidate++){
-    if(!isComposite[candidate]){
-      for(var i=0;i<313;i+=candidate) isComposite[i]=candidate;
-      hash[primeCounter]=(Math.pow(candidate,.5)*maxWord)|0;
-      k[primeCounter++]=(Math.pow(candidate,1/3)*maxWord)|0;
-    }
-  }
-  ascii+='\x80';
-  while(ascii.length%64-56) ascii+='\x00';
-  for(i=0;i<ascii.length;i++){
-    var j=ascii.charCodeAt(i);
-    if(j>>8) return;
-    words[i>>2]|=j<<((3-i)%4)*8;
-  }
-  words[words.length]=(asciiBitLength/maxWord)|0;
-  words[words.length]=asciiBitLength;
-  for(var jj=0;jj<words.length;){
-    var w=words.slice(jj,jj+=16), oldHash=hash;
-    hash=hash.slice(0,8);
-    for(i=0;i<64;i++){
-      var w15=w[i-15], w2=w[i-2];
-      var a=hash[0], e=hash[4];
-      var temp1=hash[7]+(rr(6,e)^rr(11,e)^rr(25,e))+((e&hash[5])^((~e)&hash[6]))+k[i]+
-        (w[i]=i<16?w[i]:(w[i-16]+(rr(7,w15)^rr(18,w15)^(w15>>>3))+w[i-7]+(rr(17,w2)^rr(19,w2)^(w2>>>10)))|0);
-      var temp2=(rr(2,a)^rr(13,a)^rr(22,a))+((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
-      hash=[(temp1+temp2)|0].concat(hash);
-      hash[4]=(hash[4]+temp1)|0;
-    }
-    for(i=0;i<8;i++) hash[i]=(hash[i]+oldHash[i])|0;
-  }
-  for(i=0;i<8;i++)
-    for(j=3;j+1;j--){ var b=(hash[i]>>(j*8))&255; result+=((b<16)?0:'')+b.toString(16); }
-  return result;
+// ── Autenticação Supabase: OTP por e-mail real + controle de acesso ────────
+// Somente e-mails cadastrados pelo administrador podem receber código e entrar.
+var CURRENT_USER = null;   // {email, nome, role}
+function appUrl(){ return window.location.origin + window.location.pathname; } // destino de redirect (evita localhost padrão)
+var OTP_EMAIL = null;      // e-mail aguardando verificação de código
+
+function authLoadSession(){ return CURRENT_USER; }         // usado (síncrono) no cabeçalho
+function isAdmin(){ return CURRENT_USER && CURRENT_USER.role === 'admin'; }
+function authLogout(){ if(sb) sb.auth.signOut().finally(function(){ CURRENT_USER=null; OTP_EMAIL=null; boot(); }); else { CURRENT_USER=null; boot(); } }
+
+// Descobre papel/nome do usuário logado a partir do allowlist.
+function loadCurrentUser(){
+  return sb.auth.getUser().then(function(res){
+    var u = res && res.data && res.data.user; if(!u) return null;
+    return sb.rpc('fn_login_permitido',{p_email:u.email}).then(function(r){
+      var row = r.data && r.data[0];
+      CURRENT_USER = { email:u.email, nome: row?row.nome:u.email, role: row?row.role:'membro' };
+      sb.rpc('fn_registrar_acesso').then(function(){}); // registra o acesso (não bloqueia o boot)
+      return fetchCCEEParams().then(function(){ return CURRENT_USER; });
+    });
+  });
 }
-function randHex(n){ var s=''; if(window.crypto&&crypto.getRandomValues){ var a=new Uint8Array(n); crypto.getRandomValues(a); for(var i=0;i<n;i++) s+=('0'+a[i].toString(16)).slice(-2); } else { for(var j=0;j<n*2;j++) s+=Math.floor(Math.random()*16).toString(16); } return s; }
-function hashPwd(pwd,salt){ var h=salt+'|'+pwd; for(var i=0;i<12000;i++) h=_sha256(h); return h; } // salt + 12k iterações
-function genCode(){ if(window.crypto&&crypto.getRandomValues){ var a=new Uint32Array(1); crypto.getRandomValues(a); return String(100000+(a[0]%900000)); } return String(Math.floor(100000+Math.random()*900000)); }
-function maskEmail(e){ var p=String(e).split('@'); if(p.length<2) return e; var u=p[0]; var vis=u.slice(0,Math.min(2,u.length)); return vis+'•••@'+p[1]; }
-function pwdStrength(p){ if(p.length<8) return 'A senha deve ter ao menos 8 caracteres.'; if(!/[A-Za-z]/.test(p)||!/[0-9]/.test(p)) return 'A senha deve conter letras e números.'; return ''; }
 
-// Armazenamento de usuários (senhas nunca em texto puro — apenas hash + salt).
-function authLoadUsers(){ try{ return JSON.parse(localStorage.getItem('saas_auth_users')||'[]'); }catch(e){ return []; } }
-function authSaveUsers(a){ try{ localStorage.setItem('saas_auth_users',JSON.stringify(a)); }catch(e){} }
-function authFindUser(email){ email=String(email).trim().toLowerCase(); return authLoadUsers().filter(function(u){return u.email===email;})[0]||null; }
-function authSeed(){ var us=authLoadUsers(); if(!us.length){ var salt=randHex(16); us.push({email:'bergoudianr@gmail.com',nome:'Rafael',salt:salt,hash:hashPwd('Energia123',salt),created:Date.now()}); authSaveUsers(us); } }
-// Bloqueio por tentativas de senha.
-function authLoadLock(email){ try{ var m=JSON.parse(localStorage.getItem('saas_auth_lock')||'{}'); return m[String(email).toLowerCase()]||{fails:0,until:0}; }catch(e){ return {fails:0,until:0}; } }
-function authSaveLock(email,obj){ try{ var m=JSON.parse(localStorage.getItem('saas_auth_lock')||'{}'); m[String(email).toLowerCase()]=obj; localStorage.setItem('saas_auth_lock',JSON.stringify(m)); }catch(e){} }
-function authClearLock(email){ authSaveLock(email,{fails:0,until:0}); }
-
-function authLoadSession(){ try{ var s=JSON.parse(localStorage.getItem('saas_auth_session')||'null'); if(s&&s.exp>Date.now()) return s; }catch(e){} return null; }
-function authSaveSession(email,nome){ try{ localStorage.setItem('saas_auth_session',JSON.stringify({email:email,nome:nome,exp:Date.now()+1000*60*60*12})); }catch(e){} }
-function authLogout(){ try{ localStorage.removeItem('saas_auth_session'); }catch(e){} PENDING=null; AUTH_MODE='login'; boot(); }
-
-var PENDING=null;       // fluxo OTP: {email,nome,code,exp,attempts,purpose,newUser}
-var AUTH_MODE='login';  // 'login' | 'signup'
-
-function viewLoginCreds(){
+function viewLoginEmail(){
+  var warn = sb ? '' : '<div class="login-err" style="display:block">Não foi possível carregar o serviço de autenticação (Supabase). Verifique a conexão com a internet.</div>';
   return '<div class="login-wrap"><div class="login-card">'+
     '<div class="login-brand">Energia<span>SaaS</span></div>'+
-    '<div class="login-sub">Acesse sua conta para continuar</div>'+
-    '<div class="login-err" id="loginErr"></div>'+
-    '<form id="credForm">'+
+    '<div class="login-sub">Acesse com seu e-mail corporativo</div>'+
+    warn+'<div class="login-err" id="loginErr"></div>'+
+    '<form id="emailForm">'+
     '<div class="login-field"><label class="login-label">E-mail</label>'+
-      '<input class="login-input" type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="username" required></div>'+
-    '<div class="login-field"><label class="login-label">Senha</label>'+
-      '<input class="login-input" type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password" required></div>'+
-    '<button type="submit" class="btn btn-primary login-btn">Entrar</button>'+
+      '<input class="login-input" type="email" id="loginEmail" placeholder="seu@empresa.com" autocomplete="email" required></div>'+
+    '<button type="submit" class="btn btn-primary login-btn" id="sendBtn">Enviar código de acesso</button>'+
     '</form>'+
-    '<div class="login-foot">Não tem conta? <button class="login-link" id="goSignup">Criar conta</button></div>'+
-    '</div></div>';
-}
-function viewSignup(){
-  return '<div class="login-wrap"><div class="login-card">'+
-    '<div class="login-brand">Energia<span>SaaS</span></div>'+
-    '<div class="login-sub">Crie sua conta</div>'+
-    '<div class="login-err" id="suErr"></div>'+
-    '<form id="suForm">'+
-    '<div class="login-field"><label class="login-label">Nome</label>'+
-      '<input class="login-input" type="text" id="suNome" placeholder="Seu nome" autocomplete="name" required></div>'+
-    '<div class="login-field"><label class="login-label">E-mail</label>'+
-      '<input class="login-input" type="email" id="suEmail" placeholder="seu@email.com" autocomplete="email" required></div>'+
-    '<div class="login-field"><label class="login-label">Senha</label>'+
-      '<input class="login-input" type="password" id="suSenha" placeholder="Mín. 8 caracteres, com letras e números" autocomplete="new-password" required></div>'+
-    '<div class="login-field"><label class="login-label">Confirmar senha</label>'+
-      '<input class="login-input" type="password" id="suSenha2" placeholder="••••••••" autocomplete="new-password" required></div>'+
-    '<button type="submit" class="btn btn-primary login-btn">Criar conta</button>'+
-    '</form>'+
-    '<div class="login-foot">Já tem conta? <button class="login-link" id="goLogin">Entrar</button></div>'+
+    '<div class="login-meta">Apenas e-mails autorizados pelo administrador recebem código. Sem acesso? Fale com o administrador da conta.</div>'+
     '</div></div>';
 }
 function viewLoginOtp(){
-  var title=PENDING.purpose==='signup'?'Confirme seu e-mail':'Verificação em duas etapas';
   return '<div class="login-wrap"><div class="login-card">'+
     '<div class="login-brand">Energia<span>SaaS</span></div>'+
-    '<div class="login-sub">'+title+'</div>'+
-    '<div class="login-info">Enviamos um código de 6 dígitos para <b>'+maskEmail(PENDING.email)+'</b>. Digite-o abaixo para '+(PENDING.purpose==='signup'?'ativar sua conta':'concluir o acesso')+'.</div>'+
-    '<div class="login-info" id="demoCode" style="background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);color:#fcd34d">Modo demonstração (sem servidor de e-mail): seu código é <b style="letter-spacing:2px">'+PENDING.code+'</b></div>'+
+    '<div class="login-sub">Verificação em duas etapas</div>'+
+    '<div class="login-info">Enviamos um código de 6 dígitos para <b>'+maskEmail(OTP_EMAIL)+'</b>. Digite-o abaixo. O código expira em 1 hora.</div>'+
     '<div class="login-err" id="otpErr"></div>'+
     '<form id="otpForm">'+
     '<div class="login-field"><label class="login-label">Código de verificação</label>'+
       '<input class="login-input otp-input" type="text" id="otpInput" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required></div>'+
-    '<button type="submit" class="btn btn-primary login-btn">Verificar e entrar</button>'+
+    '<button type="submit" class="btn btn-primary login-btn" id="verifyBtn">Verificar e entrar</button>'+
     '</form>'+
-    '<div class="login-foot"><button class="login-link" id="otpResend">Reenviar código</button> &nbsp;·&nbsp; <button class="login-link" id="otpBack">Voltar</button></div>'+
+    '<div class="login-foot"><button class="login-link" id="otpResend">Reenviar código</button> &nbsp;·&nbsp; <button class="login-link" id="otpBack">Trocar e-mail</button></div>'+
     '</div></div>';
 }
-function bindLoginCreds(){
-  var f=document.getElementById('credForm'); if(!f) return;
-  var gs=document.getElementById('goSignup'); if(gs) gs.onclick=function(){ AUTH_MODE='signup'; boot(); };
+function maskEmail(e){ var p=String(e||'').split('@'); if(p.length<2) return e; var u=p[0]; return u.slice(0,Math.min(2,u.length))+'•••@'+p[1]; }
+
+function bindLoginEmail(){
+  var f=document.getElementById('emailForm'); if(!f) return;
   f.onsubmit=function(e){ e.preventDefault();
+    var err=document.getElementById('loginErr'); err.style.display='none';
+    var btn=document.getElementById('sendBtn');
     var email=(document.getElementById('loginEmail').value||'').trim().toLowerCase();
-    var senha=document.getElementById('loginSenha').value||'';
-    var err=document.getElementById('loginErr');
-    var lock=authLoadLock(email);
-    if(lock.until>Date.now()){ var mins=Math.ceil((lock.until-Date.now())/60000); err.textContent='Conta temporariamente bloqueada. Tente novamente em '+mins+' min.'; err.style.display='block'; return; }
-    var u=authFindUser(email);
-    if(!u||u.hash!==hashPwd(senha,u.salt)){
-      var fails=(lock.fails||0)+1; var obj={fails:fails,until:0};
-      if(fails>=5){ obj.until=Date.now()+1000*60*15; obj.fails=0; err.textContent='Muitas tentativas. Conta bloqueada por 15 minutos.'; }
-      else err.textContent='E-mail ou senha inválidos. ('+(5-fails)+' tentativa(s) antes do bloqueio)';
-      authSaveLock(email,obj); err.style.display='block'; return;
-    }
-    authClearLock(email);
-    PENDING={ email:u.email, nome:u.nome, code:genCode(), exp:Date.now()+1000*60*5, attempts:0, purpose:'login' };
-    boot();
-  };
-}
-function bindSignup(){
-  var f=document.getElementById('suForm'); if(!f) return;
-  var gl=document.getElementById('goLogin'); if(gl) gl.onclick=function(){ AUTH_MODE='login'; boot(); };
-  f.onsubmit=function(e){ e.preventDefault();
-    var nome=(document.getElementById('suNome').value||'').trim();
-    var email=(document.getElementById('suEmail').value||'').trim().toLowerCase();
-    var s1=document.getElementById('suSenha').value||'', s2=document.getElementById('suSenha2').value||'';
-    var err=document.getElementById('suErr');
-    function fail(m){ err.textContent=m; err.style.display='block'; }
-    if(!nome) return fail('Informe seu nome.');
-    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Informe um e-mail válido.');
-    if(authFindUser(email)) return fail('Já existe uma conta com este e-mail.');
-    var ps=pwdStrength(s1); if(ps) return fail(ps);
-    if(s1!==s2) return fail('As senhas não coincidem.');
-    var salt=randHex(16);
-    PENDING={ email:email, nome:nome, code:genCode(), exp:Date.now()+1000*60*5, attempts:0, purpose:'signup',
-      newUser:{ email:email, nome:nome, salt:salt, hash:hashPwd(s1,salt), created:Date.now() } };
-    boot();
+    if(!sb){ err.textContent='Serviço de autenticação indisponível.'; err.style.display='block'; return; }
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent='Informe um e-mail válido.'; err.style.display='block'; return; }
+    btn.disabled=true; btn.textContent='Enviando…';
+    function fail(m){ err.textContent=m; err.style.display='block'; btn.disabled=false; btn.textContent='Enviar código de acesso'; }
+    sb.rpc('fn_login_permitido',{p_email:email}).then(function(r){
+      if(r.error) return fail('Erro ao verificar acesso: '+r.error.message);
+      if(!r.data || !r.data.length) return fail('Acesso não autorizado. Solicite ao administrador da conta que cadastre seu e-mail.');
+      return sb.auth.signInWithOtp({ email:email, options:{ shouldCreateUser:true, emailRedirectTo:appUrl() } }).then(function(o){
+        if(o.error) return fail('Não foi possível enviar o código: '+o.error.message);
+        OTP_EMAIL=email; boot();
+      });
+    }).catch(function(ex){ fail('Falha de conexão: '+ex.message); });
   };
 }
 function bindLoginOtp(){
   var f=document.getElementById('otpForm'); if(!f) return;
   var err=document.getElementById('otpErr');
-  f.onsubmit=function(e){ e.preventDefault();
-    if(!PENDING){ boot(); return; }
-    if(Date.now()>PENDING.exp){ err.textContent='O código expirou. Reenvie um novo código.'; err.style.display='block'; return; }
-    var v=(document.getElementById('otpInput').value||'').trim();
-    if(v!==PENDING.code){ PENDING.attempts++; if(PENDING.attempts>=5){ err.textContent='Muitas tentativas. Recomece o processo.'; err.style.display='block'; PENDING=null; setTimeout(boot,1200); return; } err.textContent='Código incorreto. Tente novamente ('+(5-PENDING.attempts)+' tentativa(s) restante(s)).'; err.style.display='block'; return; }
-    if(PENDING.purpose==='signup'&&PENDING.newUser){ var us=authLoadUsers(); if(!authFindUser(PENDING.newUser.email)){ us.push(PENDING.newUser); authSaveUsers(us); } }
-    authSaveSession(PENDING.email,PENDING.nome); PENDING=null; AUTH_MODE='login'; boot();
+  f.onsubmit=function(e){ e.preventDefault(); err.style.display='none';
+    var btn=document.getElementById('verifyBtn');
+    var token=(document.getElementById('otpInput').value||'').trim();
+    if(token.length<6){ err.textContent='Digite os 6 dígitos do código.'; err.style.display='block'; return; }
+    btn.disabled=true; btn.textContent='Verificando…';
+    function fail(m){ err.textContent=m; err.style.display='block'; btn.disabled=false; btn.textContent='Verificar e entrar'; }
+    sb.auth.verifyOtp({ email:OTP_EMAIL, token:token, type:'email' }).then(function(r){
+      if(r.error) return fail('Código incorreto ou expirado. Tente novamente ou reenvie.');
+      loadCurrentUser().then(function(){ OTP_EMAIL=null; boot(); });
+    }).catch(function(ex){ fail('Falha de conexão: '+ex.message); });
   };
-  var rs=document.getElementById('otpResend'); if(rs) rs.onclick=function(){ PENDING.code=genCode(); PENDING.exp=Date.now()+1000*60*5; PENDING.attempts=0; boot(); };
-  var bk=document.getElementById('otpBack'); if(bk) bk.onclick=function(){ AUTH_MODE=PENDING&&PENDING.purpose==='signup'?'signup':'login'; PENDING=null; boot(); };
+  var rs=document.getElementById('otpResend'); if(rs) rs.onclick=function(){
+    if(!sb||!OTP_EMAIL) return; rs.textContent='Reenviando…';
+    sb.auth.signInWithOtp({ email:OTP_EMAIL, options:{ shouldCreateUser:true, emailRedirectTo:appUrl() } }).then(function(){ rs.textContent='Código reenviado ✓'; setTimeout(function(){ if(rs) rs.textContent='Reenviar código'; },3000); });
+  };
+  var bk=document.getElementById('otpBack'); if(bk) bk.onclick=function(){ OTP_EMAIL=null; boot(); };
 }
+
+// ── Painel de administração de usuários (somente admin) ────────────────────
+function usersModalOpen(){
+  if(!isAdmin()) return;
+  var ov=document.createElement('div');
+  ov.id='usersOverlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px';
+  ov.innerHTML='<div style="width:100%;max-width:640px;max-height:86vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-hover);padding:24px">'+
+    '<div style="display:flex;align-items:center;margin-bottom:14px"><div style="font-size:16px;font-weight:700;color:#fff">Usuários da conta</div>'+
+      '<button id="usersClose" class="btn btn-ghost" style="margin-left:auto">Fechar</button></div>'+
+    '<div style="color:var(--text-3);font-size:12px;margin-bottom:14px">Cadastre aqui os e-mails autorizados. Só quem estiver nesta lista (e ativo) consegue receber código e acessar a plataforma.</div>'+
+    '<form id="addUserForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'+
+      '<input class="login-input" id="auNome" placeholder="Nome" style="flex:1;min-width:120px" required>'+
+      '<input class="login-input" id="auEmail" type="email" placeholder="email@empresa.com" style="flex:1.4;min-width:160px" required>'+
+      '<select class="login-input" id="auRole" style="width:120px"><option value="membro">Membro</option><option value="admin">Admin</option></select>'+
+      '<button class="btn btn-primary" type="submit">Adicionar</button>'+
+    '</form>'+
+    '<div class="login-err" id="auErr"></div>'+
+    '<div id="usersList" style="color:var(--text-2);font-size:12px">Carregando…</div>'+
+  '</div>';
+  document.body.appendChild(ov);
+  ov.onclick=function(e){ if(e.target===ov) usersModalClose(); };
+  document.getElementById('usersClose').onclick=usersModalClose;
+  document.getElementById('addUserForm').onsubmit=function(e){ e.preventDefault();
+    var err=document.getElementById('auErr'); err.style.display='none';
+    var nome=(document.getElementById('auNome').value||'').trim();
+    var email=(document.getElementById('auEmail').value||'').trim().toLowerCase();
+    var role=document.getElementById('auRole').value;
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent='E-mail inválido.'; err.style.display='block'; return; }
+    sb.from('usuarios').insert({ nome:nome, email:email, role:role, ativo:true, criado_por:CURRENT_USER.email }).then(function(r){
+      if(r.error){ err.textContent=(r.error.code==='23505'?'Este e-mail já está cadastrado.':'Erro: '+r.error.message); err.style.display='block'; return; }
+      document.getElementById('auNome').value=''; document.getElementById('auEmail').value=''; usersRefresh();
+    });
+  };
+  usersRefresh();
+}
+function usersModalClose(){ var ov=document.getElementById('usersOverlay'); if(ov) ov.remove(); }
+function usersRefresh(){
+  var box=document.getElementById('usersList'); if(!box) return;
+  sb.from('usuarios').select('id,nome,email,role,ativo,ultimo_acesso').order('id').then(function(r){
+    if(r.error){ box.textContent='Erro ao carregar: '+r.error.message; return; }
+    var rows=r.data||[];
+    var h='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-3);border-bottom:1px solid var(--border)">'+
+      '<th style="padding:6px 4px">Nome</th><th>E-mail</th><th>Papel</th><th>Status</th><th>Último acesso</th><th></th></tr></thead><tbody>';
+    rows.forEach(function(u){
+      var eu=esc(u.email), self=(u.email===CURRENT_USER.email);
+      var acesso=u.ultimo_acesso?new Date(u.ultimo_acesso).toLocaleString('pt-BR'):'<span style="color:var(--text-4)">nunca</span>';
+      h+='<tr style="border-bottom:1px solid var(--border)">'+
+        '<td style="padding:7px 4px;color:var(--text)">'+esc(u.nome||'')+'</td>'+
+        '<td style="color:var(--text-2)">'+eu+(self?' <span style="color:var(--accent)">(você)</span>':'')+'</td>'+
+        '<td>'+(u.role==='admin'?'<span class="badge badge-red">Admin</span>':'Membro')+'</td>'+
+        '<td>'+(u.ativo?'<span style="color:var(--pos)">Ativo</span>':'<span style="color:var(--text-3)">Inativo</span>')+'</td>'+
+        '<td style="color:var(--text-3);font-size:11px">'+acesso+'</td>'+
+        '<td style="text-align:right;white-space:nowrap">'+
+          (self?'':'<button class="login-link" data-toggle-user="'+eu+'" data-ativo="'+(u.ativo?1:0)+'">'+(u.ativo?'Desativar':'Ativar')+'</button> '+
+                 '<button class="login-link" data-del-user="'+eu+'" style="color:var(--neg)">Excluir</button>')+
+        '</td></tr>';
+    });
+    h+='</tbody></table>';
+    box.innerHTML=h;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-toggle-user]'),function(el){ el.onclick=function(){
+      var email=el.getAttribute('data-toggle-user'), novo=el.getAttribute('data-ativo')!=='1';
+      sb.from('usuarios').update({ativo:novo}).eq('email',email).then(function(){ usersRefresh(); });
+    };});
+    Array.prototype.forEach.call(box.querySelectorAll('[data-del-user]'),function(el){ el.onclick=function(){
+      var email=el.getAttribute('data-del-user');
+      if(!confirm('Excluir o acesso de '+email+'? A pessoa não poderá mais entrar.')) return;
+      sb.from('usuarios').delete().eq('email',email).then(function(){ usersRefresh(); });
+    };});
+  });
+}
+
 function boot(){
-  authSeed();
-  if(authLoadSession()){ render(); return; }
   var root=document.getElementById('root');
-  if(PENDING){ root.innerHTML=viewLoginOtp(); bindLoginOtp(); var oi=document.getElementById('otpInput'); if(oi) oi.focus(); }
-  else if(AUTH_MODE==='signup'){ root.innerHTML=viewSignup(); bindSignup(); var sn=document.getElementById('suNome'); if(sn) sn.focus(); }
-  else { root.innerHTML=viewLoginCreds(); bindLoginCreds(); var le=document.getElementById('loginEmail'); if(le) le.focus(); }
+  if(!sb){ root.innerHTML=viewLoginEmail(); bindLoginEmail(); return; }
+  if(CURRENT_USER){ render(); return; }
+  if(OTP_EMAIL){ root.innerHTML=viewLoginOtp(); bindLoginOtp(); var oi=document.getElementById('otpInput'); if(oi) oi.focus(); return; }
+  sb.auth.getSession().then(function(res){
+    if(res.data && res.data.session){ loadCurrentUser().then(function(){ render(); }); }
+    else { root.innerHTML=viewLoginEmail(); bindLoginEmail(); var le=document.getElementById('loginEmail'); if(le) le.focus(); }
+  });
 }
 boot();
 </script>
