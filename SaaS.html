@@ -2098,6 +2098,7 @@ var _saved=loadContracts(); if(_saved){ STATE.contracts=_saved; }
 
 // ── Acesso por e-mail (allowlist) — verificação em 2 etapas será adicionada depois ──
 // Sem autocadastro: só e-mails que o administrador cadastra conseguem entrar.
+var LOGIN_ENABLED = false; // <<< login DESLIGADO por hora. Troque para true para reativar o acesso por e-mail.
 var CURRENT_USER = null;   // {email, nome, role}
 function localSaveUser(u){ try{ if(u) localStorage.setItem('saas_local_user',JSON.stringify(u)); else localStorage.removeItem('saas_local_user'); }catch(e){} }
 function localLoadUser(){ try{ return JSON.parse(localStorage.getItem('saas_local_user')||'null'); }catch(e){ return null; } }
@@ -2215,6 +2216,7 @@ function usersRefresh(){
 
 function boot(){
   var root=document.getElementById('root');
+  if(!LOGIN_ENABLED){ if(!CURRENT_USER) CURRENT_USER={email:'bergoudianr@gmail.com',nome:'Rafael Campos',role:'admin'}; render(); return; }
   if(!CURRENT_USER){ var lu=localLoadUser(); if(lu && lu.email){ CURRENT_USER=lu; } }
   if(CURRENT_USER){ render(); return; }
   root.innerHTML=viewLoginEmail(); bindLoginEmail();
