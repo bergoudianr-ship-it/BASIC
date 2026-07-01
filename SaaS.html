@@ -159,6 +159,27 @@
   .bar-label { font-size: 10px; color: var(--text-3); }
   .legend { display: flex; gap: 14px; margin-top: 12px; font-size: 11px; color: var(--text-2); }
   .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+
+  /* ── Login / 2FA ── */
+  .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .login-card { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-hover); padding: 36px 32px; animation: fadeUp .4s var(--ease) both; }
+  .login-brand { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -0.5px; display: flex; align-items: center; justify-content: center; gap: 0; margin-bottom: 6px; }
+  .login-brand::before { content: ''; width: 11px; height: 11px; border-radius: 3px; margin-right: 10px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 0 16px rgba(79,124,255,.7); }
+  .login-brand span { background: linear-gradient(135deg, #6ea0ff, #a78bfa); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .login-sub { text-align: center; color: var(--text-3); font-size: 12.5px; margin-bottom: 26px; }
+  .login-label { display: block; font-size: 11px; font-weight: 600; color: var(--text-2); margin: 0 0 6px 2px; letter-spacing: .2px; }
+  .login-input { width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; padding: 11px 13px; transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+  .login-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .login-field { margin-bottom: 16px; }
+  .login-btn { width: 100%; justify-content: center; padding: 12px; margin-top: 4px; font-size: 13px; }
+  .login-err { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: #fca5a5; font-size: 12px; padding: 9px 12px; border-radius: var(--radius-sm); margin-bottom: 16px; display: none; }
+  .login-info { background: var(--accent-soft); border: 1px solid var(--border-hover); color: var(--text-2); font-size: 12px; padding: 10px 12px; border-radius: var(--radius-sm); margin-bottom: 16px; line-height: 1.5; }
+  .login-info b { color: var(--text); }
+  .otp-input { width: 100%; text-align: center; letter-spacing: 10px; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; padding: 13px; }
+  .login-foot { text-align: center; margin-top: 18px; font-size: 12px; color: var(--text-3); }
+  .login-link { color: var(--accent); cursor: pointer; font-weight: 600; background: none; border: none; font-size: 12px; }
+  .login-link:hover { text-decoration: underline; }
+  .login-meta { font-size: 11px; color: var(--text-4); text-align: center; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -274,6 +295,47 @@ function parseContracts(raw){
     };
   });
 }
+// ── Motor de regras CCEE / mercado ACL ─────────────────────────────────────
+// Parâmetros configuráveis (atualize conforme resoluções vigentes da CCEE/ANEEL).
+var CCEE = {
+  submercados: ['SE/CO','S','NE','N'],
+  fontesIncentivadas: ['PCH','CGH','Biomassa','Eólica','Eolica','Solar'],
+  pldMin: 61.07,            // piso PLD horário (R$/MWh) — base anual CCEE
+  pldMax: 7877.84,          // teto PLD horário (R$/MWh) — base anual CCEE
+  flexPadraoSup: 10, flexPadraoInf: 10,   // flexibilidade típica de CCEAL (±%)
+  sazPadrao: 20,            // sazonalização típica (±%) sobre o montante mensal médio
+  tolVolume: 0.05           // tolerância na coerência MWm×horas vs MWh (5%)
+};
+function horasPeriodo(ini,fim){ if(!ini||!fim||fim<ini) return 0; return (fim-ini)/3600000+24; } // +24h inclui o último dia de fornecimento
+function isIncentivada(f){ f=String(f||''); return CCEE.fontesIncentivadas.some(function(x){return f.toLowerCase().indexOf(x.toLowerCase())>=0;}); }
+// Validações de contratação & modulação à luz das regras de comercialização CCEE.
+function cceeValidate(c){
+  var a=[];
+  // Submercado deve ser um dos 4 submercados de contabilização CCEE.
+  if(c.submercado && CCEE.submercados.indexOf(c.submercado)<0)
+    a.push({msg:'Submercado "'+c.submercado+'" fora do padrão CCEE (SE/CO, S, NE, N)',crit:'Atenção',regra:'CCEE · Submercado'});
+  // Flexibilidade: inferior não pode exceder a superior; banda acima de 100% é atípica no ACL.
+  if(c.flexSup>0 && c.flexInf>c.flexSup)
+    a.push({msg:'Flexibilidade inferior ('+fmt(c.flexInf,0)+'%) maior que a superior ('+fmt(c.flexSup,0)+'%)',crit:'Crítico',regra:'CCEE · Flexibilidade'});
+  if(c.flexSup>100)
+    a.push({msg:'Flexibilidade superior de '+fmt(c.flexSup,0)+'% — acima do usual em contratos do ACL',crit:'Atenção',regra:'CCEE · Flexibilidade'});
+  // Modulação: coerência energia (MWh) ≈ potência média (MWm) × horas do período.
+  var h=horasPeriodo(c.inicioForn,c.fimForn);
+  if(h>0 && c.volPrevMWm>0 && c.volPrevMWh>0){
+    var esperado=c.volPrevMWm*h, dif=Math.abs(esperado-c.volPrevMWh)/c.volPrevMWh;
+    if(dif>CCEE.tolVolume)
+      a.push({msg:'Modulação inconsistente: MWm×horas ≈ '+fmt(esperado,0)+' MWh diverge do MWh informado ('+fmt(c.volPrevMWh,0)+') em '+fmt(dif*100,0)+'%',crit:'Atenção',regra:'CCEE · Modulação'});
+  }
+  // Contrato modulado por curva exige curva de carga carregada para apuração.
+  var mod=String(c.modulacao||'').toLowerCase();
+  if((mod.indexOf('curva')>=0||mod.indexOf('modula')>=0) && !loadHourly())
+    a.push({msg:'Contrato modulado por curva de carga sem curva horária carregada (Backoffice)',crit:'Atenção',regra:'CCEE · Modulação'});
+  // Consumidor/energia especial: deve ter lastro em fonte incentivada (desconto TUSD/TUST 50–100%).
+  var cl=String(c.classificacao||'').toLowerCase();
+  if(cl.indexOf('especial')>=0 && c.fonte && !isIncentivada(c.fonte))
+    a.push({msg:'Classificação especial com fonte não incentivada ("'+c.fonte+'") — incompatível com energia incentivada CCEE',crit:'Crítico',regra:'CCEE · Fonte incentivada'});
+  return a;
+}
 function status(c){
   if(c.cancelado) return {label:'Cancelado',cls:'status-enc',code:'cancelado'};
   if(!c.inicioForn||!c.fimForn) return {label:'Indefinido',cls:'status-enc',code:'indef'};
@@ -294,6 +356,7 @@ function alerts(c){
   if(c.datFimCondPag&&c.datFimCondPag<TODAY) a.push({msg:'Condição de pagamento vencida',crit:'Atenção'});
   if(c.dataPrimReaj){ var dr=daysDiff(c.dataPrimReaj); if(dr<0) a.push({msg:'1º reajuste vencido sem aplicação',crit:'Atenção'}); else if(dr<=30) a.push({msg:'1º reajuste em '+dr+' dias',crit:'Atenção'}); }
   if((c.flexSup>0||c.flexInf>0)&&st.code==='venc') a.push({msg:'Flexibilidade próxima do vencimento sem exercício',crit:'Crítico'});
+  if(st.code!=='cancelado'&&st.code!=='enc') a=a.concat(cceeValidate(c));
   return a;
 }
 function expFin(c){ return (c.volAjMWh||c.volPrevMWh)*(c.precAj||c.precPrev); }
@@ -1454,6 +1517,7 @@ function viewBackoffice(){
   h+='<div class="section-header"><span class="section-title">Modulação Horária — Curva de Consumo / Geração</span></div>';
   h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">'+
     '<button class="btn btn-ghost" id="hrTmplBtn">Baixar planilha modelo (24h)</button>'+
+    '<button class="btn btn-ghost" id="hrTmplMonthBtn">Baixar planilha modelo (mês)</button>'+
     '<button class="btn btn-ghost" id="hrUploadBtn">Subir curva horária (CSV)</button>'+
     '<input type="file" id="hrUploadInput" accept=".csv,.txt" style="display:none">'+
     '<button class="btn btn-ghost" id="hrClearBtn" style="color:#f87171;border-color:#5c2020">Limpar curva</button>'+
@@ -1484,6 +1548,18 @@ function hourlyTemplateCSV(){
   for(var i=0;i<24;i++){ lines.push('2026-01-01;'+String(i).padStart(2,'0')+':00;1,000;0,000'); }
   return lines.join('\n');
 }
+function monthlyTemplateCSV(){
+  var now=new Date();
+  var y=now.getFullYear(), m=now.getMonth(); // mês anterior ao atual
+  var pm=m-1, py=y; if(pm<0){ pm=11; py=y-1; }
+  var daysInMonth=new Date(py,pm+1,0).getDate();
+  var lines=['Data;Hora;Consumo (MWh);Geração (MWh)'];
+  for(var d=1;d<=daysInMonth;d++){
+    var dateStr=py+'-'+String(pm+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    for(var i=0;i<24;i++){ lines.push(dateStr+';'+String(i).padStart(2,'0')+':00;1,000;0,000'); }
+  }
+  return lines.join('\n');
+}
 function parseHourly(raw){
   var rows=parseCSV(raw);
   var byHour={}; for(var i=0;i<24;i++) byHour[i]={cons:0,ger:0,n:0};
@@ -1512,6 +1588,7 @@ function bindBackoffice(){
   var boSearch=document.getElementById('boSearch'); if(boSearch) boSearch.oninput=function(){ BO_SEARCH=boSearch.value; rerender(); document.getElementById('boSearch').focus(); };
   var boClr=document.getElementById('boClearFilters'); if(boClr) boClr.onclick=function(){ BO_MES=''; BO_DATA=''; BO_SEARCH=''; rerender(); };
   var tb=document.getElementById('hrTmplBtn'); if(tb) tb.onclick=function(){ downloadFile('modelo_curva_horaria.csv', hourlyTemplateCSV()); };
+  var tmb=document.getElementById('hrTmplMonthBtn'); if(tmb) tmb.onclick=function(){ downloadFile('modelo_curva_mensal.csv', monthlyTemplateCSV()); };
   var ub=document.getElementById('hrUploadBtn'), ui=document.getElementById('hrUploadInput');
   if(ub&&ui){ ub.onclick=function(){ ui.click(); };
     ui.onchange=function(){ var f=ui.files[0]; if(!f) return; var r=new FileReader();
@@ -1812,7 +1889,9 @@ function render(){
   var critCount=STATE.contracts.reduce(function(s,c){return s+alerts(c).filter(function(a){return a.crit==='Crítico';}).length;},0);
   var h='<div class="app"><div class="header"><div class="logo">Energia<span>SaaS</span></div>';
   if(STATE.contracts.length){ h+='<span class="header-info">'+STATE.contracts.length+' contratos carregados</span>'; if(critCount) h+='<span class="badge badge-red">'+critCount+' crítico(s)</span>'; h+='<button class="btn btn-ghost" id="clearBtn" style="margin-left:8px">Limpar</button>'; }
-  h+='<div class="header-date">'+TODAY.toLocaleDateString('pt-BR',{weekday:'short',year:'numeric',month:'long',day:'numeric'})+'</div></div>';
+  h+='<div class="header-date">'+TODAY.toLocaleDateString('pt-BR',{weekday:'short',year:'numeric',month:'long',day:'numeric'});
+  var _sess=authLoadSession(); if(_sess){ h+='<span style="margin:0 10px;color:var(--text-2)">'+esc(_sess.nome||_sess.email)+'</span><button class="btn btn-ghost" id="logoutBtn">Sair</button>'; }
+  h+='</div></div>';
   if(!STATE.contracts.length){ h+='<div class="content">'+viewImport()+'</div></div>'; root.innerHTML=h; bindImport(); return; }
   h+='<div class="main"><div class="sidebar"><div class="nav-section">Análise</div>';
   NAV.forEach(function(n){ h+='<div class="nav-item '+(STATE.tab===n[0]?'active':'')+'" data-nav="'+n[0]+'">'+n[1]; if(n[0]==='alertas'&&critCount) h+='<span class="badge badge-red" style="margin-left:auto;font-size:10px;padding:1px 5px">'+critCount+'</span>'; h+='</div>'; });
@@ -1842,6 +1921,7 @@ function bindImport(){
   var ab=document.getElementById('analyzeBtn'), sb=document.getElementById('sampleBtn'), pa=document.getElementById('pasteArea');
   function load(raw){ try{ var cs=parseContracts(raw); if(!cs.length){ showErr('Nenhum contrato encontrado. Verifique o formato.'); return; } STATE.contracts=cs; saveContracts(); STATE.tab='dashboard'; render(); }catch(e){ showErr('Erro: '+e.message); } }
   function showErr(m){ var e=document.getElementById('importErr'); e.textContent=m; e.style.display='block'; }
+  var lo0=document.getElementById('logoutBtn'); if(lo0) lo0.onclick=authLogout;
   pb.onclick=function(e){ e.stopPropagation(); fi.click(); };
   dz.onclick=function(){ fi.click(); };
   fi.onchange=function(){ var f=fi.files[0]; if(f){ var r=new FileReader(); r.onload=function(ev){load(ev.target.result);}; r.readAsText(f); } };
@@ -1857,6 +1937,7 @@ function bindApp(){
     el.onclick=function(){ var t=el.getAttribute('data-nav'); if(t==='_import'){ STATE.contracts=[]; clearStored(); render(); } else { STATE.tab=t; render(); } };
   });
   var cb=document.getElementById('clearBtn'); if(cb) cb.onclick=function(){ STATE.contracts=[]; clearStored(); render(); };
+  var lo=document.getElementById('logoutBtn'); if(lo) lo.onclick=authLogout;
   if(STATE.tab==='contratos') bindContratosTab();
   if(STATE.tab==='mtm') bindMtM();
   if(STATE.tab==='proposta') bindProposta();
@@ -1968,7 +2049,186 @@ function bindContratosTab(){
 }
 
 var _saved=loadContracts(); if(_saved){ STATE.contracts=_saved; }
-render();
+
+// ── Autenticação: cadastro + login com verificação em duas etapas (2FA) ────
+// SHA-256 puro (funciona em file:// sem secure context) p/ hashear senhas.
+function _sha256(ascii){
+  function rr(n,x){ return (x>>>n)|(x<<(32-n)); }
+  var maxWord=Math.pow(2,32), result='';
+  var words=[], asciiBitLength=ascii.length*8;
+  var hash=_sha256.h=_sha256.h||[], k=_sha256.k=_sha256.k||[], primeCounter=k.length;
+  var isComposite={};
+  for(var candidate=2;primeCounter<64;candidate++){
+    if(!isComposite[candidate]){
+      for(var i=0;i<313;i+=candidate) isComposite[i]=candidate;
+      hash[primeCounter]=(Math.pow(candidate,.5)*maxWord)|0;
+      k[primeCounter++]=(Math.pow(candidate,1/3)*maxWord)|0;
+    }
+  }
+  ascii+='\x80';
+  while(ascii.length%64-56) ascii+='\x00';
+  for(i=0;i<ascii.length;i++){
+    var j=ascii.charCodeAt(i);
+    if(j>>8) return;
+    words[i>>2]|=j<<((3-i)%4)*8;
+  }
+  words[words.length]=(asciiBitLength/maxWord)|0;
+  words[words.length]=asciiBitLength;
+  for(var jj=0;jj<words.length;){
+    var w=words.slice(jj,jj+=16), oldHash=hash;
+    hash=hash.slice(0,8);
+    for(i=0;i<64;i++){
+      var w15=w[i-15], w2=w[i-2];
+      var a=hash[0], e=hash[4];
+      var temp1=hash[7]+(rr(6,e)^rr(11,e)^rr(25,e))+((e&hash[5])^((~e)&hash[6]))+k[i]+
+        (w[i]=i<16?w[i]:(w[i-16]+(rr(7,w15)^rr(18,w15)^(w15>>>3))+w[i-7]+(rr(17,w2)^rr(19,w2)^(w2>>>10)))|0);
+      var temp2=(rr(2,a)^rr(13,a)^rr(22,a))+((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+      hash=[(temp1+temp2)|0].concat(hash);
+      hash[4]=(hash[4]+temp1)|0;
+    }
+    for(i=0;i<8;i++) hash[i]=(hash[i]+oldHash[i])|0;
+  }
+  for(i=0;i<8;i++)
+    for(j=3;j+1;j--){ var b=(hash[i]>>(j*8))&255; result+=((b<16)?0:'')+b.toString(16); }
+  return result;
+}
+function randHex(n){ var s=''; if(window.crypto&&crypto.getRandomValues){ var a=new Uint8Array(n); crypto.getRandomValues(a); for(var i=0;i<n;i++) s+=('0'+a[i].toString(16)).slice(-2); } else { for(var j=0;j<n*2;j++) s+=Math.floor(Math.random()*16).toString(16); } return s; }
+function hashPwd(pwd,salt){ var h=salt+'|'+pwd; for(var i=0;i<12000;i++) h=_sha256(h); return h; } // salt + 12k iterações
+function genCode(){ if(window.crypto&&crypto.getRandomValues){ var a=new Uint32Array(1); crypto.getRandomValues(a); return String(100000+(a[0]%900000)); } return String(Math.floor(100000+Math.random()*900000)); }
+function maskEmail(e){ var p=String(e).split('@'); if(p.length<2) return e; var u=p[0]; var vis=u.slice(0,Math.min(2,u.length)); return vis+'•••@'+p[1]; }
+function pwdStrength(p){ if(p.length<8) return 'A senha deve ter ao menos 8 caracteres.'; if(!/[A-Za-z]/.test(p)||!/[0-9]/.test(p)) return 'A senha deve conter letras e números.'; return ''; }
+
+// Armazenamento de usuários (senhas nunca em texto puro — apenas hash + salt).
+function authLoadUsers(){ try{ return JSON.parse(localStorage.getItem('saas_auth_users')||'[]'); }catch(e){ return []; } }
+function authSaveUsers(a){ try{ localStorage.setItem('saas_auth_users',JSON.stringify(a)); }catch(e){} }
+function authFindUser(email){ email=String(email).trim().toLowerCase(); return authLoadUsers().filter(function(u){return u.email===email;})[0]||null; }
+function authSeed(){ var us=authLoadUsers(); if(!us.length){ var salt=randHex(16); us.push({email:'bergoudianr@gmail.com',nome:'Rafael',salt:salt,hash:hashPwd('Energia123',salt),created:Date.now()}); authSaveUsers(us); } }
+// Bloqueio por tentativas de senha.
+function authLoadLock(email){ try{ var m=JSON.parse(localStorage.getItem('saas_auth_lock')||'{}'); return m[String(email).toLowerCase()]||{fails:0,until:0}; }catch(e){ return {fails:0,until:0}; } }
+function authSaveLock(email,obj){ try{ var m=JSON.parse(localStorage.getItem('saas_auth_lock')||'{}'); m[String(email).toLowerCase()]=obj; localStorage.setItem('saas_auth_lock',JSON.stringify(m)); }catch(e){} }
+function authClearLock(email){ authSaveLock(email,{fails:0,until:0}); }
+
+function authLoadSession(){ try{ var s=JSON.parse(localStorage.getItem('saas_auth_session')||'null'); if(s&&s.exp>Date.now()) return s; }catch(e){} return null; }
+function authSaveSession(email,nome){ try{ localStorage.setItem('saas_auth_session',JSON.stringify({email:email,nome:nome,exp:Date.now()+1000*60*60*12})); }catch(e){} }
+function authLogout(){ try{ localStorage.removeItem('saas_auth_session'); }catch(e){} PENDING=null; AUTH_MODE='login'; boot(); }
+
+var PENDING=null;       // fluxo OTP: {email,nome,code,exp,attempts,purpose,newUser}
+var AUTH_MODE='login';  // 'login' | 'signup'
+
+function viewLoginCreds(){
+  return '<div class="login-wrap"><div class="login-card">'+
+    '<div class="login-brand">Energia<span>SaaS</span></div>'+
+    '<div class="login-sub">Acesse sua conta para continuar</div>'+
+    '<div class="login-err" id="loginErr"></div>'+
+    '<form id="credForm">'+
+    '<div class="login-field"><label class="login-label">E-mail</label>'+
+      '<input class="login-input" type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="username" required></div>'+
+    '<div class="login-field"><label class="login-label">Senha</label>'+
+      '<input class="login-input" type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password" required></div>'+
+    '<button type="submit" class="btn btn-primary login-btn">Entrar</button>'+
+    '</form>'+
+    '<div class="login-foot">Não tem conta? <button class="login-link" id="goSignup">Criar conta</button></div>'+
+    '</div></div>';
+}
+function viewSignup(){
+  return '<div class="login-wrap"><div class="login-card">'+
+    '<div class="login-brand">Energia<span>SaaS</span></div>'+
+    '<div class="login-sub">Crie sua conta</div>'+
+    '<div class="login-err" id="suErr"></div>'+
+    '<form id="suForm">'+
+    '<div class="login-field"><label class="login-label">Nome</label>'+
+      '<input class="login-input" type="text" id="suNome" placeholder="Seu nome" autocomplete="name" required></div>'+
+    '<div class="login-field"><label class="login-label">E-mail</label>'+
+      '<input class="login-input" type="email" id="suEmail" placeholder="seu@email.com" autocomplete="email" required></div>'+
+    '<div class="login-field"><label class="login-label">Senha</label>'+
+      '<input class="login-input" type="password" id="suSenha" placeholder="Mín. 8 caracteres, com letras e números" autocomplete="new-password" required></div>'+
+    '<div class="login-field"><label class="login-label">Confirmar senha</label>'+
+      '<input class="login-input" type="password" id="suSenha2" placeholder="••••••••" autocomplete="new-password" required></div>'+
+    '<button type="submit" class="btn btn-primary login-btn">Criar conta</button>'+
+    '</form>'+
+    '<div class="login-foot">Já tem conta? <button class="login-link" id="goLogin">Entrar</button></div>'+
+    '</div></div>';
+}
+function viewLoginOtp(){
+  var title=PENDING.purpose==='signup'?'Confirme seu e-mail':'Verificação em duas etapas';
+  return '<div class="login-wrap"><div class="login-card">'+
+    '<div class="login-brand">Energia<span>SaaS</span></div>'+
+    '<div class="login-sub">'+title+'</div>'+
+    '<div class="login-info">Enviamos um código de 6 dígitos para <b>'+maskEmail(PENDING.email)+'</b>. Digite-o abaixo para '+(PENDING.purpose==='signup'?'ativar sua conta':'concluir o acesso')+'.</div>'+
+    '<div class="login-info" id="demoCode" style="background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);color:#fcd34d">Modo demonstração (sem servidor de e-mail): seu código é <b style="letter-spacing:2px">'+PENDING.code+'</b></div>'+
+    '<div class="login-err" id="otpErr"></div>'+
+    '<form id="otpForm">'+
+    '<div class="login-field"><label class="login-label">Código de verificação</label>'+
+      '<input class="login-input otp-input" type="text" id="otpInput" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required></div>'+
+    '<button type="submit" class="btn btn-primary login-btn">Verificar e entrar</button>'+
+    '</form>'+
+    '<div class="login-foot"><button class="login-link" id="otpResend">Reenviar código</button> &nbsp;·&nbsp; <button class="login-link" id="otpBack">Voltar</button></div>'+
+    '</div></div>';
+}
+function bindLoginCreds(){
+  var f=document.getElementById('credForm'); if(!f) return;
+  var gs=document.getElementById('goSignup'); if(gs) gs.onclick=function(){ AUTH_MODE='signup'; boot(); };
+  f.onsubmit=function(e){ e.preventDefault();
+    var email=(document.getElementById('loginEmail').value||'').trim().toLowerCase();
+    var senha=document.getElementById('loginSenha').value||'';
+    var err=document.getElementById('loginErr');
+    var lock=authLoadLock(email);
+    if(lock.until>Date.now()){ var mins=Math.ceil((lock.until-Date.now())/60000); err.textContent='Conta temporariamente bloqueada. Tente novamente em '+mins+' min.'; err.style.display='block'; return; }
+    var u=authFindUser(email);
+    if(!u||u.hash!==hashPwd(senha,u.salt)){
+      var fails=(lock.fails||0)+1; var obj={fails:fails,until:0};
+      if(fails>=5){ obj.until=Date.now()+1000*60*15; obj.fails=0; err.textContent='Muitas tentativas. Conta bloqueada por 15 minutos.'; }
+      else err.textContent='E-mail ou senha inválidos. ('+(5-fails)+' tentativa(s) antes do bloqueio)';
+      authSaveLock(email,obj); err.style.display='block'; return;
+    }
+    authClearLock(email);
+    PENDING={ email:u.email, nome:u.nome, code:genCode(), exp:Date.now()+1000*60*5, attempts:0, purpose:'login' };
+    boot();
+  };
+}
+function bindSignup(){
+  var f=document.getElementById('suForm'); if(!f) return;
+  var gl=document.getElementById('goLogin'); if(gl) gl.onclick=function(){ AUTH_MODE='login'; boot(); };
+  f.onsubmit=function(e){ e.preventDefault();
+    var nome=(document.getElementById('suNome').value||'').trim();
+    var email=(document.getElementById('suEmail').value||'').trim().toLowerCase();
+    var s1=document.getElementById('suSenha').value||'', s2=document.getElementById('suSenha2').value||'';
+    var err=document.getElementById('suErr');
+    function fail(m){ err.textContent=m; err.style.display='block'; }
+    if(!nome) return fail('Informe seu nome.');
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Informe um e-mail válido.');
+    if(authFindUser(email)) return fail('Já existe uma conta com este e-mail.');
+    var ps=pwdStrength(s1); if(ps) return fail(ps);
+    if(s1!==s2) return fail('As senhas não coincidem.');
+    var salt=randHex(16);
+    PENDING={ email:email, nome:nome, code:genCode(), exp:Date.now()+1000*60*5, attempts:0, purpose:'signup',
+      newUser:{ email:email, nome:nome, salt:salt, hash:hashPwd(s1,salt), created:Date.now() } };
+    boot();
+  };
+}
+function bindLoginOtp(){
+  var f=document.getElementById('otpForm'); if(!f) return;
+  var err=document.getElementById('otpErr');
+  f.onsubmit=function(e){ e.preventDefault();
+    if(!PENDING){ boot(); return; }
+    if(Date.now()>PENDING.exp){ err.textContent='O código expirou. Reenvie um novo código.'; err.style.display='block'; return; }
+    var v=(document.getElementById('otpInput').value||'').trim();
+    if(v!==PENDING.code){ PENDING.attempts++; if(PENDING.attempts>=5){ err.textContent='Muitas tentativas. Recomece o processo.'; err.style.display='block'; PENDING=null; setTimeout(boot,1200); return; } err.textContent='Código incorreto. Tente novamente ('+(5-PENDING.attempts)+' tentativa(s) restante(s)).'; err.style.display='block'; return; }
+    if(PENDING.purpose==='signup'&&PENDING.newUser){ var us=authLoadUsers(); if(!authFindUser(PENDING.newUser.email)){ us.push(PENDING.newUser); authSaveUsers(us); } }
+    authSaveSession(PENDING.email,PENDING.nome); PENDING=null; AUTH_MODE='login'; boot();
+  };
+  var rs=document.getElementById('otpResend'); if(rs) rs.onclick=function(){ PENDING.code=genCode(); PENDING.exp=Date.now()+1000*60*5; PENDING.attempts=0; boot(); };
+  var bk=document.getElementById('otpBack'); if(bk) bk.onclick=function(){ AUTH_MODE=PENDING&&PENDING.purpose==='signup'?'signup':'login'; PENDING=null; boot(); };
+}
+function boot(){
+  authSeed();
+  if(authLoadSession()){ render(); return; }
+  var root=document.getElementById('root');
+  if(PENDING){ root.innerHTML=viewLoginOtp(); bindLoginOtp(); var oi=document.getElementById('otpInput'); if(oi) oi.focus(); }
+  else if(AUTH_MODE==='signup'){ root.innerHTML=viewSignup(); bindSignup(); var sn=document.getElementById('suNome'); if(sn) sn.focus(); }
+  else { root.innerHTML=viewLoginCreds(); bindLoginCreds(); var le=document.getElementById('loginEmail'); if(le) le.focus(); }
+}
+boot();
 </script>
 </body>
 </html>
