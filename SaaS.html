@@ -2096,110 +2096,60 @@ function bindContratosTab(){
 
 var _saved=loadContracts(); if(_saved){ STATE.contracts=_saved; }
 
-// ── Autenticação Supabase: OTP por e-mail real + controle de acesso ────────
-// Somente e-mails cadastrados pelo administrador podem receber código e entrar.
+// ── Acesso por e-mail (allowlist) — verificação em 2 etapas será adicionada depois ──
+// Sem autocadastro: só e-mails que o administrador cadastra conseguem entrar.
 var CURRENT_USER = null;   // {email, nome, role}
-function appUrl(){ return window.location.origin + window.location.pathname; } // destino de redirect (evita localhost padrão)
-var OTP_EMAIL = null;      // e-mail aguardando verificação de código
-
-function authLoadSession(){ return CURRENT_USER; }         // usado (síncrono) no cabeçalho
+function localSaveUser(u){ try{ if(u) localStorage.setItem('saas_local_user',JSON.stringify(u)); else localStorage.removeItem('saas_local_user'); }catch(e){} }
+function localLoadUser(){ try{ return JSON.parse(localStorage.getItem('saas_local_user')||'null'); }catch(e){ return null; } }
+function authLoadSession(){ return CURRENT_USER; }
 function isAdmin(){ return CURRENT_USER && CURRENT_USER.role === 'admin'; }
-function authLogout(){ if(sb) sb.auth.signOut().finally(function(){ CURRENT_USER=null; OTP_EMAIL=null; boot(); }); else { CURRENT_USER=null; boot(); } }
-
-// Descobre papel/nome do usuário logado a partir do allowlist.
-function loadCurrentUser(){
-  return sb.auth.getUser().then(function(res){
-    var u = res && res.data && res.data.user; if(!u) return null;
-    return sb.rpc('fn_login_permitido',{p_email:u.email}).then(function(r){
-      var row = r.data && r.data[0];
-      CURRENT_USER = { email:u.email, nome: row?row.nome:u.email, role: row?row.role:'membro' };
-      sb.rpc('fn_registrar_acesso').then(function(){}); // registra o acesso (não bloqueia o boot)
-      return fetchCCEEParams().then(function(){ return CURRENT_USER; });
-    });
-  });
-}
+function authLogout(){ CURRENT_USER=null; localSaveUser(null); if(sb) sb.auth.signOut().catch(function(){}); boot(); }
 
 function viewLoginEmail(){
-  var warn = sb ? '' : '<div class="login-err" style="display:block">Não foi possível carregar o serviço de autenticação (Supabase). Verifique a conexão com a internet.</div>';
+  var warn = sb ? '' : '<div class="login-err" style="display:block">Serviço indisponível (Supabase não carregou). Verifique a conexão.</div>';
   return '<div class="login-wrap"><div class="login-card">'+
     '<div class="login-brand">Energia<span>SaaS</span></div>'+
-    '<div class="login-sub">Acesse com seu e-mail corporativo</div>'+
+    '<div class="login-sub">Acesse com seu e-mail</div>'+
     warn+'<div class="login-err" id="loginErr"></div>'+
     '<form id="emailForm">'+
     '<div class="login-field"><label class="login-label">E-mail</label>'+
       '<input class="login-input" type="email" id="loginEmail" placeholder="seu@empresa.com" autocomplete="email" required></div>'+
-    '<button type="submit" class="btn btn-primary login-btn" id="sendBtn">Enviar código de acesso</button>'+
+    '<button type="submit" class="btn btn-primary login-btn" id="enterBtn">Entrar</button>'+
     '</form>'+
-    '<div class="login-meta">Apenas e-mails autorizados pelo administrador recebem código. Sem acesso? Fale com o administrador da conta.</div>'+
+    '<div class="login-meta">Somente e-mails autorizados pelo administrador têm acesso. A verificação em duas etapas será ativada em breve.</div>'+
     '</div></div>';
 }
-function viewLoginOtp(){
-  return '<div class="login-wrap"><div class="login-card">'+
-    '<div class="login-brand">Energia<span>SaaS</span></div>'+
-    '<div class="login-sub">Verificação em duas etapas</div>'+
-    '<div class="login-info">Enviamos um código de 6 dígitos para <b>'+maskEmail(OTP_EMAIL)+'</b>. Digite-o abaixo. O código expira em 1 hora.</div>'+
-    '<div class="login-err" id="otpErr"></div>'+
-    '<form id="otpForm">'+
-    '<div class="login-field"><label class="login-label">Código de verificação</label>'+
-      '<input class="login-input otp-input" type="text" id="otpInput" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required></div>'+
-    '<button type="submit" class="btn btn-primary login-btn" id="verifyBtn">Verificar e entrar</button>'+
-    '</form>'+
-    '<div class="login-foot"><button class="login-link" id="otpResend">Reenviar código</button> &nbsp;·&nbsp; <button class="login-link" id="otpBack">Trocar e-mail</button></div>'+
-    '</div></div>';
-}
-function maskEmail(e){ var p=String(e||'').split('@'); if(p.length<2) return e; var u=p[0]; return u.slice(0,Math.min(2,u.length))+'•••@'+p[1]; }
-
 function bindLoginEmail(){
   var f=document.getElementById('emailForm'); if(!f) return;
   f.onsubmit=function(e){ e.preventDefault();
     var err=document.getElementById('loginErr'); err.style.display='none';
-    var btn=document.getElementById('sendBtn');
+    var btn=document.getElementById('enterBtn');
     var email=(document.getElementById('loginEmail').value||'').trim().toLowerCase();
-    if(!sb){ err.textContent='Serviço de autenticação indisponível.'; err.style.display='block'; return; }
+    if(!sb){ err.textContent='Serviço de acesso indisponível.'; err.style.display='block'; return; }
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent='Informe um e-mail válido.'; err.style.display='block'; return; }
-    btn.disabled=true; btn.textContent='Enviando…';
-    function fail(m){ err.textContent=m; err.style.display='block'; btn.disabled=false; btn.textContent='Enviar código de acesso'; }
+    btn.disabled=true; btn.textContent='Entrando…';
+    function fail(m){ err.textContent=m; err.style.display='block'; btn.disabled=false; btn.textContent='Entrar'; }
     sb.rpc('fn_login_permitido',{p_email:email}).then(function(r){
       if(r.error) return fail('Erro ao verificar acesso: '+r.error.message);
       if(!r.data || !r.data.length) return fail('Acesso não autorizado. Solicite ao administrador da conta que cadastre seu e-mail.');
-      return sb.auth.signInWithOtp({ email:email, options:{ shouldCreateUser:true, emailRedirectTo:appUrl() } }).then(function(o){
-        if(o.error) return fail('Não foi possível enviar o código: '+o.error.message);
-        OTP_EMAIL=email; boot();
-      });
+      var row=r.data[0];
+      CURRENT_USER={ email:email, nome:row.nome||email, role:row.role||'membro' };
+      localSaveUser(CURRENT_USER);
+      if(typeof fetchCCEEParams==='function'){ fetchCCEEParams().then(function(){ boot(); }); } else { boot(); }
     }).catch(function(ex){ fail('Falha de conexão: '+ex.message); });
   };
-}
-function bindLoginOtp(){
-  var f=document.getElementById('otpForm'); if(!f) return;
-  var err=document.getElementById('otpErr');
-  f.onsubmit=function(e){ e.preventDefault(); err.style.display='none';
-    var btn=document.getElementById('verifyBtn');
-    var token=(document.getElementById('otpInput').value||'').trim();
-    if(token.length<6){ err.textContent='Digite os 6 dígitos do código.'; err.style.display='block'; return; }
-    btn.disabled=true; btn.textContent='Verificando…';
-    function fail(m){ err.textContent=m; err.style.display='block'; btn.disabled=false; btn.textContent='Verificar e entrar'; }
-    sb.auth.verifyOtp({ email:OTP_EMAIL, token:token, type:'email' }).then(function(r){
-      if(r.error) return fail('Código incorreto ou expirado. Tente novamente ou reenvie.');
-      loadCurrentUser().then(function(){ OTP_EMAIL=null; boot(); });
-    }).catch(function(ex){ fail('Falha de conexão: '+ex.message); });
-  };
-  var rs=document.getElementById('otpResend'); if(rs) rs.onclick=function(){
-    if(!sb||!OTP_EMAIL) return; rs.textContent='Reenviando…';
-    sb.auth.signInWithOtp({ email:OTP_EMAIL, options:{ shouldCreateUser:true, emailRedirectTo:appUrl() } }).then(function(){ rs.textContent='Código reenviado ✓'; setTimeout(function(){ if(rs) rs.textContent='Reenviar código'; },3000); });
-  };
-  var bk=document.getElementById('otpBack'); if(bk) bk.onclick=function(){ OTP_EMAIL=null; boot(); };
 }
 
-// ── Painel de administração de usuários (somente admin) ────────────────────
+// ── Painel de administração de usuários (somente admin) — via RPC ──────────
 function usersModalOpen(){
   if(!isAdmin()) return;
   var ov=document.createElement('div');
   ov.id='usersOverlay';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px';
-  ov.innerHTML='<div style="width:100%;max-width:640px;max-height:86vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-hover);padding:24px">'+
+  ov.innerHTML='<div style="width:100%;max-width:660px;max-height:86vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-hover);padding:24px">'+
     '<div style="display:flex;align-items:center;margin-bottom:14px"><div style="font-size:16px;font-weight:700;color:#fff">Usuários da conta</div>'+
       '<button id="usersClose" class="btn btn-ghost" style="margin-left:auto">Fechar</button></div>'+
-    '<div style="color:var(--text-3);font-size:12px;margin-bottom:14px">Cadastre aqui os e-mails autorizados. Só quem estiver nesta lista (e ativo) consegue receber código e acessar a plataforma.</div>'+
+    '<div style="color:var(--text-3);font-size:12px;margin-bottom:14px">Cadastre aqui os e-mails autorizados. Só quem estiver nesta lista (e ativo) consegue acessar a plataforma.</div>'+
     '<form id="addUserForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'+
       '<input class="login-input" id="auNome" placeholder="Nome" style="flex:1;min-width:120px" required>'+
       '<input class="login-input" id="auEmail" type="email" placeholder="email@empresa.com" style="flex:1.4;min-width:160px" required>'+
@@ -2218,8 +2168,10 @@ function usersModalOpen(){
     var email=(document.getElementById('auEmail').value||'').trim().toLowerCase();
     var role=document.getElementById('auRole').value;
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent='E-mail inválido.'; err.style.display='block'; return; }
-    sb.from('usuarios').insert({ nome:nome, email:email, role:role, ativo:true, criado_por:CURRENT_USER.email }).then(function(r){
-      if(r.error){ err.textContent=(r.error.code==='23505'?'Este e-mail já está cadastrado.':'Erro: '+r.error.message); err.style.display='block'; return; }
+    sb.rpc('fn_acesso_add',{p_admin:CURRENT_USER.email,p_nome:nome,p_email:email,p_role:role}).then(function(r){
+      if(r.error){ err.textContent='Erro: '+r.error.message; err.style.display='block'; return; }
+      if(r.data==='DUPLICADO'){ err.textContent='Este e-mail já está cadastrado.'; err.style.display='block'; return; }
+      if(r.data==='NAO_AUTORIZADO'){ err.textContent='Ação não autorizada.'; err.style.display='block'; return; }
       document.getElementById('auNome').value=''; document.getElementById('auEmail').value=''; usersRefresh();
     });
   };
@@ -2228,7 +2180,7 @@ function usersModalOpen(){
 function usersModalClose(){ var ov=document.getElementById('usersOverlay'); if(ov) ov.remove(); }
 function usersRefresh(){
   var box=document.getElementById('usersList'); if(!box) return;
-  sb.from('usuarios').select('id,nome,email,role,ativo,ultimo_acesso').order('id').then(function(r){
+  sb.rpc('fn_acesso_listar',{p_admin:CURRENT_USER.email}).then(function(r){
     if(r.error){ box.textContent='Erro ao carregar: '+r.error.message; return; }
     var rows=r.data||[];
     var h='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-3);border-bottom:1px solid var(--border)">'+
@@ -2251,25 +2203,22 @@ function usersRefresh(){
     box.innerHTML=h;
     Array.prototype.forEach.call(box.querySelectorAll('[data-toggle-user]'),function(el){ el.onclick=function(){
       var email=el.getAttribute('data-toggle-user'), novo=el.getAttribute('data-ativo')!=='1';
-      sb.from('usuarios').update({ativo:novo}).eq('email',email).then(function(){ usersRefresh(); });
+      sb.rpc('fn_acesso_set_ativo',{p_admin:CURRENT_USER.email,p_email:email,p_ativo:novo}).then(function(){ usersRefresh(); });
     };});
     Array.prototype.forEach.call(box.querySelectorAll('[data-del-user]'),function(el){ el.onclick=function(){
       var email=el.getAttribute('data-del-user');
       if(!confirm('Excluir o acesso de '+email+'? A pessoa não poderá mais entrar.')) return;
-      sb.from('usuarios').delete().eq('email',email).then(function(){ usersRefresh(); });
+      sb.rpc('fn_acesso_del',{p_admin:CURRENT_USER.email,p_email:email}).then(function(){ usersRefresh(); });
     };});
   });
 }
 
 function boot(){
   var root=document.getElementById('root');
-  if(!sb){ root.innerHTML=viewLoginEmail(); bindLoginEmail(); return; }
+  if(!CURRENT_USER){ var lu=localLoadUser(); if(lu && lu.email){ CURRENT_USER=lu; } }
   if(CURRENT_USER){ render(); return; }
-  if(OTP_EMAIL){ root.innerHTML=viewLoginOtp(); bindLoginOtp(); var oi=document.getElementById('otpInput'); if(oi) oi.focus(); return; }
-  sb.auth.getSession().then(function(res){
-    if(res.data && res.data.session){ loadCurrentUser().then(function(){ render(); }); }
-    else { root.innerHTML=viewLoginEmail(); bindLoginEmail(); var le=document.getElementById('loginEmail'); if(le) le.focus(); }
-  });
+  root.innerHTML=viewLoginEmail(); bindLoginEmail();
+  var le=document.getElementById('loginEmail'); if(le) le.focus();
 }
 boot();
 </script>
