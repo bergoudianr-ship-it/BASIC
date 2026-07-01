@@ -2098,6 +2098,7 @@ var _saved=loadContracts(); if(_saved){ STATE.contracts=_saved; }
 // Sem autocadastro: só e-mails que o administrador cadastra conseguem entrar.
 var LOGIN_ENABLED = true; // login por e-mail + senha ativo (sem token). Troque para false para abrir sem login.
 var CURRENT_USER = null;   // {email, nome, role}
+var AUTH_MODE = 'login';   // 'login' | 'signup'
 function localSaveUser(u){ try{ if(u) localStorage.setItem('saas_local_user',JSON.stringify(u)); else localStorage.removeItem('saas_local_user'); }catch(e){} }
 function localLoadUser(){ try{ return JSON.parse(localStorage.getItem('saas_local_user')||'null'); }catch(e){ return null; } }
 function authLoadSession(){ return CURRENT_USER; }
@@ -2117,10 +2118,56 @@ function viewLoginEmail(){
       '<input class="login-input" type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password" required></div>'+
     '<button type="submit" class="btn btn-primary login-btn" id="enterBtn">Entrar</button>'+
     '</form>'+
-    '<div class="login-meta">Acesso restrito aos usuários cadastrados pelo administrador.</div>'+
+    '<div class="login-foot">Não tem conta? <button class="login-link" id="goSignup">Criar conta</button></div>'+
     '</div></div>';
 }
+function viewSignup(){
+  var warn = sb ? '' : '<div class="login-err" style="display:block">Serviço indisponível (Supabase não carregou). Verifique a conexão.</div>';
+  return '<div class="login-wrap"><div class="login-card">'+
+    '<div class="login-brand">Energia<span>SaaS</span></div>'+
+    '<div class="login-sub">Criar conta</div>'+
+    warn+'<div class="login-err" id="suErr"></div>'+
+    '<form id="suForm">'+
+    '<div class="login-field"><label class="login-label">E-mail</label>'+
+      '<input class="login-input" type="email" id="suEmail" placeholder="seu@email.com" autocomplete="username" required></div>'+
+    '<div class="login-field"><label class="login-label">Senha</label>'+
+      '<input class="login-input" type="password" id="suSenha" placeholder="Mín. 6 caracteres" autocomplete="new-password" required></div>'+
+    '<button type="submit" class="btn btn-primary login-btn" id="suBtn">Criar conta e entrar</button>'+
+    '</form>'+
+    '<div class="login-foot">Já tem conta? <button class="login-link" id="goLogin">Entrar</button></div>'+
+    '</div></div>';
+}
+function bindSignup(){
+  var f=document.getElementById('suForm'); if(!f) return;
+  var gl=document.getElementById('goLogin'); if(gl) gl.onclick=function(){ AUTH_MODE='login'; boot(); };
+  f.onsubmit=function(e){ e.preventDefault();
+    var err=document.getElementById('suErr'); err.style.display='none';
+    var btn=document.getElementById('suBtn');
+    var email=(document.getElementById('suEmail').value||'').trim().toLowerCase();
+    var senha=document.getElementById('suSenha').value||'';
+    function fail(m){ err.textContent=m; err.style.display='block'; btn.disabled=false; btn.textContent='Criar conta e entrar'; }
+    if(!sb) return fail('Serviço indisponível.');
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Informe um e-mail válido.');
+    if(senha.length<6) return fail('A senha deve ter ao menos 6 caracteres.');
+    btn.disabled=true; btn.textContent='Criando…';
+    sb.rpc('fn_criar_conta',{p_email:email,p_senha:senha}).then(function(r){
+      if(r.error) return fail('Erro: '+r.error.message);
+      if(r.data==='DUPLICADO') return fail('Já existe uma conta com este e-mail. Faça login.');
+      if(r.data==='SENHA_CURTA') return fail('Senha muito curta.');
+      if(r.data==='EMAIL_INVALIDO') return fail('E-mail inválido.');
+      // criado com sucesso → entra automaticamente
+      sb.rpc('fn_login_senha',{p_email:email,p_senha:senha}).then(function(r2){
+        var row=r2.data && r2.data[0];
+        if(!row) return fail('Conta criada, mas falhou o login automático. Tente entrar.');
+        CURRENT_USER={ email:row.email, nome:row.nome||email, role:row.role||'membro' };
+        localSaveUser(CURRENT_USER); AUTH_MODE='login';
+        if(typeof fetchCCEEParams==='function'){ fetchCCEEParams().then(function(){ boot(); }); } else { boot(); }
+      });
+    }).catch(function(ex){ fail('Falha de conexão: '+ex.message); });
+  };
+}
 function bindLoginEmail(){
+  var gs=document.getElementById('goSignup'); if(gs) gs.onclick=function(){ AUTH_MODE='signup'; boot(); };
   var f=document.getElementById('emailForm'); if(!f) return;
   f.onsubmit=function(e){ e.preventDefault();
     var err=document.getElementById('loginErr'); err.style.display='none';
@@ -2230,6 +2277,7 @@ function boot(){
   if(!LOGIN_ENABLED){ if(!CURRENT_USER) CURRENT_USER={email:'bergoudianr@gmail.com',nome:'Rafael Campos',role:'admin'}; render(); return; }
   if(!CURRENT_USER){ var lu=localLoadUser(); if(lu && lu.email){ CURRENT_USER=lu; } }
   if(CURRENT_USER){ render(); return; }
+  if(AUTH_MODE==='signup'){ root.innerHTML=viewSignup(); bindSignup(); var se=document.getElementById('suEmail'); if(se) se.focus(); return; }
   root.innerHTML=viewLoginEmail(); bindLoginEmail();
   var le=document.getElementById('loginEmail'); if(le) le.focus();
 }
