@@ -159,6 +159,53 @@
   .bar-label { font-size: 10px; color: var(--text-3); }
   .legend { display: flex; gap: 14px; margin-top: 12px; font-size: 11px; color: var(--text-2); }
   .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+
+  /* ── Mobile menu toggle + drawer (hidden on desktop) ─────────────────── */
+  .menu-toggle { display: none; width: 34px; height: 34px; align-items: center; justify-content: center; border-radius: var(--radius-xs); background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); cursor: pointer; font-size: 16px; flex-shrink: 0; }
+  .menu-toggle:hover { background: var(--surface-hover); color: var(--text); }
+  .sidebar-backdrop { display: none; }
+
+  /* ── Tablet / mobile (≤860px): off-canvas nav drawer, scrollable tabs ── */
+  @media (max-width: 860px) {
+    .menu-toggle { display: inline-flex; }
+    .header { padding: 10px 14px; gap: 10px; }
+    .header-date { display: none; }
+    .content { padding: 16px; }
+    .sidebar { position: fixed; top: 0; left: 0; height: 100vh; width: 250px; max-width: 82vw; z-index: 210; transform: translateX(-100%); transition: transform .25s var(--ease); box-shadow: 4px 0 28px rgba(0,0,0,.5); overflow-y: auto; background: linear-gradient(180deg, #171b25, #0c0f15); padding-top: 18px; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0); pointer-events: none; z-index: 205; transition: background .25s var(--ease); }
+    .sidebar-backdrop.show { background: rgba(0,0,0,.55); pointer-events: auto; }
+    .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { flex: 0 0 auto; padding: 9px 15px; }
+    .ficha-grid { grid-template-columns: repeat(2, 1fr); }
+    .ficha-header { flex-wrap: wrap; row-gap: 8px; }
+    .ficha-header > span[style*="margin-left:auto"] { margin-left: 0 !important; width: 100%; }
+    .card-value { font-size: 20px; }
+    .btn { min-height: 36px; }
+    /* Generic override: form grids built with inline styles collapse to 2 columns */
+    [style*="grid-template-columns:repeat(4,1fr)"],
+    [style*="grid-template-columns:repeat(5,1fr)"],
+    [style*="grid-template-columns:repeat(6,1fr)"] { grid-template-columns: repeat(2,1fr) !important; }
+    /* 16px min font-size on inputs prevents iOS Safari from auto-zooming on focus */
+    input[type=text], input[type=number], input[type=date], input[type=search], select, textarea { font-size: 16px !important; }
+  }
+
+  /* ── Phone (≤480px): single-column, denser chrome, larger tap targets ── */
+  @media (max-width: 480px) {
+    .header-info { display: none; }
+    .logo { font-size: 15px; }
+    .content { padding: 12px; }
+    .card { padding: 14px; }
+    .card-value { font-size: 19px; }
+    .ficha-grid,
+    [style*="grid-template-columns:repeat("] { grid-template-columns: 1fr !important; }
+    table { font-size: 11.5px; }
+    th, td { padding: 8px 9px; }
+    .btn { padding: 9px 14px; font-size: 12.5px; }
+    .tab { padding: 9px 13px; font-size: 12px; }
+    .import-zone { padding: 28px 16px; }
+  }
 </style>
 </head>
 <body>
@@ -1808,13 +1855,16 @@ function bindProposta(){
 
 // ── Main render ──────────────────────────────────────────────────────────
 function render(){
+  document.body.style.overflow='';
   var root=document.getElementById('root');
   var critCount=STATE.contracts.reduce(function(s,c){return s+alerts(c).filter(function(a){return a.crit==='Crítico';}).length;},0);
-  var h='<div class="app"><div class="header"><div class="logo">Energia<span>SaaS</span></div>';
+  var h='<div class="app"><div class="header">';
+  if(STATE.contracts.length) h+='<button class="menu-toggle" id="menuToggle" aria-label="Abrir menu">☰</button>';
+  h+='<div class="logo">Energia<span>SaaS</span></div>';
   if(STATE.contracts.length){ h+='<span class="header-info">'+STATE.contracts.length+' contratos carregados</span>'; if(critCount) h+='<span class="badge badge-red">'+critCount+' crítico(s)</span>'; h+='<button class="btn btn-ghost" id="clearBtn" style="margin-left:8px">Limpar</button>'; }
   h+='<div class="header-date">'+TODAY.toLocaleDateString('pt-BR',{weekday:'short',year:'numeric',month:'long',day:'numeric'})+'</div></div>';
   if(!STATE.contracts.length){ h+='<div class="content">'+viewImport()+'</div></div>'; root.innerHTML=h; bindImport(); return; }
-  h+='<div class="main"><div class="sidebar"><div class="nav-section">Análise</div>';
+  h+='<div class="main"><div class="sidebar-backdrop" id="sidebarBackdrop"></div><div class="sidebar" id="sidebar"><div class="nav-section">Análise</div>';
   NAV.forEach(function(n){ h+='<div class="nav-item '+(STATE.tab===n[0]?'active':'')+'" data-nav="'+n[0]+'">'+n[1]; if(n[0]==='alertas'&&critCount) h+='<span class="badge badge-red" style="margin-left:auto;font-size:10px;padding:1px 5px">'+critCount+'</span>'; h+='</div>'; });
   h+='<div class="sep"></div><div class="nav-section">Dados</div><div class="nav-item" data-nav="_import">Nova importação</div></div>';
   h+='<div class="content"><div class="tabs">';
@@ -1857,6 +1907,12 @@ function bindApp(){
     el.onclick=function(){ var t=el.getAttribute('data-nav'); if(t==='_import'){ STATE.contracts=[]; clearStored(); render(); } else { STATE.tab=t; render(); } };
   });
   var cb=document.getElementById('clearBtn'); if(cb) cb.onclick=function(){ STATE.contracts=[]; clearStored(); render(); };
+  var activeTab=document.querySelector('.tab.active'); if(activeTab) activeTab.scrollIntoView({block:'nearest',inline:'nearest'});
+  var mt=document.getElementById('menuToggle'), sb=document.getElementById('sidebar'), bd=document.getElementById('sidebarBackdrop');
+  if(mt&&sb&&bd){
+    mt.onclick=function(){ sb.classList.add('open'); bd.classList.add('show'); document.body.style.overflow='hidden'; };
+    bd.onclick=function(){ sb.classList.remove('open'); bd.classList.remove('show'); document.body.style.overflow=''; };
+  }
   if(STATE.tab==='contratos') bindContratosTab();
   if(STATE.tab==='mtm') bindMtM();
   if(STATE.tab==='proposta') bindProposta();
