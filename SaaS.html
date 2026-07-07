@@ -312,7 +312,11 @@ var CCEE = {
   sazPadrao: 20,            // sazonalização típica (±%) sobre o montante mensal médio
   tolVolume: 0.05           // tolerância na coerência MWm×horas vs MWh (5%)
 };
-function horasPeriodo(ini,fim){ if(!ini||!fim||fim<ini) return 0; return (fim-ini)/3600000+24; } // +24h inclui o último dia de fornecimento
+function ehBissexto(ano){ return (ano%4===0 && ano%100!==0) || ano%400===0; }
+function diasNoMes(ano,mes1){ return new Date(ano, mes1, 0).getDate(); } // mes1: 1–12; leva bissexto (fev=29)
+function horasNoMes(ano,mes1){ return diasNoMes(ano,mes1)*24; }         // 30d=720h, 31d=744h, fev=672/696h
+function horasNoAno(ano){ return ehBissexto(ano)?8784:8760; }
+function horasPeriodo(ini,fim){ if(!ini||!fim||fim<ini) return 0; return (fim-ini)/3600000+24; } // datas reais → contabiliza meses variáveis e bissexto
 function isIncentivada(f){ f=String(f||''); return CCEE.fontesIncentivadas.some(function(x){return f.toLowerCase().indexOf(x.toLowerCase())>=0;}); }
 // Validações de contratação & modulação à luz das regras de comercialização CCEE.
 function cceeValidate(c){
@@ -951,7 +955,7 @@ function bindAjusteMensal(){
     if(isNaN(vol)&&isNaN(preco)){ err('Informe volume e/ou preço ajustado.'); return; }
     var id=sel.value; var c=STATE.contracts.filter(function(x){return String(x._id)===id;})[0];
     if(!c){ err('Contrato não encontrado.'); return; }
-    var p=mes.split('-'); var days=new Date(+p[0],(+p[1]||1),0).getDate(); var horas=days*24;
+    var p=mes.split('-'); var horas=horasNoMes(+p[0], +p[1]||1); // 720/744h e fev bissexto
     if(!c.ajustes) c.ajustes={};
     var volMWm = isNaN(vol)?(c.volAjMWm||c.volPrevMWm):vol;
     var precoAj = isNaN(preco)?(c.precAj||c.precPrev):preco;
@@ -1674,7 +1678,45 @@ function viewBackoffice(){
   } else {
     h+='<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma curva horária carregada. Baixe a planilha modelo, preencha o consumo e a geração hora a hora e suba para apurar a modulação.</div></div>';
   }
+  // ── CCEE — Garantias, Participantes, Consumo e Liquidação (dados oficiais) ──
+  h+='<div class="section-header"><span class="section-title">CCEE — Backoffice de Mercado</span></div>';
+  h+=garantiaResumoCard();
+  h+='<div class="card" style="margin-bottom:14px"><div style="color:#97a3b6;font-size:11px;line-height:1.5"><b>Fonte:</b> tabelas CCEE (<code>ccee_agentes</code>, <code>ccee_consumo</code>, <code>ccee_garantias</code>, <code>ccee_liquidacao</code>), ligadas pelo <b>Código de Agente CCEE</b>. Serão populadas pela futura API da CCEE; abaixo, dados atuais do banco.</div></div>';
+  h+='<div class="card" style="margin-bottom:14px"><div class="card-title">Participantes ACL (agentes CCEE)</div><div id="cceeAgentes" class="table-wrap">Carregando…</div></div>';
+  h+='<div class="grid-2">'+
+     '<div class="card"><div class="card-title">Consumo / Medição (por competência)</div><div id="cceeConsumo" class="table-wrap">Carregando…</div></div>'+
+     '<div class="card"><div class="card-title">Garantias & Penalidades (CCEE)</div><div id="cceeGarantias" class="table-wrap">Carregando…</div></div>'+
+     '</div>';
+  h+='<div class="card" style="margin-top:14px"><div class="card-title">Liquidação / Contabilização (MCP)</div><div id="cceeLiquidacao" class="table-wrap">Carregando…</div></div>';
   return h;
+}
+function fmtDataBR(d){ if(!d) return '—'; var s=String(d).slice(0,10).split('-'); return s.length===3? s[2]+'/'+s[1]+'/'+s[0] : String(d); }
+function cceeTable(box, rpc, cols){
+  var el=document.getElementById(box); if(!el) return;
+  if(!sb){ el.innerHTML='<span style="color:#64748b">Supabase indisponível.</span>'; return; }
+  sb.rpc(rpc).then(function(r){
+    if(r.error){ el.innerHTML='<span style="color:#f87171">Erro: '+esc(r.error.message)+'</span>'; return; }
+    var rows=r.data||[];
+    if(!rows.length){ el.innerHTML='<span style="color:#64748b">Sem registros ainda (serão preenchidos pela API CCEE).</span>'; return; }
+    var h='<table><thead><tr>'+cols.map(function(c){return '<th>'+esc(c.t)+'</th>';}).join('')+'</tr></thead><tbody>';
+    rows.forEach(function(row){ h+='<tr>'+cols.map(function(c){ var v=c.f?c.f(row[c.k],row):row[c.k]; return '<td'+(c.num?' class="td-num"':'')+'>'+(v==null||v===''?'—':esc(String(v)))+'</td>'; }).join('')+'</tr>'; });
+    h+='</tbody></table>'; el.innerHTML=h;
+  });
+}
+function loadCCEEBackoffice(){
+  cceeTable('cceeAgentes','fn_ccee_agentes',[
+    {t:'Código',k:'codigo_ccee'},{t:'Nome',k:'nome'},{t:'CNPJ',k:'cnpj'},{t:'Perfil',k:'perfil'},{t:'Classe',k:'classe'},
+    {t:'Submercado',k:'submercado'},{t:'Garantia física (MWm)',k:'garantia_fisica_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},
+    {t:'Consumo médio (MWm)',k:'consumo_medio_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Habilitação',k:'data_habilitacao',f:fmtDataBR},{t:'Status',k:'status'}]);
+  cceeTable('cceeConsumo','fn_ccee_consumo',[
+    {t:'Código',k:'codigo_ccee'},{t:'Competência',k:'competencia',f:fmtDataBR},{t:'Consumo (MWh)',k:'consumo_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},
+    {t:'Medido (MWh)',k:'medido_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},{t:'Submercado',k:'submercado'}]);
+  cceeTable('cceeGarantias','fn_ccee_garantias',[
+    {t:'Código',k:'codigo_ccee'},{t:'Competência',k:'competencia',f:fmtDataBR},{t:'Lastro req. (MWm)',k:'lastro_requerido_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},
+    {t:'Lastro disp. (MWm)',k:'lastro_disponivel_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Gar. aportada (R$)',k:'garantia_aportada_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Status',k:'status'}]);
+  cceeTable('cceeLiquidacao','fn_ccee_liquidacao',[
+    {t:'Código',k:'codigo_ccee'},{t:'Competência',k:'competencia',f:fmtDataBR},{t:'Submercado',k:'submercado'},{t:'Exposição (MWh)',k:'exposicao_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},
+    {t:'PLD médio',k:'pld_medio',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Liquidação (R$)',k:'valor_liquidacao_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Status',k:'status'}]);
 }
 function hourlyTemplateCSV(){
   var lines=['Data;Hora;Consumo (MWh);Geração (MWh)'];
@@ -1714,6 +1756,7 @@ function parseHourly(raw){
   return {hours:hours,totCons:totCons,totGer:totGer,totNet:totCons-totGer,count:count,avgCons:avgC,avgNet:avgN,peakCons:peakC,fatorCarga:peakC>0?avgC/peakC:0};
 }
 function bindBackoffice(){
+  loadCCEEBackoffice();
   function err(m){ var e=document.getElementById('hrErr'); if(e){ e.textContent=m; e.style.display='inline'; } }
   function rerender(){ document.getElementById('viewBody').innerHTML=viewBackoffice(); bindBackoffice(); }
   var boMes=document.getElementById('boMes'); if(boMes) boMes.onchange=function(){ BO_MES=boMes.value; rerender(); };
