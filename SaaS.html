@@ -359,6 +359,34 @@ function cceeValidate(c){
     var spreadTxt = (refc!=null&&refse!=null) ? ' (spread atual vs SE/CO: R$ '+fmt(refc-refse,2)+'/MWh)' : '';
     a.push({msg:'Liquidação no submercado '+c.submercado+' — risco de base/spread de PLD frente a SE/CO'+spreadTxt,crit:'Atenção',regra:'CCEE · Submercado'});
   }
+  // ── Bloco 3 · Cadastro & Migração ──
+  var incent=isIncentivada(c.fonte), esp=cl.indexOf('especial')>=0;
+  // Energia incentivada/especial tem desconto na TUSD/TUST (RETUSD) que precisa estar sinalizado.
+  if((esp||incent) && !(c.retusd==='sim'||c.retusd==='yes'||c.retusd==='true'||c.retusd===true))
+    a.push({msg:'Energia '+(esp?'especial':'incentivada')+' sem sinalização de RETUSD (desconto TUSD/TUST 50–100%) — verificar enquadramento CCEE',crit:'Atenção',regra:'CCEE · Enquadramento'});
+  // Fonte incentivada comercializada sem classificação de energia incentivada/especial.
+  if(incent && cl && cl.indexOf('especial')<0 && cl.indexOf('incentiv')<0 && cl.indexOf('i5')<0 && cl.indexOf('i1')<0)
+    a.push({msg:'Fonte incentivada ("'+c.fonte+'") classificada como "'+c.classificacao+'" — confirmar se deveria ser energia incentivada (I5/I1/I0/especial)',crit:'Atenção',regra:'CCEE · Enquadramento'});
+  // Migração ao ACL: início próximo exige denúncia à distribuidora e registro CCEE prévios.
+  if(c.inicioForn && c.inicioForn>TODAY){
+    var dini=daysDiff(c.inicioForn);
+    if(dini<=180 && !c.contratoCCEE)
+      a.push({msg:'Início em '+dini+' dias sem Contrato CCEE — prazo de migração/denúncia à distribuidora e registro na CCEE em risco',crit:dini<=90?'Crítico':'Atenção',regra:'CCEE · Migração'});
+  }
+  return a;
+}
+// ── Cadastro do agente CCEE (contraparte) — validação de habilitação/perfil ──
+function cceeAgenteAlertas(cp){
+  var a=[];
+  if(!cp.cceeCod) a.push('Sem Código de Agente CCEE');
+  if(!cp.cceePerfil) a.push('Perfil do agente não informado');
+  else if(CCEE_PERFIS.indexOf(cp.cceePerfil)<0) a.push('Perfil "'+cp.cceePerfil+'" fora do padrão CCEE');
+  if(cp.cceeSub && ['SE/CO','S','NE','N'].indexOf(cp.cceeSub)<0) a.push('Submercado de registro "'+cp.cceeSub+'" inválido');
+  var perfil=String(cp.cceePerfil||'').toLowerCase();
+  if((perfil.indexOf('livre')>=0||perfil.indexOf('especial')>=0) && !cp.cceeData)
+    a.push('Consumidor sem data de habilitação CCEE — verificar migração/adesão');
+  if(perfil.indexOf('varejista')>=0 && !cp.cceeRepr)
+    a.push('Varejista sem representante CCEE informado');
   return a;
 }
 // Atualiza parâmetros CCEE com dados reais do banco (PLD piso/teto/ref por submercado).
@@ -1335,6 +1363,7 @@ function viewConfig(){
       (c.cceeCod?'<span class="badge badge-purple">CCEE '+esc(c.cceeCod)+'</span>':'')+
       '<button class="btn btn-ghost" data-delcp="'+c.id+'" style="margin-left:auto;color:#f87171;border-color:#5c2020">Excluir</button>'+
       '</div>'+
+      (function(){ var pd=cceeAgenteAlertas(c); return pd.length? '<div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:#fcd34d;font-size:11px"><b>Pendências CCEE:</b> '+pd.map(esc).join(' · ')+'</div>' : '<div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.22);color:#34d399;font-size:11px">Cadastro CCEE completo ✓</div>'; })()+
       '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">'+
       '<div><div class="ficha-label">Submercado registro</div><div class="ficha-value">'+esc(c.cceeSub||'—')+'</div></div>'+
       '<div><div class="ficha-label">Perfilização</div><div class="ficha-value">'+esc(c.cceePerfiliz||'—')+'</div></div>'+
