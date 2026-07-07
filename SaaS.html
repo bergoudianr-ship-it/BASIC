@@ -373,7 +373,50 @@ function cceeValidate(c){
     if(dini<=180 && !c.contratoCCEE)
       a.push({msg:'Início em '+dini+' dias sem Contrato CCEE — prazo de migração/denúncia à distribuidora e registro na CCEE em risco',crit:dini<=90?'Crítico':'Atenção',regra:'CCEE · Migração'});
   }
+  // ── Bloco 4 · Penalidades & Garantias ──
+  var stc=status(c).code, top=(String(c.tipoOp||'')+' '+String(c.natureza||'')).toLowerCase();
+  // Venda exige lastro (garantia física/energia); sem registro CCEE há risco de penalidade por insuficiência de lastro.
+  if(top.indexOf('venda')>=0 && !c.contratoCCEE && stc!=='enc' && stc!=='cancelado')
+    a.push({msg:'Venda sem Contrato CCEE — risco de penalidade por insuficiência de lastro na contabilização CCEE',crit:'Atenção',regra:'CCEE · Garantias'});
+  // Inadimplência: condição de pagamento vencida com fornecimento ativo → risco de execução de garantia financeira.
+  if(c.datFimCondPag && c.datFimCondPag<TODAY && stc==='ativo')
+    a.push({msg:'Pagamento vencido com fornecimento ativo — risco de inadimplência e execução de garantia financeira na liquidação CCEE',crit:'Crítico',regra:'CCEE · Garantias'});
   return a;
+}
+// Resumo de lastro/garantias do portfólio (Bloco 4) — usa garantias declaradas em Configurações.
+function loadGarantias(){ try{ return JSON.parse(localStorage.getItem('saas_garantias')||'null')||{fisica:0,financeira:0}; }catch(e){ return {fisica:0,financeira:0}; } }
+function saveGarantias(g){ try{ localStorage.setItem('saas_garantias',JSON.stringify(g)); }catch(e){} }
+function garantiaResumo(){
+  var g=loadGarantias(), compra=0, venda=0, expPLD=0;
+  STATE.contracts.forEach(function(c){
+    var st=status(c).code; if(st==='enc'||st==='cancelado') return;
+    var mwm=volMWm(c), top=(String(c.tipoOp||'')+' '+String(c.natureza||'')).toLowerCase();
+    if(top.indexOf('venda')>=0) venda+=mwm; else if(top.indexOf('compra')>=0) compra+=mwm;
+    var idx=(String(c.indice||'')+' '+String(c.indiceReaj||'')).toLowerCase();
+    if(idx.indexOf('pld')>=0) expPLD+=Math.abs(volMWh(c));
+  });
+  var netVenda=venda-compra; // posição líquida vendida (precisa de lastro)
+  var lastroReq=Math.max(0,netVenda);
+  var deficit=Math.max(0,lastroReq-(g.fisica||0));
+  // Garantia financeira aproximada: exposição líquida ao PLD (teto) do período — proxy do requisito CCEE.
+  var garReq=expPLD*CCEE.pldMax/1000; // R$ mil aprox.
+  return { compra:compra, venda:venda, netVenda:netVenda, lastroReq:lastroReq, fisica:g.fisica||0, deficit:deficit, garReq:garReq, garAportada:g.financeira||0, expPLD:expPLD };
+}
+function garantiaResumoCard(){
+  var r=garantiaResumo();
+  function box(t,v,cls){ return '<div style="flex:1;min-width:150px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:12px 14px"><div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">'+t+'</div><div style="font-size:16px;font-weight:700;color:'+(cls||'var(--text)')+'">'+v+'</div></div>'; }
+  var alerta = r.deficit>0 ? '<div style="margin-top:10px;padding:9px 12px;border-radius:8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#fca5a5;font-size:12px"><b>Insuficiência de lastro:</b> faltam '+fmt(r.deficit,3)+' MWm de garantia física para cobrir a posição vendida — risco de penalidade CCEE.</div>'
+    : (r.lastroReq>0 ? '<div style="margin-top:10px;padding:9px 12px;border-radius:8px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.22);color:#34d399;font-size:12px">Lastro suficiente para a posição vendida ✓</div>' : '');
+  return '<div class="card" style="margin-bottom:8px"><div style="font-weight:700;color:#fff;margin-bottom:12px">Garantias & Penalidades (CCEE · Bloco 4)</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+    box('Posição líquida vendida', fmtMW(r.netVenda), r.netVenda>0?'var(--warn)':'var(--pos)')+
+    box('Lastro requerido', fmtMW(r.lastroReq))+
+    box('Garantia física declarada', fmtMW(r.fisica))+
+    box('Déficit de lastro', fmtMW(r.deficit), r.deficit>0?'var(--neg)':'var(--pos)')+
+    box('Garantia financeira aportada', fmtR(r.garAportada))+
+    '</div>'+alerta+
+    '<div style="font-size:11px;color:var(--text-3);margin-top:8px">Declare a garantia física e financeira do agente em <b>Configurações → Garantias do agente</b>. Estimativas simplificadas; a contabilização oficial é a da CCEE.</div>'+
+    '</div>';
 }
 // ── Cadastro do agente CCEE (contraparte) — validação de habilitação/perfil ──
 function cceeAgenteAlertas(cp){
@@ -1317,6 +1360,16 @@ function viewConfig(){
   function opt(arr){ return '<option></option>'+arr.map(function(x){return '<option>'+esc(x)+'</option>';}).join(''); }
   var g3='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
   var h=cfgUsersSection();
+  var gar=loadGarantias();
+  h+='<div class="section-header"><span class="section-title">Garantias do agente (CCEE · Bloco 4)</span></div>'+
+    '<div class="card" style="margin-bottom:20px">'+
+    '<div style="color:#94a3b8;font-size:12px;margin-bottom:12px">Informe o lastro (garantia física) e a garantia financeira aportada do seu agente. Alimenta o resumo de Penalidades & Garantias na aba Alertas.</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">'+
+      '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Garantia física / lastro (MWm)</span><input id="garFisica" type="number" step="0.001" value="'+(gar.fisica||'')+'" '+inp+'></label>'+
+      '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Garantia financeira aportada (R$)</span><input id="garFinanceira" type="number" step="0.01" value="'+(gar.financeira||'')+'" '+inp+'></label>'+
+      '<button class="btn btn-primary" id="garSave">Salvar</button>'+
+    '</div><div id="garMsg" style="font-size:11px;color:#34d399;margin-top:8px;display:none">Salvo ✓</div>'+
+    '</div>';
   h+='<div class="section-header"><span class="section-title">Configurações — Contrapartes</span></div>';
   h+='<div class="card" style="margin-bottom:20px">'+
     sec('Identificação')+g3+
@@ -1394,6 +1447,11 @@ function viewConfig(){
 }
 function bindConfig(){
   cfgUsersBind();
+  var gs=document.getElementById('garSave'); if(gs) gs.onclick=function(){
+    var f=parseFloat((document.getElementById('garFisica').value||'').replace(',','.'))||0;
+    var fin=parseFloat((document.getElementById('garFinanceira').value||'').replace(',','.'))||0;
+    saveGarantias({fisica:f,financeira:fin}); var m=document.getElementById('garMsg'); if(m){ m.style.display='block'; setTimeout(function(){ if(m) m.style.display='none'; },2500); }
+  };
   function v(id){ var e=document.getElementById(id); return e?e.value:''; }
   function err(m){ var e=document.getElementById('cErr'); if(e){ e.textContent=m; e.style.display='block'; } }
   var cr=document.getElementById('cCreate');
@@ -1980,7 +2038,7 @@ function render(){
 function renderView(){
   switch(STATE.tab){
     case 'dashboard': return viewDashboard();
-    case 'alertas': return viewAlertas()+'<div style="height:8px"></div>'+viewRecomendacoes();
+    case 'alertas': return garantiaResumoCard()+viewAlertas()+'<div style="height:8px"></div>'+viewRecomendacoes();
     case 'contratos': return viewContratos();
     case 'portfolio': return viewPortfolio();
     case 'mtm': return viewMtM();
