@@ -185,13 +185,19 @@
 <body>
 <div id="root"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 "use strict";
 // ── Supabase (auth real + controle de acesso) ─────────────────────────────
 var SUPABASE_URL = 'https://pboizjwwxcnajeuteivp.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_TfkGcMtq0ffVHRdrfHl2AQ_LD3_MZln';
-var sb = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+var sb = null;
+function initSupabase(){
+  if(sb) return true;
+  if(window.supabase && window.supabase.createClient){
+    try{ sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); return true; }catch(e){}
+  }
+  return false;
+}
 // ── Helpers ──────────────────────────────────────────────────────────────
 var TODAY = new Date('2026-06-01');
 var COLORS = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a78bfa','#06b6d4','#f97316'];
@@ -2470,7 +2476,26 @@ function boot(){
   root.innerHTML=viewLoginEmail(); bindLoginEmail();
   var le=document.getElementById('loginEmail'); if(le) le.focus();
 }
-boot();
+
+// ── Carregamento resiliente do Supabase (tenta CDNs alternativos) ──────────
+(function loadSupabase(){
+  var cdns=[
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+    'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js'
+  ];
+  var i=0, booted=false;
+  function go(){ if(booted) return; booted=true; initSupabase(); boot(); }
+  function tryNext(){
+    if(initSupabase()){ go(); return; }
+    if(i>=cdns.length){ go(); return; } // sem lib → login mostra aviso de conexão
+    var s=document.createElement('script');
+    s.src=cdns[i++]; s.async=true;
+    s.onload=go;
+    s.onerror=tryNext;
+    document.head.appendChild(s);
+  }
+  tryNext();
+})();
 </script>
 </body>
 </html>
