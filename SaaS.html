@@ -1329,7 +1329,7 @@ function viewMtM(){
     '<button class="btn btn-ghost" id="mtmTmplBtn">Baixar modelo CSV da curva</button>'+
     '<button class="btn btn-ghost" id="mtmUploadBtn">Subir CSV da curva</button>'+
     '<input type="file" id="mtmUploadInput" accept=".csv,.txt" style="display:none">'+
-    '<span style="color:#97a3b6;font-size:11px;max-width:600px;line-height:1.5"><b>Fórmula:</b> SE/CO usa a curva base; S/NE/N usam preço fixo por submercado; sobre a convencional resultante soma-se o spread da fonte incentivada por mês (só para incentivadas). 1ª coluna = PLD do mês fechado; demais = forward. Baixe o modelo CSV no padrão da página (mês × SE/CO × S/NE/N × spread de cada fonte), preencha e suba de uma vez para calcular o MtM de todos os produtos. CCEE bloqueia acesso automático — use o <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
+    '<span style="color:#97a3b6;font-size:11px;max-width:600px;line-height:1.5"><b>Fórmula:</b> SE/CO usa a curva base; S/NE/N usam preço fixo por submercado; sobre a convencional resultante soma-se o spread da fonte incentivada por mês (só para incentivadas). 1ª coluna = PLD do mês fechado; demais = forward. Baixe o modelo CSV no padrão da página (mês × SE/CO × S/NE/N × spread de cada fonte), preencha e suba de uma vez para calcular o MtM de todos os produtos. <b>Buscar PLD na CCEE</b> puxa o PLD médio do mês de referência via portal <a href="https://dadosabertos.ccee.org.br/" target="_blank" style="color:#6ea0ff">Dados Abertos CCEE</a> (server-side); se falhar, informe manualmente pelo <a href="https://www.ccee.org.br/web/guest/precos/painel-precos" target="_blank" style="color:#6ea0ff">Painel de Preços</a>.</span>'+
     '<span id="mtmErr" class="err" style="display:none"></span></div>';
   if(months.length){
     // ── Curva base SE/CO convencional ──
@@ -2374,8 +2374,21 @@ function bindMtM(){
   var cv=document.getElementById('convSave'); if(cv) cv.onclick=function(){ readAll(); rerender(); };
   var sp=document.getElementById('spSave'); if(sp) sp.onclick=function(){ readAll(); rerender(); };
   var pf=document.getElementById('pldFetch'); if(pf) pf.onclick=function(){
-    err('Conectando à CCEE...');
-    fetch('https://www.ccee.org.br/web/guest/precos/painel-precos',{mode:'cors'}).then(function(r){return r.text();}).then(function(){ err('Conexão respondeu, mas o painel CCEE exige sessão/JS e bloqueia leitura externa — informe o PLD manualmente na curva.'); }).catch(function(){ err('A CCEE bloqueia acesso automático (CORS/anti-bot). Copie o PLD do Painel de Preços e informe na 1ª coluna da curva.'); });
+    if(!sb||!sb.functions){ err('Serviço indisponível (faça login) — informe o PLD manualmente na curva.'); return; }
+    readAll(); // preserva o que já foi digitado
+    err('Buscando PLD na CCEE (Dados Abertos)…');
+    var ref=M.refMonth;
+    sb.functions.invoke('pld-ccee',{body:{mes:ref}}).then(function(res){
+      var d=res&&res.data;
+      if(res&&res.error){ err('Falha ao buscar na CCEE: '+(res.error.message||res.error)+'. Informe o PLD manualmente.'); return; }
+      if(!d||!d.ok||!d.precos){ err('CCEE não retornou PLD'+(d&&d.detalhe?' ('+d.detalhe+')':'')+'. Informe o PLD manualmente.'); return; }
+      var p=d.precos, mesRet=d.mes||ref, aplic=[];
+      if(p['SE/CO']!=null){ M.base[ref]=p['SE/CO']; aplic.push('SE/CO'); }
+      SUBS_OTHER.forEach(function(sub){ if(p[sub]!=null){ if(!M.subPrice[sub])M.subPrice[sub]={}; M.subPrice[sub][ref]=p[sub]; aplic.push(sub); } });
+      if(!aplic.length){ err('CCEE respondeu mas sem submercados reconhecidos. Informe o PLD manualmente.'); return; }
+      saveMtM(M); document.getElementById('viewBody').innerHTML=viewMtM(); bindMtM();
+      var e=document.getElementById('mtmErr'); if(e){ e.style.color='#34d399'; e.textContent='PLD '+mesRet+' preenchido na coluna de referência ('+aplic.join(', ')+') via '+(d.dataset||'CCEE')+'. Revise e clique em "Salvar tudo e recalcular".'; e.style.display='inline'; }
+    }).catch(function(ex){ err('Não foi possível conectar à função de PLD: '+(ex&&ex.message||ex)+'. Informe o PLD manualmente.'); });
   };
   var tb=document.getElementById('mtmTmplBtn'); if(tb) tb.onclick=function(){ readAll(); downloadFile('modelo_curva_mtm.csv', mtmTemplateCSV(cs,M)); };
   var ub=document.getElementById('mtmUploadBtn'), ui=document.getElementById('mtmUploadInput');
