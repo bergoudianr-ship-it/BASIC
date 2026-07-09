@@ -331,13 +331,36 @@ var _feriadosCache={};
 function feriadosAno(y){
   if(_feriadosCache[y]) return _feriadosCache[y];
   // Feriados nacionais fixos (inclui 20/11 Consciência Negra — Lei 14.759/2023).
-  var set={}; ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'].forEach(function(md){ set[y+'-'+md]=true; });
+  var set={}; ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25','12-31'].forEach(function(md){ set[y+'-'+md]=true; });
   var pa=calcularPascoa(y);
   function rel(off){ var d=new Date(pa); d.setDate(d.getDate()+off); set[isoLocal(d)]=true; }
   rel(-48); rel(-47); // Carnaval (segunda e terça — bancos fechados)
   rel(-2);            // Sexta-feira Santa
   rel(60);            // Corpus Christi
   _feriadosCache[y]=set; return set;
+}
+// Lista rotulada de feriados nacionais + datas sem expediente bancário (regra bancos nacionais).
+function feriadosBancariosList(y){
+  var pa=calcularPascoa(y);
+  function rel(off){ var d=new Date(pa); d.setDate(d.getDate()+off); return isoLocal(d); }
+  var lista=[
+    {data:y+'-01-01', nome:'Confraternização Universal'},
+    {data:rel(-48), nome:'Carnaval (segunda-feira)'},
+    {data:rel(-47), nome:'Carnaval (terça-feira)'},
+    {data:rel(-2),  nome:'Sexta-feira Santa (Paixão de Cristo)'},
+    {data:y+'-04-21', nome:'Tiradentes'},
+    {data:y+'-05-01', nome:'Dia do Trabalho'},
+    {data:rel(60),  nome:'Corpus Christi'},
+    {data:y+'-09-07', nome:'Independência do Brasil'},
+    {data:y+'-10-12', nome:'Nossa Senhora Aparecida'},
+    {data:y+'-11-02', nome:'Finados'},
+    {data:y+'-11-15', nome:'Proclamação da República'},
+    {data:y+'-11-20', nome:'Consciência Negra (Lei 14.759/2023)'},
+    {data:y+'-12-25', nome:'Natal'},
+    {data:y+'-12-31', nome:'Sem expediente bancário (último dia útil do ano)'}
+  ];
+  lista.sort(function(a,b){ return a.data<b.data?-1:a.data>b.data?1:0; });
+  return lista;
 }
 function ehFeriado(d){ return !!feriadosAno(d.getFullYear())[isoLocal(d)]; }
 function ehDiaUtil(d){ var wd=d.getDay(); return wd!==0 && wd!==6 && !ehFeriado(d); }
@@ -515,7 +538,7 @@ function volMWh(c){ return c.volAjMWh||c.volPrevMWh; }
 // ── State ────────────────────────────────────────────────────────────────
 var STATE = { contracts: [], tab: 'dashboard' };
 var FIN_FILTER = '';
-var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['backoffice','Backoffice'],['financeiro','Financeiro'],['config','Configurações']];
+var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['backoffice','Backoffice'],['ccee','CCEE'],['financeiro','Financeiro'],['config','Configurações']];
 var MARKET_PRICE = null;
 function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\b(sa|ltda|me|epp|eireli|energia|comercializadora|geracao)\b/g,'').replace(/[^a-z0-9]/g,''); }
 function onlyDigits(s){ return (s||'').replace(/\D/g,''); }
@@ -957,9 +980,11 @@ function bindCriarContrato(){
 // ── Ajuste mensal (volume/preço ajustado por mês de fornecimento) ──
 function ajusteMensalCard(cs){
   var ist='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
-  var ativos=cs.filter(function(c){return !c.cancelado;});
+  var bloqueados=cs.filter(function(c){return !c.cancelado && isFaturado(c);}).length;
+  var ativos=cs.filter(function(c){return !c.cancelado && !isFaturado(c);});
   var h='<div class="card" style="margin-bottom:18px">'+
     '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Ajuste mensal de volume/preço</div>'+
+    (bloqueados?'<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.22);color:#34d399;font-size:11px">🔒 '+bloqueados+' contrato(s) aprovado(s) para faturamento estão bloqueados para edição e não aparecem aqui. Cancele o faturamento na aba Financeiro para editar.</div>':'')+
     '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">'+
     '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Contrato</span><select id="amContrato" '+ist+'>'+
       ativos.map(function(c){ return '<option value="'+c._id+'">'+esc(c.negocio)+' — '+esc(c.empresa)+'</option>'; }).join('')+
@@ -1009,9 +1034,13 @@ function fichaHTML(c){
   if(c.submercado) h+='<span class="badge badge-gray">'+esc(c.submercado)+'</span>';
   if(c.fonte) h+='<span class="badge badge-purple">'+esc(c.fonte)+'</span>';
   if(al.length) h+='<span class="badge badge-red">'+al.length+' alerta(s)</span>';
-  if(c.faturar) h+='<span class="badge badge-yellow" title="Marcado para faturamento — exclusão bloqueada">Faturamento</span>';
-  h+='<button class="btn btn-ghost" data-cancel="'+c._id+'" style="padding:3px 8px;font-size:11px" title="'+(c.cancelado?'Reativar contrato':'Cancelar contrato')+'">'+(c.cancelado?'Reativar':'Cancelar')+'</button>';
-  if(!c.faturar) h+='<button class="btn btn-ghost" data-delc="'+c._id+'" style="padding:3px 8px;font-size:11px;color:#f87171;border-color:#5c2020" title="Excluir contrato">Excluir</button>';
+  if(isFaturado(c)){
+    h+='<span class="badge badge-green" title="Aprovado para faturamento — bloqueado para edição">🔒 Faturado — bloqueado</span>';
+  } else {
+    if(c.faturar) h+='<span class="badge badge-yellow" title="Marcado para faturamento — exclusão bloqueada">Faturamento</span>';
+    h+='<button class="btn btn-ghost" data-cancel="'+c._id+'" style="padding:3px 8px;font-size:11px" title="'+(c.cancelado?'Reativar contrato':'Cancelar contrato')+'">'+(c.cancelado?'Reativar':'Cancelar')+'</button>';
+    if(!c.faturar) h+='<button class="btn btn-ghost" data-delc="'+c._id+'" style="padding:3px 8px;font-size:11px;color:#f87171;border-color:#5c2020" title="Excluir contrato">Excluir</button>';
+  }
   h+='</span></div>';
   h+='<div class="ficha-body" data-body="'+c._id+'" style="display:none">';
   function fld(l,v){ return '<div><div class="ficha-label">'+l+'</div><div class="ficha-value">'+v+'</div></div>'; }
@@ -1386,7 +1415,70 @@ var CCEE_PERFILIZACAO=['Conforme curva de carga','Modulação'];
 var PAG_TIPOS=['PIX','TED','Boleto','DOC'];
 function loadCP(){ try{ return JSON.parse(localStorage.getItem('saas_contrapartes')||'[]'); }catch(e){ return []; } }
 function saveCP(a){ try{ localStorage.setItem('saas_contrapartes', JSON.stringify(a)); }catch(e){} }
+// ── Condições de pagamento (presets reutilizáveis + calendário bancário) ────
+var COND_PAG_BASES=[['fim_mes','Fim do mês de suprimento'],['emissao_nf','Emissão da NF'],['fim_forn','Fim do fornecimento']];
+function condPagBaseLabel(b){ for(var i=0;i<COND_PAG_BASES.length;i++) if(COND_PAG_BASES[i][0]===b) return COND_PAG_BASES[i][1]; return 'Fim do mês de suprimento'; }
+function loadCondPag(){ try{ return JSON.parse(localStorage.getItem('saas_cond_pagamento')||'null')||condPagDefault(); }catch(e){ return condPagDefault(); } }
+function saveCondPag(a){ try{ localStorage.setItem('saas_cond_pagamento', JSON.stringify(a)); }catch(e){} }
+function condPagDefault(){ return [
+  {id:'cp_d7', nome:'D+7', dias:7, base:'fim_mes', obs:'Curto prazo'},
+  {id:'cp_d15', nome:'D+15', dias:15, base:'fim_mes', obs:''},
+  {id:'cp_d30', nome:'D+30', dias:30, base:'fim_mes', obs:'Padrão de mercado ACL'}
+]; }
 function findCP(nome){ var n=norm(nome); var list=loadCP(); for(var i=0;i<list.length;i++){ if(norm(list[i].razaoSocial)===n||norm(list[i].nomeFantasia)===n) return list[i]; } return null; }
+function condPagSection(){
+  var inp='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
+  var conds=loadCondPag();
+  var ano=2026, hoje=TODAY;
+  var h='<div class="section-header"><span class="section-title">Condições de Pagamento</span></div>';
+  h+='<div class="card" style="margin-bottom:14px"><div style="color:#97a3b6;font-size:11px;line-height:1.5">Cadastre as condições de pagamento (ex.: <b>D+30</b>) reutilizáveis nos contratos. O vencimento é contado a partir da base escolhida e <b>ajustado para o próximo dia útil</b>, pulando fins de semana e feriados nacionais segundo a regra dos bancos brasileiros (inclui Carnaval, Sexta-feira Santa, Corpus Christi, Consciência Negra e o dia 31/12 sem expediente bancário).</div></div>';
+  // Cadastro de nova condição
+  h+='<div class="card" style="margin-bottom:14px">'+
+    '<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Nova condição de pagamento</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1.4fr 1.4fr auto;gap:10px;align-items:end">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Nome*</span><input id="cpNome" placeholder="ex.: D+30" '+inp+'></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Dias (D+)</span><input id="cpDias" type="number" min="0" step="1" placeholder="30" '+inp+'></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Base de contagem</span><select id="cpBase" '+inp+'>'+COND_PAG_BASES.map(function(b){return '<option value="'+b[0]+'">'+esc(b[1])+'</option>';}).join('')+'</select></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Observação</span><input id="cpObs" placeholder="opcional" '+inp+'></label>'+
+    '<button class="btn btn-primary" id="cpAdd">Adicionar</button>'+
+    '</div><div id="cpErr" class="err" style="display:none"></div></div>';
+  // Lista de condições com exemplo de vencimento
+  h+='<div class="card" style="margin-bottom:14px"><div class="card-title">Condições cadastradas ('+conds.length+')</div><div class="table-wrap"><table><thead><tr><th>Nome</th><th style="text-align:right">Dias</th><th>Base</th><th>Observação</th><th>Exemplo de vencimento*</th><th></th></tr></thead><tbody>';
+  // Exemplo: base = fim do mês corrente
+  var fimMes=new Date(hoje.getFullYear(), hoje.getMonth()+1, 0);
+  conds.forEach(function(cp){
+    var venc=calcVencimento(fimMes, 'D+'+(cp.dias||0));
+    h+='<tr><td style="font-weight:600;color:#f1f5f9">'+esc(cp.nome)+'</td><td class="td-num">'+(cp.dias||0)+'</td><td>'+esc(condPagBaseLabel(cp.base))+'</td><td style="color:#94a3b8">'+esc(cp.obs||'—')+'</td>'+
+      '<td>'+(venc?isoLocal(venc).split('-').reverse().join('/'):'—')+' <span style="color:#5b6678;font-size:10px">('+diaSemanaBR(venc)+')</span></td>'+
+      '<td><button class="btn btn-ghost" data-delcond="'+esc(cp.id)+'" style="color:#f87171;border-color:#5c2020;padding:3px 8px;font-size:11px">Excluir</button></td></tr>';
+  });
+  if(!conds.length) h+='<tr><td colspan="6" style="text-align:center;color:#64748b">Nenhuma condição cadastrada.</td></tr>';
+  h+='</tbody></table></div><div style="color:#5b6678;font-size:10px;margin-top:6px">*Exemplo calculado a partir do fim do mês atual ('+isoLocal(fimMes).split('-').reverse().join('/')+'), ajustado ao próximo dia útil.</div></div>';
+  // Calendário bancário 2026
+  var fer=feriadosBancariosList(ano);
+  h+='<div class="card" style="margin-bottom:20px"><div class="card-title">Calendário bancário oficial '+ano+' — feriados nacionais e datas sem expediente</div>'+
+    '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Dia da semana</th><th>Feriado / evento</th></tr></thead><tbody>';
+  fer.forEach(function(f){ var d=new Date(f.data+'T12:00:00');
+    h+='<tr><td>'+f.data.split('-').reverse().join('/')+'</td><td>'+diaSemanaBR(d)+'</td><td>'+esc(f.nome)+'</td></tr>'; });
+  h+='</tbody></table></div><div style="color:#5b6678;font-size:10px;margin-top:6px">Base: feriados nacionais (Lei 662/1949, Lei 6.802/1980 e Lei 14.759/2023) e calendário de não funcionamento bancário FEBRABAN. Feriados estaduais/municipais não estão incluídos.</div></div>';
+  return h;
+}
+function diaSemanaBR(d){ if(!d) return '—'; return ['domingo','segunda','terça','quarta','quinta','sexta','sábado'][d.getDay()]; }
+function condPagBind(){
+  function v(id){ var e=document.getElementById(id); return e?e.value:''; }
+  var add=document.getElementById('cpAdd');
+  if(add) add.onclick=function(){
+    var nome=v('cpNome').trim(); var err=document.getElementById('cpErr');
+    if(!nome){ if(err){ err.textContent='Informe o nome da condição.'; err.style.display='block'; } return; }
+    var dias=parseInt(v('cpDias'),10); if(isNaN(dias)||dias<0) dias=0;
+    var list=loadCondPag();
+    list.push({ id:'cp_'+Date.now()+'_'+Math.floor(Math.random()*10000), nome:nome, dias:dias, base:v('cpBase')||'fim_mes', obs:v('cpObs').trim() });
+    saveCondPag(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig();
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-delcond]'),function(el){
+    el.onclick=function(){ var id=el.getAttribute('data-delcond'); var list=loadCondPag().filter(function(x){return x.id!==id;}); saveCondPag(list); document.getElementById('viewBody').innerHTML=viewConfig(); bindConfig(); };
+  });
+}
 function viewConfig(){
   var cps=loadCP();
   var inp='style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;outline:none;width:100%"';
@@ -1405,7 +1497,8 @@ function viewConfig(){
       '<button class="btn btn-primary" id="garSave">Salvar</button>'+
     '</div><div id="garMsg" style="font-size:11px;color:#34d399;margin-top:8px;display:none">Salvo ✓</div>'+
     '</div>';
-  h+='<div class="section-header"><span class="section-title">Configurações — Contrapartes</span></div>';
+  h+=condPagSection();
+  h+='<div class="section-header"><span class="section-title">Cadastro de Contrapartes</span></div>';
   h+='<div class="card" style="margin-bottom:20px">'+
     sec('Identificação')+g3+
     fld('Razão social*','<input id="cRazao" type="text" '+inp+'>')+
@@ -1482,6 +1575,7 @@ function viewConfig(){
 }
 function bindConfig(){
   cfgUsersBind();
+  condPagBind();
   var gs=document.getElementById('garSave'); if(gs) gs.onclick=function(){
     var f=parseFloat((document.getElementById('garFisica').value||'').replace(',','.'))||0;
     var fin=parseFloat((document.getElementById('garFinanceira').value||'').replace(',','.'))||0;
@@ -1591,8 +1685,12 @@ function viewFaturamento(cs){
      '</div></div>';
   var baseVenc = FIN_MES ? new Date(+FIN_MES.split('-')[0], +FIN_MES.split('-')[1], 0) : null;
   h+='<div class="card" style="margin-bottom:8px"><div style="color:#97a3b6;font-size:11px;line-height:1.5"><b>Prazo de pagamento:</b> o vencimento é calculado pela condição de pagamento do contrato (ex.: D+30) a partir do fim do mês de suprimento, ajustado para o próximo <b>dia útil</b> (pula fins de semana e feriados nacionais, inclusive Carnaval, Sexta-feira Santa e Corpus Christi). <b>Contrato aprovado para faturamento fica bloqueado para edição.</b></div></div>';
-  h+='<div class="card"><div class="table-wrap"><table><thead><tr><th></th><th>Negócio</th><th>Empresa</th><th>Tipo</th><th>Volume MWm</th><th>Cond. pag.</th><th>Vencimento</th><th>Status contrato</th><th>Faturamento</th><th>Ação</th></tr></thead><tbody>';
-  if(!filtered.length) h+='<tr><td colspan="10" style="text-align:center;color:#64748b">Nenhum contrato encontrado para os filtros aplicados</td></tr>';
+  h+='<div class="card" style="padding:0"><div class="table-wrap"><table><thead><tr>'+
+     '<th title="Marcar para faturamento"><input type="checkbox" id="finCheckAll" title="Marcar todos os visíveis"></th>'+
+     '<th>Negócio</th><th>Contraparte</th><th>Negociante</th><th>Tipo Op.</th><th>Submercado</th><th>Fonte</th><th>Classificação</th><th>Status</th>'+
+     '<th style="text-align:right">Volume MWm</th><th style="text-align:right">Preço R$/MWh</th><th>Início</th><th>Fim</th>'+
+     '<th>Cond. pag.</th><th>Vencimento</th><th>Faturamento</th><th>Ação</th></tr></thead><tbody>';
+  if(!filtered.length) h+='<tr><td colspan="17" style="text-align:center;color:#64748b">Nenhum contrato encontrado para os filtros aplicados</td></tr>';
   filtered.forEach(function(c){
     var st=status(c), fat=isFaturado(c);
     var base = baseVenc || c.fimForn || TODAY;
@@ -1601,13 +1699,22 @@ function viewFaturamento(cs){
     var acao = fat
       ? '<button class="btn btn-ghost" data-cancelarfat="'+c._id+'" style="padding:3px 8px;font-size:11px;color:#f87171;border-color:#5c2020">Cancelar faturamento</button>'
       : '<button class="btn btn-primary" data-aprovarfat="'+c._id+'" style="padding:3px 8px;font-size:11px">Aprovar faturamento</button>';
-    h+='<tr data-fatrow="'+c._id+'"><td><input type="checkbox" data-fat="'+c._id+'" '+(c.faturar?'checked':'')+(fat?' disabled':'')+'></td>'+
-       '<td>'+esc(c.negocio||'—')+'</td><td>'+esc(c.empresa||'—')+'</td>'+
+    h+='<tr data-fatrow="'+c._id+'"'+(fat?' style="background:rgba(52,211,153,.05)"':'')+'>'+
+       '<td><input type="checkbox" data-fat="'+c._id+'" '+(c.faturar?'checked':'')+(fat?' disabled':'')+'></td>'+
+       '<td style="font-weight:600;color:#f1f5f9">'+esc(c.negocio||'—')+'</td>'+
+       '<td>'+esc(c.empresa||'—')+'</td>'+
+       '<td>'+esc(c.negociante||'—')+'</td>'+
        '<td><span class="badge '+(isVenda(c)?'badge-green':'badge-blue')+'">'+esc(c.tipoOp||'—')+'</span></td>'+
-       '<td class="td-num">'+fmt(c.volMWm)+'</td>'+
+       '<td>'+esc(c.submercado||'—')+'</td>'+
+       '<td>'+esc(c.fonte||'—')+'</td>'+
+       '<td>'+esc(c.classificacao||'—')+'</td>'+
+       '<td><span class="badge '+st.cls+'">'+esc(st.label)+'</span></td>'+
+       '<td class="td-num">'+fmt(volMWm(c))+'</td>'+
+       '<td class="td-num">'+fmt(c.precAj||c.precPrev)+'</td>'+
+       '<td>'+(c.inicioForn?c.inicioForn.toLocaleDateString('pt-BR'):'—')+'</td>'+
+       '<td>'+(c.fimForn?c.fimForn.toLocaleDateString('pt-BR'):'—')+'</td>'+
        '<td>'+esc(c.condPag||'—')+'</td>'+
        '<td>'+(venc?isoLocal(venc).split('-').reverse().join('/'):'—')+'</td>'+
-       '<td><span class="badge '+st.cls+'">'+esc(st.label)+'</span></td>'+
        '<td>'+fatBadge+'</td>'+
        '<td>'+acao+'</td></tr>';
   });
@@ -1628,6 +1735,13 @@ function bindFaturamento(){
       document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro();
     };
   });
+  var checkAll=document.getElementById('finCheckAll');
+  if(checkAll) checkAll.onchange=function(){
+    var mark=checkAll.checked;
+    var list=STATE.contracts.filter(function(c){return !c.cancelado;}).filter(function(c){return monthOverlap(c,FIN_MES)&&dateOverlap(c,FIN_DATA)&&matchesSearch(c,FIN_SEARCH);});
+    list.forEach(function(c){ if(!isFaturado(c)) c.faturar=mark; });
+    saveContracts(); document.getElementById('viewBody').innerHTML=viewFinanceiro(); bindFinanceiro();
+  };
   Array.prototype.forEach.call(document.querySelectorAll('[data-aprovarfat]'),function(el){
     el.onclick=function(){
       var c=STATE.contracts.find(function(x){return x._id===el.getAttribute('data-aprovarfat');}); if(!c) return;
@@ -1737,46 +1851,95 @@ function viewBackoffice(){
   } else {
     h+='<div class="empty-state"><div class="empty-icon">▤</div><div class="empty-text">Nenhuma curva horária carregada. Baixe a planilha modelo, preencha o consumo e a geração hora a hora e suba para apurar a modulação.</div></div>';
   }
-  // ── CCEE — Garantias, Participantes, Consumo e Liquidação (dados oficiais) ──
-  h+='<div class="section-header"><span class="section-title">CCEE — Backoffice de Mercado</span></div>';
-  h+=garantiaResumoCard();
-  h+='<div class="card" style="margin-bottom:14px"><div style="color:#97a3b6;font-size:11px;line-height:1.5"><b>Fonte:</b> tabelas CCEE (<code>ccee_agentes</code>, <code>ccee_consumo</code>, <code>ccee_garantias</code>, <code>ccee_liquidacao</code>), ligadas pelo <b>Código de Agente CCEE</b>. Serão populadas pela futura API da CCEE; abaixo, dados atuais do banco.</div></div>';
-  h+='<div class="card" style="margin-bottom:14px"><div class="card-title">Participantes ACL (agentes CCEE)</div><div id="cceeAgentes" class="table-wrap">Carregando…</div></div>';
-  h+='<div class="grid-2">'+
-     '<div class="card"><div class="card-title">Consumo / Medição (por competência)</div><div id="cceeConsumo" class="table-wrap">Carregando…</div></div>'+
-     '<div class="card"><div class="card-title">Garantias & Penalidades (CCEE)</div><div id="cceeGarantias" class="table-wrap">Carregando…</div></div>'+
-     '</div>';
-  h+='<div class="card" style="margin-top:14px"><div class="card-title">Liquidação / Contabilização (MCP)</div><div id="cceeLiquidacao" class="table-wrap">Carregando…</div></div>';
+  h+='<div class="card" style="margin-top:8px"><div style="color:#97a3b6;font-size:11px;line-height:1.5">Os dados de mercado da CCEE (agentes, contratos, consumo, medição, garantias, liquidação, alavancagem, migração e bandeiras ANEEL) foram movidos para a aba <b>CCEE</b>.</div></div>';
   return h;
 }
 function fmtDataBR(d){ if(!d) return '—'; var s=String(d).slice(0,10).split('-'); return s.length===3? s[2]+'/'+s[1]+'/'+s[0] : String(d); }
-function cceeTable(box, rpc, cols){
+// Lê uma tabela CCEE diretamente (RLS: SELECT liberado para usuários autenticados).
+function cceeTable(box, table, cols, orderCol, asc){
   var el=document.getElementById(box); if(!el) return;
-  if(!sb){ el.innerHTML='<span style="color:#64748b">Supabase indisponível.</span>'; return; }
-  sb.rpc(rpc).then(function(r){
-    if(r.error){ el.innerHTML='<span style="color:#f87171">Erro: '+esc(r.error.message)+'</span>'; return; }
+  if(!sb){ el.innerHTML='<span style="color:#64748b">Supabase indisponível — faça login para carregar os dados da CCEE.</span>'; return; }
+  var q=sb.from(table).select('*');
+  if(orderCol) q=q.order(orderCol,{ascending:asc!==false});
+  q.limit(500).then(function(r){
+    if(r.error){ el.innerHTML='<span style="color:#64748b">Aguardando dados da CCEE para <code>'+esc(table)+'</code>.</span>'; return; }
     var rows=r.data||[];
-    if(!rows.length){ el.innerHTML='<span style="color:#64748b">Sem registros ainda (serão preenchidos pela API CCEE).</span>'; return; }
-    var h='<table><thead><tr>'+cols.map(function(c){return '<th>'+esc(c.t)+'</th>';}).join('')+'</tr></thead><tbody>';
+    if(!rows.length){ el.innerHTML='<span style="color:#64748b">Sem registros em <code>'+esc(table)+'</code> ainda (serão preenchidos pela integração CCEE).</span>'; return; }
+    var h='<table><thead><tr>'+cols.map(function(c){return '<th'+(c.num?' style="text-align:right"':'')+'>'+esc(c.t)+'</th>';}).join('')+'</tr></thead><tbody>';
     rows.forEach(function(row){ h+='<tr>'+cols.map(function(c){ var v=c.f?c.f(row[c.k],row):row[c.k]; return '<td'+(c.num?' class="td-num"':'')+'>'+(v==null||v===''?'—':esc(String(v)))+'</td>'; }).join('')+'</tr>'; });
     h+='</tbody></table>'; el.innerHTML=h;
   });
 }
-function loadCCEEBackoffice(){
-  cceeTable('cceeAgentes','fn_ccee_agentes',[
+function badgeText(v,map){ v=String(v==null?'':v); var cls=map&&map[v]||'badge-gray'; return v?'<span class="badge '+cls+'">'+esc(v)+'</span>':'—'; }
+function loadCCEEData(){
+  cceeTable('cceeAgentes','ccee_agentes',[
     {t:'Código',k:'codigo_ccee'},{t:'Nome',k:'nome'},{t:'CNPJ',k:'cnpj'},{t:'Perfil',k:'perfil'},{t:'Classe',k:'classe'},
     {t:'Submercado',k:'submercado'},{t:'Garantia física (MWm)',k:'garantia_fisica_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},
-    {t:'Consumo médio (MWm)',k:'consumo_medio_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Habilitação',k:'data_habilitacao',f:fmtDataBR},{t:'Status',k:'status'}]);
-  cceeTable('cceeConsumo','fn_ccee_consumo',[
+    {t:'Consumo médio (MWm)',k:'consumo_medio_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Habilitação',k:'data_habilitacao',f:fmtDataBR},{t:'Status',k:'status'}],'nome',true);
+  cceeTable('cceeContratos','ccee_contratos',[
+    {t:'Contrato CCEE',k:'codigo_contrato_ccee'},{t:'Vendedor',k:'codigo_agente_vendedor'},{t:'Comprador',k:'codigo_agente_comprador'},
+    {t:'Submercado',k:'submercado'},{t:'Fonte',k:'fonte_energia'},{t:'Tipo',k:'tipo_energia'},
+    {t:'Montante (MWm)',k:'montante_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Modulação',k:'modulacao'},
+    {t:'Flex +%',k:'flex_superior_pct',num:true,f:function(v){return v==null?'—':fmt(v,1);}},{t:'Flex −%',k:'flex_inferior_pct',num:true,f:function(v){return v==null?'—':fmt(v,1);}},
+    {t:'Preço (R$/MWh)',k:'preco_rs_mwh',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Início',k:'inicio_fornecimento',f:fmtDataBR},{t:'Fim',k:'fim_fornecimento',f:fmtDataBR},{t:'Status',k:'status'}],'inicio_fornecimento',true);
+  cceeTable('aclContratos','acl_contratos',[
+    {t:'Contrato',k:'codigo_contrato'},{t:'Contraparte',k:'contraparte'},{t:'Tipo',k:'tipo',f:function(v){return badgeText(v,{compra:'badge-blue',venda:'badge-green'});}},
+    {t:'Montante (MWm)',k:'montante_mwmed',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Preço (R$/MWh)',k:'preco_rs_mwh',num:true,f:function(v){return v==null?'—':fmtR(v);}},
+    {t:'Início',k:'inicio_fornec',f:fmtDataBR},{t:'Fim',k:'fim_fornec',f:fmtDataBR},{t:'Submercado',k:'submercado'},{t:'Indexador',k:'indexador'},{t:'Status',k:'status'}],'inicio_fornec',true);
+  cceeTable('cceeConsumo','ccee_consumo',[
     {t:'Código',k:'codigo_ccee'},{t:'Competência',k:'competencia',f:fmtDataBR},{t:'Consumo (MWh)',k:'consumo_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},
-    {t:'Medido (MWh)',k:'medido_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},{t:'Submercado',k:'submercado'}]);
-  cceeTable('cceeGarantias','fn_ccee_garantias',[
+    {t:'Medido (MWh)',k:'medido_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},{t:'Submercado',k:'submercado'}],'competencia',false);
+  cceeTable('cceeMedicao','ccee_medicao',[
+    {t:'Código',k:'codigo_ccee'},{t:'Ponto de medição',k:'ponto_medicao'},{t:'Competência',k:'competencia',f:fmtDataBR},
+    {t:'Consumo ativo (MWh)',k:'consumo_ativo_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},{t:'Geração (MWh)',k:'geracao_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},
+    {t:'Perdas (MWh)',k:'perdas_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},{t:'Submercado',k:'submercado'}],'competencia',false);
+  cceeTable('cceeGarantias','ccee_garantias',[
     {t:'Código',k:'codigo_ccee'},{t:'Competência',k:'competencia',f:fmtDataBR},{t:'Lastro req. (MWm)',k:'lastro_requerido_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},
-    {t:'Lastro disp. (MWm)',k:'lastro_disponivel_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Gar. aportada (R$)',k:'garantia_aportada_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Status',k:'status'}]);
-  cceeTable('cceeLiquidacao','fn_ccee_liquidacao',[
-    {t:'Código',k:'codigo_ccee'},{t:'Competência',k:'competencia',f:fmtDataBR},{t:'Submercado',k:'submercado'},{t:'Exposição (MWh)',k:'exposicao_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},
-    {t:'PLD médio',k:'pld_medio',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Liquidação (R$)',k:'valor_liquidacao_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Status',k:'status'}]);
+    {t:'Lastro disp. (MWm)',k:'lastro_disponivel_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Gar. req. (R$)',k:'garantia_requerida_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},
+    {t:'Gar. aportada (R$)',k:'garantia_aportada_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Penalidade (R$)',k:'penalidade_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Status',k:'status'}],'competencia',false);
+  cceeTable('cceeLiquidacao','ccee_liquidacao',[
+    {t:'Código',k:'codigo_ccee'},{t:'Competência',k:'competencia',f:fmtDataBR},{t:'Submercado',k:'submercado'},
+    {t:'Recurso (MWm)',k:'recurso_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},{t:'Requisito (MWm)',k:'requisito_mwm',num:true,f:function(v){return v==null?'—':fmt(v,3);}},
+    {t:'Exposição (MWh)',k:'exposicao_mwh',num:true,f:function(v){return v==null?'—':fmt(v,1);}},{t:'PLD médio',k:'pld_medio',num:true,f:function(v){return v==null?'—':fmtR(v);}},
+    {t:'Liquidação (R$)',k:'valor_liquidacao_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Inadimplência (R$)',k:'inadimplencia_rs',num:true,f:function(v){return v==null?'—':fmtR(v);}},{t:'Status',k:'status'}],'competencia',false);
+  cceeTable('cceeAlavancagem','ccee_alavancagem',[
+    {t:'Data referência',k:'data_referencia',f:fmtDataBR},{t:'Fator de alavancagem',k:'fator_alavancagem',num:true,f:function(v){return v==null?'—':fmt(v,2);}},
+    {t:'Limite regulatório',k:'limite_regulatorio',num:true,f:function(v){return v==null?'—':fmt(v,2);}},{t:'Alerta',k:'status_alerta'},
+    {t:'Agentes monitorados',k:'agentes_monitorados',num:true},{t:'Observações',k:'observacoes'}],'data_referencia',false);
+  cceeTable('cceeMigracao','ccee_migracao',[
+    {t:'Código',k:'codigo_ccee'},{t:'CNPJ',k:'cnpj'},{t:'Distribuidora',k:'distribuidora'},{t:'Demanda (kW)',k:'demanda_contratada_kw',num:true,f:function(v){return v==null?'—':fmt(v,0);}},
+    {t:'Classe',k:'classe'},{t:'Denúncia',k:'data_denuncia',f:fmtDataBR},{t:'Prazo denúncia (dias)',k:'prazo_denuncia_dias',num:true},
+    {t:'Adesão CCEE',k:'data_adesao_ccee',f:fmtDataBR},{t:'Migração prevista',k:'data_migracao_prevista',f:fmtDataBR},{t:'Status',k:'status'}],'data_migracao_prevista',true);
+  cceeTable('aneelBandeiras','aneel_bandeiras',[
+    {t:'Ano/Mês',k:'ano_mes'},{t:'Bandeira',k:'bandeira',f:function(v){return badgeText(v,{verde:'badge-green',amarela:'badge-yellow',vermelha1:'badge-red',vermelha2:'badge-red',escassez:'badge-red'});}},
+    {t:'Adicional (R$/kWh)',k:'adicional_rs_kwh',num:true,f:function(v){return v==null?'—':fmt(v,5);}},{t:'Vigência início',k:'vigencia_inicio',f:fmtDataBR},
+    {t:'Vigência fim',k:'vigencia_fim',f:fmtDataBR},{t:'Resolução ANEEL',k:'resolucao_aneel'}],'ano_mes',false);
 }
+// ── Aba CCEE — todos os dados de mercado da CCEE em um só lugar ─────────────
+function viewCCEE(){
+  var h='<div class="section-header"><span class="section-title">CCEE — Câmara de Comercialização de Energia Elétrica</span></div>';
+  h+='<div class="card" style="margin-bottom:14px"><div style="color:#97a3b6;font-size:11px;line-height:1.5">Consolida os dados de mercado da CCEE, ligados pelo <b>Código de Agente CCEE</b> cadastrado em Configurações. As tabelas refletem o banco (<code>ccee_agentes</code>, <code>ccee_contratos</code>, <code>acl_contratos</code>, <code>ccee_consumo</code>, <code>ccee_medicao</code>, <code>ccee_garantias</code>, <code>ccee_liquidacao</code>, <code>ccee_alavancagem</code>, <code>ccee_migracao</code>, <code>aneel_bandeiras</code>) e são atualizadas pela integração de dados abertos da CCEE/ANEEL.</div></div>';
+  h+=garantiaResumoCard();
+  function block(title,id,note){ return '<div class="card" style="margin-bottom:14px"><div class="card-title">'+esc(title)+'</div>'+(note?'<div style="color:#5b6678;font-size:11px;margin-bottom:8px">'+note+'</div>':'')+'<div id="'+id+'" class="table-wrap" style="overflow:auto">Carregando…</div></div>'; }
+  h+='<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:6px 0 10px">Cadastro & Contratos</div>';
+  h+=block('Agentes CCEE (participantes)','cceeAgentes','Perfil, classe, garantia física e habilitação de cada agente.');
+  h+=block('Contratos registrados na CCEE (CCEAL/CCEAR)','cceeContratos','Contratos bilaterais registrados na CCEE, por agente vendedor/comprador.');
+  h+=block('Contratos ACL (carteira comercial)','aclContratos','Contratos do Ambiente de Contratação Livre da companhia.');
+  h+='<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 10px">Medição & Consumo</div>';
+  h+='<div class="grid-2">'+
+     '<div class="card"><div class="card-title">Consumo / Medição (por competência)</div><div id="cceeConsumo" class="table-wrap" style="overflow:auto">Carregando…</div></div>'+
+     '<div class="card"><div class="card-title">Medição SCDE (pontos de medição)</div><div id="cceeMedicao" class="table-wrap" style="overflow:auto">Carregando…</div></div>'+
+     '</div>';
+  h+='<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 10px">Garantias, Liquidação & Risco</div>';
+  h+=block('Garantias & Penalidades (CCEE)','cceeGarantias','Lastro requerido/disponível, garantia aportada e penalidades por competência.');
+  h+=block('Liquidação / Contabilização (MCP)','cceeLiquidacao','Recurso × requisito, exposição ao PLD e valor de liquidação no mercado de curto prazo.');
+  h+=block('Alavancagem financeira (monitoramento CCEE)','cceeAlavancagem','Fator de alavancagem do mercado frente ao limite regulatório.');
+  h+='<div style="font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 10px">Migração & Tarifas</div>';
+  h+=block('Migração ao ACL','cceeMigracao','Denúncia à distribuidora, adesão e data prevista de migração dos consumidores.');
+  h+=block('Bandeiras tarifárias (ANEEL)','aneelBandeiras','Bandeira vigente e adicional por MWh/kWh — referência para o ACR e comparativo de economia no ACL.');
+  return h;
+}
+function bindCCEE(){ loadCCEEData(); }
 function hourlyTemplateCSV(){
   var lines=['Data;Hora;Consumo (MWh);Geração (MWh)'];
   for(var i=0;i<24;i++){ lines.push('2026-01-01;'+String(i).padStart(2,'0')+':00;1,000;0,000'); }
@@ -1815,7 +1978,6 @@ function parseHourly(raw){
   return {hours:hours,totCons:totCons,totGer:totGer,totNet:totCons-totGer,count:count,avgCons:avgC,avgNet:avgN,peakCons:peakC,fatorCarga:peakC>0?avgC/peakC:0};
 }
 function bindBackoffice(){
-  loadCCEEBackoffice();
   function err(m){ var e=document.getElementById('hrErr'); if(e){ e.textContent=m; e.style.display='inline'; } }
   function rerender(){ document.getElementById('viewBody').innerHTML=viewBackoffice(); bindBackoffice(); }
   var boMes=document.getElementById('boMes'); if(boMes) boMes.onchange=function(){ BO_MES=boMes.value; rerender(); };
@@ -2146,6 +2308,7 @@ function renderView(){
     case 'mtm': return viewMtM();
     case 'proposta': return viewProposta();
     case 'backoffice': return viewBackoffice();
+    case 'ccee': return viewCCEE();
     case 'financeiro': return viewFinanceiro();
     case 'config': return viewConfig();
     default: return viewDashboard();
@@ -2177,6 +2340,7 @@ function bindApp(){
   if(STATE.tab==='financeiro') bindFinanceiro();
   if(STATE.tab==='config') bindConfig();
   if(STATE.tab==='backoffice') bindBackoffice();
+  if(STATE.tab==='ccee') bindCCEE();
   if(STATE.tab==='dashboard') bindDashboard();
   if(STATE.tab==='portfolio') bindPortfolio();
   if(STATE.tab==='alertas') bindAlertas();
