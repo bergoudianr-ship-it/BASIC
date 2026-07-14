@@ -363,6 +363,16 @@ footer{text-align:center;padding:20px;color:var(--muted);font-size:10px;
       <span id="extra-status-badge" class="hbadge hb-gray">Inativo</span>
     </div>
 
+    <div style="margin-top:12px;">
+      <div class="card-title" style="margin-bottom:8px;">📈 Curva Forward do Portfólio Extra (R$/MWh)</div>
+      <p style="color:var(--muted);font-size:11px;margin-bottom:8px;">
+        Quando a flag acima estiver ativa, o Fator de Alavancagem passa a usar, por submercado e vértice, a
+        <b>média ponderada pela exposição NET</b> entre esta curva e a curva Forward DCIDE da aba Premissas
+        (pesos = |exposição do portfólio real| e |exposição do Portfólio Extra|). Sem exposição em algum lado, prevalece a outra curva.
+      </p>
+      <div class="tbl-wrap" id="tbl-forward-extra"></div>
+    </div>
+
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
       <button class="btn-out" onclick="downloadModeloExtra()">⬇ Baixar Modelo CSV</button>
       <div class="upload-drop" style="padding:8px 14px;display:inline-block;" onclick="document.getElementById('up-extra').click()">
@@ -488,7 +498,7 @@ const DEFAULT_PREMISSAS = {"data_referencia":"2026-05-25","forward":{"M+0":{"SEC
 
 const DEFAULT_EMPRESA = {"nome":"Minha Empresa","pla":{"pl_bruto":0,"deducoes":[{"item":"I","valor":0,"descricao":""},{"item":"II","valor":0,"descricao":""},{"item":"III","valor":0,"descricao":""},{"item":"IV","valor":0,"descricao":""},{"item":"V","valor":0,"descricao":""},{"item":"VI","valor":0,"descricao":""},{"item":"VII","valor":0,"descricao":""},{"item":"VIII","valor":0,"descricao":""}]},"preco_fixo":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"preco_variavel":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"derivativos":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"efm_regulado":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}};
 
-const DEFAULT_EXTRA = {"ativo":false,"nome":"Portfólio Extra (Simulação)","preco_fixo":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"preco_variavel":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"derivativos":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"efm_regulado":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}};
+const DEFAULT_EXTRA = {"ativo":false,"nome":"Portfólio Extra (Simulação)","forward":{"M+0":{"SECO":222.72,"SUL":23.8,"NE":-61.59,"N":-60.5,"I0":1.69,"I5":30.17,"I8":172.09,"I1":172.09},"M+1":{"SECO":227.35,"SUL":5.28,"NE":-36.7,"N":-32.64,"I0":1.83,"I5":28.61,"I8":170.29,"I1":170.29},"M+2":{"SECO":229.93,"SUL":2.72,"NE":-30.27,"N":-15.07,"I0":1.83,"I5":29.4,"I8":171.12,"I1":171.12},"M+3":{"SECO":263.05,"SUL":2.16,"NE":-28.37,"N":-11.42,"I0":1.65,"I5":29.28,"I8":169.97,"I1":169.97},"M+4":{"SECO":292.63,"SUL":2.58,"NE":-23.71,"N":-7.36,"I0":1.61,"I5":27.84,"I8":167.61,"I1":167.61},"M+5":{"SECO":313.43,"SUL":1.81,"NE":-18.07,"N":-7.05,"I0":1.61,"I5":28.98,"I8":169.53,"I1":169.53},"M+6":{"SECO":313.43,"SUL":1.81,"NE":-18.07,"N":-7.05,"I0":1.61,"I5":28.98,"I8":169.53,"I1":169.53}},"preco_fixo":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"preco_variavel":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"derivativos":{"subm":{"SE/CO":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"SUL":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"NE":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"N":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_recurso":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0},"pm_requisito":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}},"efm_regulado":{"M+0":0,"M+1":0,"M+2":0,"M+3":0,"M+4":0,"M+5":0,"M+6":0}};
 
 const DEFAULT_HISTORICO = [{"data":"2026-05-27","semana":"22/2026","fa_ris":0.0,"fa_divulgado":0.0,"rwa":0.0,"pnl":0.0,"res_fin":0.0,"pla":0.0,"var_tot":0.0,"stest_tot":0.0}];
 
@@ -560,6 +570,38 @@ function combinarPortfolios(empresa, extra){
   });
   comb.efm_regulado = efm;
   return comb;
+}
+
+function _netSubmValue(portfolioLike, subm, vi){
+  const pf = portfolioLike.preco_fixo||{}, pv = portfolioLike.preco_variavel||{}, der = portfolioLike.derivativos||{};
+  const nPf = parseFloat(((pf.subm||{})[subm]||{})[vi] ?? 0) || 0;
+  const nPv = parseFloat(((pv.subm||{})[subm]||{})[vi] ?? 0) || 0;
+  const nDer = parseFloat(((der.subm||{})[subm]||{})[vi] ?? 0) || 0;
+  return nPf+nPv+nDer;
+}
+
+// Combina a Curva Forward das Premissas com a do Portfólio Extra por média
+// ponderada pela exposição NET (|real| e |extra|) em cada submercado/vértice.
+function combinarPremissasForward(premissas, empresaReal, extra){
+  const merged = JSON.parse(JSON.stringify(premissas));
+  CVX.forEach(vi=>{
+    const combinedSubm = {};
+    CSUBMS.forEach(subm=>{
+      const fwdReal = _forwardSubm(premissas, vi, subm);
+      const fwdExtra = _forwardSubm({forward: extra.forward||{}}, vi, subm);
+      const wReal = Math.abs(_netSubmValue(empresaReal, subm, vi));
+      const wExtra = Math.abs(_netSubmValue(extra, subm, vi));
+      const totW = wReal+wExtra;
+      combinedSubm[subm] = totW>0 ? (fwdReal*wReal + fwdExtra*wExtra)/totW : fwdReal;
+    });
+    merged.forward[vi] = Object.assign({}, merged.forward[vi], {
+      SECO: combinedSubm['SE/CO'],
+      SUL:  combinedSubm['SUL'] - combinedSubm['SE/CO'],
+      NE:   combinedSubm['NE']  - combinedSubm['SE/CO'],
+      N:    combinedSubm['N']   - combinedSubm['SE/CO'],
+    });
+  });
+  return merged;
 }
 
 function calcularFA(empresa, premissas){
@@ -865,10 +907,12 @@ async function init(){
   premissas = lsGet(LS_KEYS.premissas, DEFAULT_PREMISSAS);
   emp = lsGet(LS_KEYS.empresa, DEFAULT_EMPRESA);
   extraData = lsGet(LS_KEYS.extra, DEFAULT_EXTRA);
+  if(!extraData.forward) extraData.forward = JSON.parse(JSON.stringify(premissas.forward||DEFAULT_PREMISSAS.forward));
   renderPremissas();
   loadEmpresaForm();
   renderPortfolioTables('emp', emp, triggerCalcEmp);
   renderPortfolioTables('extra', extraData, triggerCalcExtra, '-x');
+  renderExtraForward();
   syncExtraToggle();
   await calcularEmp();
 }
@@ -969,6 +1013,33 @@ function plaChanged(){
 // ============================================================
 // PORTFOLIO TABLES — reusuable for emp and sim
 // ============================================================
+// ============================================================
+// CURVA FORWARD DO PORTFÓLIO EXTRA (editável)
+// ============================================================
+const FWD_KEYS = ['SECO','SUL','NE','N','I0','I5','I8','I1'];
+const FWD_LABELS = ['SECO/CONV (R$/MWh)','SUL – spread (R$/MWh)','NORDESTE – spread (R$/MWh)','NORTE – spread (R$/MWh)','INCENTIVADA 0% (R$/MWh)','INCENTIVADA 50%/CQ5 (R$/MWh)','INCENTIVADA 80% (R$/MWh)','INCENTIVADA 100% (R$/MWh)'];
+
+function renderExtraForward(){
+  const el = document.getElementById('tbl-forward-extra'); if(!el) return;
+  const fwd = extraData.forward||{};
+  let h = `<table><thead><tr><th>Curva Forward Extra</th>`+VX.map(v=>`<th class="col-v">${v}</th>`).join('')+`</tr></thead><tbody>`;
+  FWD_KEYS.forEach((k,i)=>{
+    h += `<tr><td>${FWD_LABELS[i]}</td>`+VX.map(v=>
+      `<td><input type="number" step="0.01" value="${(fwd[v]?.[k])||0}" data-v="${v}" data-k="${k}" onchange="efwdChange(this)"></td>`
+    ).join('')+`</tr>`;
+  });
+  h += `</tbody></table>`;
+  el.innerHTML = h;
+}
+
+function efwdChange(input){
+  const {v,k} = input.dataset;
+  if(!extraData.forward) extraData.forward = {};
+  if(!extraData.forward[v]) extraData.forward[v] = {};
+  extraData.forward[v][k] = parseFloat(input.value)||0;
+  triggerCalcExtra();
+}
+
 function renderPortfolioTables(ctx, data, onChange, sfx){
   sfx = sfx || '';
   renderSection(ctx, 'pf', data.preco_fixo, 'tbl-pf'+sfx, onChange);
@@ -1121,7 +1192,8 @@ function triggerCalcEmp(){ clearTimeout(calcTimer); calcTimer=setTimeout(calcula
 async function calcularEmp(){
   const extraAtivo = !!(extraData && extraData.ativo);
   const base = extraAtivo ? combinarPortfolios(emp, extraData) : emp;
-  lastEmp = calcularFA(base, premissas);
+  const premUse = extraAtivo ? combinarPremissasForward(premissas, emp, extraData) : premissas;
+  lastEmp = calcularFA(base, premUse);
   lastEmp.extra_ativo = extraAtivo;
   updateHeader(lastEmp);
   renderResultados(lastEmp, 'emp');
@@ -1172,7 +1244,8 @@ function triggerCalcExtra(){ clearTimeout(calcExtraTimer); calcExtraTimer=setTim
 async function calcExtra(){
   if(!extraData) return;
   const real = calcularFA(emp, premissas);
-  const comb = calcularFA(combinarPortfolios(emp, extraData), premissas);
+  const premComb = combinarPremissasForward(premissas, emp, extraData);
+  const comb = calcularFA(combinarPortfolios(emp, extraData), premComb);
   lastExtraPreview = {real, combinado:comb};
   renderExtraCompare();
 }
