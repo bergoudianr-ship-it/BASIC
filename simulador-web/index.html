@@ -133,6 +133,8 @@ td input:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 2px rgba(26
 .row-check td{background:rgba(47,125,84,.1)!important;color:var(--green)!important;}
 .row-pmedio td{background:rgba(177,106,58,.05)!important;}
 .col-v{min-width:100px;}
+.delta-extra{font-size:9.5px;color:var(--amb);margin-top:2px;line-height:1.3;white-space:nowrap;font-weight:700;}
+.delta-extra span{color:var(--muted);font-weight:400;}
 
 /* ---- METRICS ---- */
 .metric{background:var(--surf3);border:1px solid var(--border);border-radius:var(--r);
@@ -1042,13 +1044,24 @@ function efwdChange(input){
 
 function renderPortfolioTables(ctx, data, onChange, sfx){
   sfx = sfx || '';
-  renderSection(ctx, 'pf', data.preco_fixo, 'tbl-pf'+sfx, onChange);
-  renderSection(ctx, 'pv', data.preco_variavel, 'tbl-pv'+sfx, onChange);
-  renderDerSection(ctx, data.derivativos, 'tbl-der'+sfx, onChange);
-  renderEFM(ctx, data.efm_regulado, 'tbl-efm'+sfx, onChange);
+  let combined = null;
+  if(ctx==='emp' && extraData && extraData.ativo) combined = combinarPortfolios(data, extraData);
+  renderSection(ctx, 'pf', data.preco_fixo, 'tbl-pf'+sfx, onChange, combined?.preco_fixo);
+  renderSection(ctx, 'pv', data.preco_variavel, 'tbl-pv'+sfx, onChange, combined?.preco_variavel);
+  renderDerSection(ctx, data.derivativos, 'tbl-der'+sfx, onChange, combined?.derivativos);
+  renderEFM(ctx, data.efm_regulado, 'tbl-efm'+sfx, onChange, combined?.efm_regulado);
 }
 
-function renderSection(ctx, sec, secData, containerId, onChange){
+// Anotação "→ total combinado" exibida abaixo do input quando o Portfólio
+// Extra está ativo e o valor combinado (real + extra) difere do real.
+function deltaExtraHtml(baseVal, combinedVal, combinedData, decimals){
+  if(!combinedData) return '';
+  const b = baseVal||0, c = combinedVal||0;
+  if(Math.abs(c-b) < 1e-6) return '';
+  return `<div class="delta-extra">→ ${fmtN(c,decimals)} <span>c/ Extra</span></div>`;
+}
+
+function renderSection(ctx, sec, secData, containerId, onChange, combinedSecData){
   const el=document.getElementById(containerId); if(!el) return;
   const hdr=`<table><thead><tr>
     <th style="min-width:220px;">Exposições</th>
@@ -1063,7 +1076,8 @@ function renderSection(ctx, sec, secData, containerId, onChange){
     rows+=`<tr><td>${SUBM_LABELS[s]}</td><td>MWm</td>`;
     VX.forEach(v=>{
       const val=(secData?.subm?.[s]?.[v])||0;
-      rows+=`<td><input type="number" step="0.1" value="${val}" data-ctx="${ctx}" data-sec="${sec}" data-field="subm" data-sub="${s}" data-v="${v}" onchange="pfChange(this)"></td>`;
+      const combVal=(combinedSecData?.subm?.[s]?.[v]);
+      rows+=`<td><input type="number" step="0.1" value="${val}" data-ctx="${ctx}" data-sec="${sec}" data-field="subm" data-sub="${s}" data-v="${v}" onchange="pfChange(this)">${deltaExtraHtml(val,combVal,combinedSecData,2)}</td>`;
     });
     rows+=`</tr>`;
   });
@@ -1080,7 +1094,8 @@ function renderSection(ctx, sec, secData, containerId, onChange){
     rows+=`<tr class="${f.cls}"><td>${f.label}</td><td>${f.unit}</td>`;
     VX.forEach(v=>{
       const val=(secData?.[f.key]?.[v])||0;
-      rows+=`<td><input type="number" step="${f.unit==='R$/MWh'?'0.01':'0.1'}" value="${val}" data-ctx="${ctx}" data-sec="${sec}" data-field="${f.key}" data-v="${v}" onchange="pfChange(this)"></td>`;
+      const combVal=(combinedSecData?.[f.key]?.[v]);
+      rows+=`<td><input type="number" step="${f.unit==='R$/MWh'?'0.01':'0.1'}" value="${val}" data-ctx="${ctx}" data-sec="${sec}" data-field="${f.key}" data-v="${v}" onchange="pfChange(this)">${deltaExtraHtml(val,combVal,combinedSecData,2)}</td>`;
     });
     rows+=`</tr>`;
   });
@@ -1091,10 +1106,10 @@ function renderSection(ctx, sec, secData, containerId, onChange){
   rows+=`<tr class="row-check" id="${ctx}-${sec}-chk"><td>CHECK</td><td></td>`+VX.map(v=>`<td id="${ctx}-${sec}-chk-${v}">—</td>`).join('')+`</tr>`;
 
   el.innerHTML=hdr+rows+`</tbody></table>`;
-  updateNET(ctx, sec, secData);
+  updateNET(ctx, sec, secData, combinedSecData);
 }
 
-function renderDerSection(ctx, derData, containerId, onChange){
+function renderDerSection(ctx, derData, containerId, onChange, combinedDerData){
   const el=document.getElementById(containerId); if(!el) return;
   const hdr=`<table><thead><tr>
     <th style="min-width:220px;">Exposições</th>
@@ -1108,7 +1123,8 @@ function renderDerSection(ctx, derData, containerId, onChange){
     rows+=`<tr><td>${SUBM_LABELS[s]}</td><td>MWm</td>`;
     VX.forEach(v=>{
       const val=(derData?.subm?.[s]?.[v])||0;
-      rows+=`<td><input type="number" step="0.1" value="${val}" data-ctx="${ctx}" data-sec="der" data-field="subm" data-sub="${s}" data-v="${v}" onchange="pfChange(this)"></td>`;
+      const combVal=(combinedDerData?.subm?.[s]?.[v]);
+      rows+=`<td><input type="number" step="0.1" value="${val}" data-ctx="${ctx}" data-sec="der" data-field="subm" data-sub="${s}" data-v="${v}" onchange="pfChange(this)">${deltaExtraHtml(val,combVal,combinedDerData,2)}</td>`;
     });
     rows+=`</tr>`;
   });
@@ -1119,19 +1135,22 @@ function renderDerSection(ctx, derData, containerId, onChange){
     rows+=`<tr class="${f.cls||''}"><td>${f.label}</td><td>${f.unit}</td>`;
     VX.forEach(v=>{
       const val=(derData?.[f.key]?.[v])||0;
-      rows+=`<td><input type="number" step="${f.unit==='R$/MWh'?'0.01':'0.1'}" value="${val}" data-ctx="${ctx}" data-sec="der" data-field="${f.key}" data-v="${v}" onchange="pfChange(this)"></td>`;
+      const combVal=(combinedDerData?.[f.key]?.[v]);
+      rows+=`<td><input type="number" step="${f.unit==='R$/MWh'?'0.01':'0.1'}" value="${val}" data-ctx="${ctx}" data-sec="der" data-field="${f.key}" data-v="${v}" onchange="pfChange(this)">${deltaExtraHtml(val,combVal,combinedDerData,2)}</td>`;
     });
     rows+=`</tr>`;
   });
   el.innerHTML=hdr+rows+`</tbody></table>`;
 }
 
-function renderEFM(ctx, efmData, containerId, onChange){
+function renderEFM(ctx, efmData, containerId, onChange, combinedEfmData){
   const el=document.getElementById(containerId); if(!el) return;
   let h=`<table><thead><tr><th style="min-width:220px;">Efeitos Financeiros</th><th>Unid.</th>${VX.map(v=>`<th class="col-v">${v}</th>`).join('')}</tr></thead><tbody>`;
   h+=`<tr><td>Efeitos Financeiros do Mercado Regulado (ACR, etc.)</td><td>R$</td>`;
   VX.forEach(v=>{
-    h+=`<td><input type="number" step="1000" value="${(efmData?.[v])||0}" data-ctx="${ctx}" data-field="efm" data-v="${v}" onchange="efmChange(this)"></td>`;
+    const val=(efmData?.[v])||0;
+    const combVal=combinedEfmData ? (combinedEfmData[v]) : undefined;
+    h+=`<td><input type="number" step="1000" value="${val}" data-ctx="${ctx}" data-field="efm" data-v="${v}" onchange="efmChange(this)">${deltaExtraHtml(val,combVal,combinedEfmData,0)}</td>`;
   });
   h+=`</tr></tbody></table>`;
   el.innerHTML=h;
@@ -1153,23 +1172,35 @@ function pfChange(inp){
     else target[s][field][v]=val;
   }
   if(sec!=='der') updateNET(ctx, sec, sec==='pf'?target.preco_fixo:target.preco_variavel);
-  if(ctx==='extra') triggerCalcExtra(); else triggerCalcEmp();
+  if(ctx==='extra'){ triggerCalcExtra(); triggerEmpDeltaRefresh(); } else triggerCalcEmp();
 }
 
 function efmChange(inp){
   const {ctx,v} = inp.dataset;
   const target = ctx==='extra' ? extraData : emp;
   target.efm_regulado[v] = parseFloat(inp.value)||0;
-  if(ctx==='extra') triggerCalcExtra(); else triggerCalcEmp();
+  if(ctx==='extra'){ triggerCalcExtra(); triggerEmpDeltaRefresh(); } else triggerCalcEmp();
 }
 
-function updateNET(ctx, sec, secData){
+// Atualiza (com debounce) as anotações "→ combinado" na Declaração Portfólio
+// enquanto o usuário edita o Portfólio Extra ativo.
+let empDeltaTimer=null;
+function triggerEmpDeltaRefresh(){
+  if(!(extraData && extraData.ativo)) return;
+  clearTimeout(empDeltaTimer);
+  empDeltaTimer=setTimeout(()=>renderPortfolioTables('emp', emp, triggerCalcEmp), 300);
+}
+
+function updateNET(ctx, sec, secData, combinedSecData){
   const netId = `${ctx}-${sec}-net`;
   if(!document.getElementById(netId)) return;
   VX.forEach(v=>{
     const net = (secData?.recurso?.[v]||0) - (secData?.requisito?.[v]||0);
     const netEl = document.getElementById(`${ctx}-${sec}-net-${v}`);
-    if(netEl) netEl.textContent = fmtN(net,2);
+    if(netEl){
+      const combNet = combinedSecData ? ((combinedSecData.recurso?.[v]||0) - (combinedSecData.requisito?.[v]||0)) : undefined;
+      netEl.innerHTML = fmtN(net,2) + deltaExtraHtml(net, combNet, combinedSecData, 2);
+    }
 
     // CHECK: sum subm == net
     const sumSubm = SUBMS.reduce((s,sm)=>s+(secData?.subm?.[sm]?.[v]||0),0);
@@ -1290,6 +1321,7 @@ async function toggleExtra(){
   syncExtraToggle();
   lsSet(LS_KEYS.extra, extraData);
   await calcularEmp();   // header + Cálculo passam a refletir (ou não) o extra
+  renderPortfolioTables('emp', emp, triggerCalcEmp);   // mostra/oculta o delta "→ combinado" na Declaração Portfólio
   showMsg('msg-extra', extraData.ativo
     ? '✔ Portfólio Extra ATIVADO no cálculo do FA.'
     : 'Portfólio Extra desativado — FA voltou a usar só o real.', 'ok');
@@ -1298,7 +1330,10 @@ async function toggleExtra(){
 async function salvarExtra(){
   lsSet(LS_KEYS.extra, extraData);
   showMsg('msg-extra','Portfólio Extra salvo (localStorage do navegador).');
-  if(extraData.ativo) await calcularEmp();
+  if(extraData.ativo){
+    await calcularEmp();
+    renderPortfolioTables('emp', emp, triggerCalcEmp);
+  }
 }
 
 function limparExtra(){
@@ -1308,6 +1343,7 @@ function limparExtra(){
   extraData.efm_regulado=Object.fromEntries(VX.map(v=>[v,0]));
   renderPortfolioTables('extra',extraData,triggerCalcExtra,'-x');
   calcExtra();
+  if(extraData.ativo){ calcularEmp(); renderPortfolioTables('emp', emp, triggerCalcEmp); }
   showMsg('msg-extra','Campos do Portfólio Extra zerados (lembre de salvar).','info');
 }
 
@@ -1323,6 +1359,7 @@ async function uploadExtraCSV(input){
       extraData.ativo=wasAtivo;   // upload não altera o estado do toggle
       renderPortfolioTables('extra',extraData,triggerCalcExtra,'-x');
       calcExtra();
+      if(extraData.ativo){ await calcularEmp(); renderPortfolioTables('emp', emp, triggerCalcEmp); }
       showMsg('msg-extra','✔ CSV importado com sucesso.');
     } else { showMsg('msg-extra','Erro: '+errs.join('; '),'err'); }
   }catch(e){ showMsg('msg-extra','Falha na leitura do arquivo: '+e.message,'err'); }
