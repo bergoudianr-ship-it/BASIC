@@ -1156,7 +1156,11 @@ function updateDerTotal(ctx, derData, combinedDerData){
     const sumEl = document.getElementById(`${ctx}-der-sumsubm-${v}`);
     if(sumEl){
       const combSumSubm = combinedDerData ? SUBMS.reduce((s,sm)=>s+(combinedDerData?.subm?.[sm]?.[v]||0),0) : undefined;
-      sumEl.innerHTML = fmtN(sumSubm,2) + deltaExtraHtml(sumSubm, combSumSubm, combinedDerData, 2);
+      if(combinedDerData && Math.abs((combSumSubm||0)-sumSubm) > 1e-6){
+        sumEl.innerHTML = fmtN(combSumSubm,2) + `<div class="delta-extra">Decl. ${fmtN(sumSubm,2)} <span>+ Extra</span></div>`;
+      } else {
+        sumEl.innerHTML = fmtN(sumSubm,2);
+      }
     }
   });
 }
