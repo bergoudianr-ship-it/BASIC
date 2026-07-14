@@ -1083,9 +1083,6 @@ function renderSection(ctx, sec, secData, containerId, onChange, combinedSecData
     });
     rows+=`</tr>`;
   });
-  // Total mensal = soma dos 4 submercados (o que efetivamente entra no VaR/MtM/FA)
-  rows+=`<tr class="row-total" id="${ctx}-${sec}-sumsubm"><td>EXPOSIÇÃO LÍQUIDA TOTAL (Σ submercados)</td><td>MWm</td>`+VX.map(v=>`<td id="${ctx}-${sec}-sumsubm-${v}">0,00</td>`).join('')+`</tr>`;
-
   // PM Recurso / Requisito
   rows+=`<tr class="row-section"><td colspan="${2+VX.length}">RECURSO E REQUISITO — totais consolidados</td></tr>`;
   const fields=[
@@ -1104,11 +1101,11 @@ function renderSection(ctx, sec, secData, containerId, onChange, combinedSecData
     rows+=`</tr>`;
   });
 
-  // NET (computed) — nota explicativa sobre a fonte de cada linha
-  rows+=`<tr class="row-info"><td colspan="${2+VX.length}">ℹ NET ENERGÉTICO = RECURSO − REQUISITO (usado no Resultado Contratual). O Fator de Alavancagem (VaR/MtM) usa diretamente a EXPOSIÇÃO POR SUBMERCADO acima. Preencha também RECURSO/REQUISITO se quiser apurar o Resultado Contratual — o CHECK abaixo confere se os dois lados batem.</td></tr>`;
-  rows+=`<tr class="row-total" id="${ctx}-${sec}-net"><td>NET ENERGÉTICO</td><td>MWm</td>`+VX.map(v=>`<td id="${ctx}-${sec}-net-${v}">0,00</td>`).join('')+`</tr>`;
+  // NET ENERGÉTICO = soma das exposições por submercado (posição líquida: + compra, − venda)
+  rows+=`<tr class="row-info"><td colspan="${2+VX.length}">ℹ NET ENERGÉTICO = soma das exposições por submercado (posição líquida por vértice: valor positivo = compra, negativo = venda). Com o Portfólio Extra ativo, mostra o NET combinado (Declaração + Extra). RECURSO/REQUISITO são campos à parte, usados no Resultado Contratual — o CHECK confere se batem com o NET.</td></tr>`;
+  rows+=`<tr class="row-total" id="${ctx}-${sec}-net"><td>NET ENERGÉTICO (Σ submercados)</td><td>MWm</td>`+VX.map(v=>`<td id="${ctx}-${sec}-net-${v}">0,00</td>`).join('')+`</tr>`;
   // CHECK
-  rows+=`<tr class="row-check" id="${ctx}-${sec}-chk"><td>CHECK (Σ submercado = Recurso−Requisito)</td><td></td>`+VX.map(v=>`<td id="${ctx}-${sec}-chk-${v}">—</td>`).join('')+`</tr>`;
+  rows+=`<tr class="row-check" id="${ctx}-${sec}-chk"><td>CHECK (NET = Recurso−Requisito)</td><td></td>`+VX.map(v=>`<td id="${ctx}-${sec}-chk-${v}">—</td>`).join('')+`</tr>`;
 
   el.innerHTML=hdr+rows+`</tbody></table>`;
   updateNET(ctx, sec, secData, combinedSecData);
@@ -1133,7 +1130,7 @@ function renderDerSection(ctx, derData, containerId, onChange, combinedDerData){
     });
     rows+=`</tr>`;
   });
-  rows+=`<tr class="row-total" id="${ctx}-der-sumsubm"><td>EXPOSIÇÃO LÍQUIDA TOTAL (Σ submercados)</td><td>MWm</td>`+VX.map(v=>`<td id="${ctx}-der-sumsubm-${v}">0,00</td>`).join('')+`</tr>`;
+  rows+=`<tr class="row-total" id="${ctx}-der-sumsubm"><td>NET ENERGÉTICO (Σ submercados)</td><td>MWm</td>`+VX.map(v=>`<td id="${ctx}-der-sumsubm-${v}">0,00</td>`).join('')+`</tr>`;
   rows+=`<tr class="row-section"><td colspan="${2+VX.length}">RECURSO E REQUISITO</td></tr>`;
   [{key:'recurso',label:'RECURSO',unit:'MWm'},{key:'pm_recurso',label:'PREÇO MÉDIO RECURSO',unit:'R$/MWh',cls:'row-pmedio'},
    {key:'requisito',label:'REQUISITO',unit:'MWm'},{key:'pm_requisito',label:'PREÇO MÉDIO REQUISITO',unit:'R$/MWh',cls:'row-pmedio'}
@@ -1221,27 +1218,22 @@ function updateNET(ctx, sec, secData, combinedSecData){
   const netId = `${ctx}-${sec}-net`;
   if(!document.getElementById(netId)) return;
   VX.forEach(v=>{
-    // Exposição líquida total = soma dos 4 submercados (é isso que entra no VaR/MtM/FA)
+    // NET ENERGÉTICO = soma dos 4 submercados (posição líquida que entra no VaR/MtM/FA).
+    // Com Extra ativo, exibe o NET combinado (Declaração + Extra).
     const sumSubm = SUBMS.reduce((s,sm)=>s+(secData?.subm?.[sm]?.[v]||0),0);
-    const sumEl = document.getElementById(`${ctx}-${sec}-sumsubm-${v}`);
-    if(sumEl){
-      const combSumSubm = combinedSecData ? SUBMS.reduce((s,sm)=>s+(combinedSecData?.subm?.[sm]?.[v]||0),0) : undefined;
-      sumEl.innerHTML = fmtN(sumSubm,2) + deltaExtraHtml(sumSubm, combSumSubm, combinedSecData, 2);
-    }
-
-    // NET ENERGÉTICO = RECURSO - REQUISITO (Resultado Contratual, campo à parte)
-    const net = (secData?.recurso?.[v]||0) - (secData?.requisito?.[v]||0);
     const netEl = document.getElementById(`${ctx}-${sec}-net-${v}`);
     if(netEl){
-      const combNet = combinedSecData ? ((combinedSecData.recurso?.[v]||0) - (combinedSecData.requisito?.[v]||0)) : undefined;
-      netEl.innerHTML = fmtN(net,2) + deltaExtraHtml(net, combNet, combinedSecData, 2);
+      const combSumSubm = combinedSecData ? SUBMS.reduce((s,sm)=>s+(combinedSecData?.subm?.[sm]?.[v]||0),0) : undefined;
+      netEl.innerHTML = fmtN(sumSubm,2) + deltaExtraHtml(sumSubm, combSumSubm, combinedSecData, 2);
     }
 
-    // CHECK: sum subm == net
-    const diff = Math.abs(sumSubm - net);
+    // CHECK: NET (Σ submercado) == RECURSO - REQUISITO (consistência da declaração)
+    const recReq = (secData?.recurso?.[v]||0) - (secData?.requisito?.[v]||0);
+    const diff = Math.abs(sumSubm - recReq);
     const chkEl = document.getElementById(`${ctx}-${sec}-chk-${v}`);
     if(chkEl){
-      if(net===0 && sumSubm===0){ chkEl.textContent='OK'; chkEl.style.color='var(--green)'; }
+      if(sumSubm===0 && recReq===0){ chkEl.textContent='—'; chkEl.style.color='var(--muted)'; }
+      else if(recReq===0){ chkEl.textContent='—'; chkEl.style.color='var(--muted)'; }
       else if(diff<0.01){ chkEl.textContent='OK'; chkEl.style.color='var(--green)'; }
       else { chkEl.textContent=`Δ${fmtN(diff,2)}`; chkEl.style.color='var(--red)'; }
     }
