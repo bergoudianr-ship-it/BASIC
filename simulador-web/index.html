@@ -294,8 +294,9 @@ footer{text-align:center;padding:20px;color:var(--muted);font-size:10px;
         <input type="file" id="up-port" accept=".xlsx" onchange="uploadPortfolio(this)">
         ⬆ Carregar Portfólio Preenchido
       </div>
+      <button class="btn-out" onclick="downloadDeclaracaoCSV()">⬇ Baixar Declaração CSV (CCEE)</button>
       <div id="msg-port"></div>
-      <button class="btn" style="margin-left:auto;" onclick="salvarEmpresa()">Salvar & Recalcular</button>
+      <button class="btn" style="margin-left:auto;" onclick="salvarEmpresa()">💾 Salvar Declaração</button>
       <button class="btn-amb" onclick="salvarHistorico()">Registrar no Histórico</button>
     </div>
     <div id="msg-emp"></div>
@@ -1219,21 +1220,29 @@ function updateNET(ctx, sec, secData, combinedSecData){
   if(!document.getElementById(netId)) return;
   VX.forEach(v=>{
     // NET ENERGÉTICO = soma dos 4 submercados (posição líquida que entra no VaR/MtM/FA).
-    // Com Extra ativo, exibe o NET combinado (Declaração + Extra).
+    // Com Extra ativo, o valor principal já é o NET COMBINADO (Declaração + Extra) — que é
+    // o que se envia à CCEE — e uma nota mostra a parcela só da Declaração.
     const sumSubm = SUBMS.reduce((s,sm)=>s+(secData?.subm?.[sm]?.[v]||0),0);
+    const combSumSubm = combinedSecData ? SUBMS.reduce((s,sm)=>s+(combinedSecData?.subm?.[sm]?.[v]||0),0) : undefined;
     const netEl = document.getElementById(`${ctx}-${sec}-net-${v}`);
     if(netEl){
-      const combSumSubm = combinedSecData ? SUBMS.reduce((s,sm)=>s+(combinedSecData?.subm?.[sm]?.[v]||0),0) : undefined;
-      netEl.innerHTML = fmtN(sumSubm,2) + deltaExtraHtml(sumSubm, combSumSubm, combinedSecData, 2);
+      if(combinedSecData && Math.abs((combSumSubm||0)-sumSubm) > 1e-6){
+        netEl.innerHTML = fmtN(combSumSubm,2) + `<div class="delta-extra">Decl. ${fmtN(sumSubm,2)} <span>+ Extra</span></div>`;
+      } else {
+        netEl.innerHTML = fmtN(sumSubm,2);
+      }
     }
 
     // CHECK: NET (Σ submercado) == RECURSO - REQUISITO (consistência da declaração)
-    const recReq = (secData?.recurso?.[v]||0) - (secData?.requisito?.[v]||0);
-    const diff = Math.abs(sumSubm - recReq);
+    // Usa os valores efetivos (combinados quando o Extra está ativo).
+    const effSum = combinedSecData ? (combSumSubm||0) : sumSubm;
+    const effRecReq = combinedSecData
+      ? ((combinedSecData.recurso?.[v]||0) - (combinedSecData.requisito?.[v]||0))
+      : ((secData?.recurso?.[v]||0) - (secData?.requisito?.[v]||0));
+    const diff = Math.abs(effSum - effRecReq);
     const chkEl = document.getElementById(`${ctx}-${sec}-chk-${v}`);
     if(chkEl){
-      if(sumSubm===0 && recReq===0){ chkEl.textContent='—'; chkEl.style.color='var(--muted)'; }
-      else if(recReq===0){ chkEl.textContent='—'; chkEl.style.color='var(--muted)'; }
+      if(effRecReq===0){ chkEl.textContent='—'; chkEl.style.color='var(--muted)'; }
       else if(diff<0.01){ chkEl.textContent='OK'; chkEl.style.color='var(--green)'; }
       else { chkEl.textContent=`Δ${fmtN(diff,2)}`; chkEl.style.color='var(--red)'; }
     }
@@ -1394,6 +1403,52 @@ async function uploadExtraCSV(input){
 
 function downloadModeloExtra(){
   downloadBlob(new Blob(["﻿"+gerarModeloExtraCsv()],{type:'text/csv;charset=utf-8'}), 'modelo_portfolio_extra.csv');
+}
+
+// ============================================================
+// DECLARAÇÃO PORTFÓLIO — export CSV no modelo CCEE (re-importável)
+// ============================================================
+function _csvNum(x){
+  const n = Number(x)||0;
+  // decimal com ponto, sem separador de milhar (compatível com o parser de import)
+  return (Math.round((n + Number.EPSILON)*1e6)/1e6).toString();
+}
+
+function gerarPortfolioCsv(port){
+  const out=[["Secao","Campo","Submercado",...CVX].join(';')];
+  EXTRA_SECOES.forEach(([secLabel, secKey])=>{
+    const sec = port[secKey]||{};
+    // Exposição por submercado
+    CSUBMS.forEach(s=>{
+      out.push([secLabel,"Exposicao Submercado",s,...CVX.map(v=>_csvNum((sec.subm?.[s]||{})[v]))].join(';'));
+    });
+    // Total NET por vértice (linha informativa)
+    out.push([secLabel,"NET Energetico (soma submercados)","",
+      ...CVX.map(v=>_csvNum(CSUBMS.reduce((a,s)=>a+((sec.subm?.[s]||{})[v]||0),0)))].join(';'));
+    // Recurso / Requisito / PMs
+    EXTRA_CAMPOS.filter(([,k])=>k!=='subm').forEach(([campoLabel, campoKey])=>{
+      out.push([secLabel,campoLabel,"",...CVX.map(v=>_csvNum((sec[campoKey]||{})[v]))].join(';'));
+    });
+  });
+  // EFM regulado
+  out.push(["EFM","Efeitos Financeiros Mercado Regulado","",...CVX.map(v=>_csvNum((port.efm_regulado||{})[v]))].join(';'));
+  return out.join('\r\n');
+}
+
+function downloadDeclaracaoCSV(){
+  // Garante que o objeto emp reflete o formulário de PLA atual
+  emp.pla = { pl_bruto:inp('pla-bruto'), deducoes: DED_ITENS.map((_,i)=>({item:DED_ITENS[i],valor:inp(`ded-val-${i}`),descricao:document.getElementById(`ded-desc-${i}`).value})) };
+  const usarComb = !!(extraData && extraData.ativo);
+  const port = usarComb ? combinarPortfolios(emp, extraData) : emp;
+  const csv = gerarPortfolioCsv(port);
+  const data = (premissas.data_referencia||'').replace(/-/g,'') || 'sem-data';
+  const nome = usarComb
+    ? `declaracao_portfolio_REAL+EXTRA_${data}.csv`
+    : `declaracao_portfolio_${data}.csv`;
+  downloadBlob(new Blob(["﻿"+csv],{type:'text/csv;charset=utf-8'}), nome);
+  showMsg('msg-emp', usarComb
+    ? '✔ Declaração exportada em CSV com o Portfólio Extra somado (Real + Extra) — pronta para envio à CCEE.'
+    : '✔ Declaração exportada em CSV (portfólio real) — pronta para envio à CCEE.', 'ok');
 }
 
 
