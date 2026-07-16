@@ -393,6 +393,12 @@
   .cmp-chip .sw{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
   .cmp-chip button{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:15px;line-height:1;padding:0 3px;}
   .cmp-chip button:hover{color:var(--critical);}
+  .cmp-chip-new{animation:cmp-pop 900ms ease-out;}
+  @keyframes cmp-pop{
+    0%{box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent);border-color:var(--accent);}
+    100%{box-shadow:0 0 0 0 transparent;}
+  }
+  @media (prefers-reduced-motion: reduce){ .cmp-chip-new{animation:none;} }
   .cmp-empty{color:var(--text-muted);font-size:13px;padding:44px 20px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius);}
   .cmp-hint{font-size:11.5px;color:var(--text-muted);}
   .legend{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;}
@@ -1705,9 +1711,14 @@ function cmpFeedback(msg, kind){
 function addSeries(s){
   if(state.compare.series.length>=8){ cmpFeedback('Limite de 8 séries atingido — remova uma para adicionar outra.', 'warn'); return; }
   var key = seriesKey(s);
-  if(state.compare.series.some(function(x){return seriesKey(x)===key;})){ cmpFeedback('“'+seriesLabel(s)+'” já está na lista.', 'warn'); return; }
+  if(state.compare.series.some(function(x){return seriesKey(x)===key;})){ cmpFeedback('Já está na lista: ' + seriesLabel(s), 'warn'); return; }
   state.compare.series.push(s);
-  cmpFeedback('Adicionado: ' + seriesLabel(s), 'ok');
+  cmpFeedback('✓ Adicionado à comparação: ' + seriesLabel(s), 'ok');
+  renderCmpChips(); drawCompare();
+}
+function replaceSeries(s){
+  state.compare.series = [s];
+  cmpFeedback('✓ Mostrando somente: ' + seriesLabel(s), 'ok');
   renderCmpChips(); drawCompare();
 }
 function cmpVal(g, metric){
@@ -1763,7 +1774,10 @@ function renderComparador(result){
     + '</select></label>'
     + '<label class="cmp-field">Prazo (família)<select id="cmp-fam"></select></label>'
     + '<label class="cmp-field">Entrega / Horizonte<select id="cmp-prazo"></select></label>'
-    + '<button class="btn-ghost" id="cmp-add-btn" type="button">+ Adicionar</button>'
+    + '<div class="cmp-field" style="flex-direction:row;gap:8px;align-self:flex-end;">'
+    + '<button class="btn-ghost" id="cmp-add-btn" type="button" title="Mantém as demais séries e acrescenta esta">+ Adicionar à comparação</button>'
+    + '<button class="btn-primary" id="cmp-replace-btn" type="button" style="width:auto;white-space:nowrap;" title="Remove todas as outras séries e mostra só esta">Analisar somente este</button>'
+    + '</div>'
     + '</div>'
     + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:12px;">B) Escolher por produto — nomenclatura BBCE</div>'
     + '<div class="cmp-row">'
@@ -1771,7 +1785,10 @@ function renderComparador(result){
     + '<input id="cmp-prod-input" list="cmp-prod-list" placeholder="digite para buscar — ex.: SE CON MEN AGO/26 · SU CON ANU JAN/27 DEZ/27" autocomplete="off">'
     + '<datalist id="cmp-prod-list">'+ meta.products.map(function(p){ return '<option value="'+escapeHtml(prodShortLabel(p.produto))+'"></option>'; }).join('') +'</datalist>'
     + '</label>'
-    + '<button class="btn-ghost" id="cmp-prod-add-btn" type="button">+ Adicionar produto</button>'
+    + '<div class="cmp-field" style="flex-direction:row;gap:8px;align-self:flex-end;">'
+    + '<button class="btn-ghost" id="cmp-prod-add-btn" type="button" title="Mantém as demais séries e acrescenta este produto">+ Adicionar à comparação</button>'
+    + '<button class="btn-primary" id="cmp-prod-replace-btn" type="button" style="width:auto;white-space:nowrap;" title="Remove todas as outras séries e mostra só este produto">Analisar somente este</button>'
+    + '</div>'
     + '</div>'
     + '<div class="cmp-hint" id="cmp-feedback" style="min-height:16px;"></div>'
     + '<div class="cmp-row" style="border-top:1px solid var(--border);padding-top:12px;">'
@@ -1783,7 +1800,10 @@ function renderComparador(result){
     + '<button data-mode="bars" aria-pressed="'+(mode==='bars')+'">Total no período</button>'
     + '</div></div>'
     + '</div>'
-    + '<div><div class="cmp-hint" style="margin-bottom:6px;">Séries selecionadas (clique no × para remover) — máx. 8:</div><div class="cmp-series-chips" id="cmp-chips"></div></div>'
+    + '<div><div class="cmp-hint" style="margin-bottom:6px;display:flex;justify-content:space-between;">'
+    + '<span>Séries selecionadas (clique no × para remover) — máx. 8:</span>'
+    + '<button id="cmp-clear-btn" type="button" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11.5px;text-decoration:underline;padding:0;">limpar tudo</button>'
+    + '</div><div class="cmp-series-chips" id="cmp-chips"></div></div>'
     + (multiSub ? '' : '<div class="cmp-hint">Só há o submercado <strong>'+escapeHtml(meta.submarkets[0]||'—')+'</strong> disponível. Para comparar submercados, habilite mais opções em “Submercado” no filtro à esquerda (isso amplia a base do comparador).</div>')
     + '<div class="cmp-hint">O comparador abrange todos os submercados presentes na base após os demais filtros — o filtro de Submercado à esquerda afeta apenas a aba Análise.</div>'
     + '</div>'
@@ -1815,37 +1835,48 @@ function renderComparador(result){
   famSel.addEventListener('change', fillPrazo);
   fillFam();
 
-  document.getElementById('cmp-add-btn').addEventListener('click', function(){
+  function seriesFromCascade(){
     var sub = subSel.value, fam = famSel.value, pv = prazoSel.value;
-    if(!sub || !fam || !pv){ cmpFeedback('Selecione submercado, prazo e entrega/horizonte.', 'warn'); return; }
-    var s;
-    if(pv.indexOf('rel|')===0){ s = {kind:'rel', sub:sub, fam:fam, h:+pv.slice(4)}; }
-    else {
-      var dk = pv.slice(4);
-      var arr = meta.deliveriesBySubFam[sub+'|'+fam] || [];
-      var d = arr.filter(function(x){return x.key===dk;})[0];
-      s = {kind:'abs', sub:sub, fam:fam, dk:dk, dl:d?d.label:dk};
-    }
-    addSeries(s);
+    if(!sub || !fam || !pv){ cmpFeedback('Selecione submercado, prazo e entrega/horizonte.', 'warn'); return null; }
+    if(pv.indexOf('rel|')===0){ return {kind:'rel', sub:sub, fam:fam, h:+pv.slice(4)}; }
+    var dk = pv.slice(4);
+    var arr = meta.deliveriesBySubFam[sub+'|'+fam] || [];
+    var d = arr.filter(function(x){return x.key===dk;})[0];
+    return {kind:'abs', sub:sub, fam:fam, dk:dk, dl:d?d.label:dk};
+  }
+  document.getElementById('cmp-add-btn').addEventListener('click', function(){
+    var s = seriesFromCascade(); if(s) addSeries(s);
+  });
+  document.getElementById('cmp-replace-btn').addEventListener('click', function(){
+    var s = seriesFromCascade(); if(s) replaceSeries(s);
   });
 
   var productByLabel = {};
   meta.products.forEach(function(p){ productByLabel[prodShortLabel(p.produto)] = p.produto; });
-  function addProductFromInput(){
+  function productFromInput(){
     var inp = document.getElementById('cmp-prod-input');
     var lbl = (inp.value||'').trim();
-    if(!lbl){ cmpFeedback('Digite ou selecione um produto da lista.', 'warn'); return; }
+    if(!lbl){ cmpFeedback('Digite ou selecione um produto da lista.', 'warn'); return null; }
     var prod = productByLabel[lbl];
     if(!prod){
       var hit = Object.keys(productByLabel).filter(function(k){ return k.toLowerCase()===lbl.toLowerCase(); })[0];
       prod = hit ? productByLabel[hit] : null;
     }
-    if(!prod){ cmpFeedback('Produto não encontrado — escolha um da lista sugerida.', 'warn'); return; }
-    addSeries({kind:'prod', produto:prod});
-    inp.value = '';
+    if(!prod){ cmpFeedback('Produto não encontrado — escolha um da lista sugerida.', 'warn'); return null; }
+    return {kind:'prod', produto:prod};
   }
-  document.getElementById('cmp-prod-add-btn').addEventListener('click', addProductFromInput);
-  document.getElementById('cmp-prod-input').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addProductFromInput(); } });
+  document.getElementById('cmp-prod-add-btn').addEventListener('click', function(){
+    var s = productFromInput(); if(s){ addSeries(s); document.getElementById('cmp-prod-input').value=''; }
+  });
+  document.getElementById('cmp-prod-replace-btn').addEventListener('click', function(){
+    var s = productFromInput(); if(s){ replaceSeries(s); document.getElementById('cmp-prod-input').value=''; }
+  });
+  document.getElementById('cmp-prod-input').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); var s=productFromInput(); if(s){ addSeries(s); this.value=''; } } });
+  document.getElementById('cmp-clear-btn').addEventListener('click', function(){
+    state.compare.series = [];
+    cmpFeedback('Lista de comparação limpa.', 'ok');
+    renderCmpChips(); drawCompare();
+  });
   document.getElementById('cmp-metric').addEventListener('change', function(){ state.compare.metric = this.value; drawCompare(); });
   document.getElementById('cmp-mode').querySelectorAll('button').forEach(function(b){
     b.addEventListener('click', function(){
@@ -1859,8 +1890,9 @@ function renderComparador(result){
 function renderCmpChips(){
   var el = document.getElementById('cmp-chips'); if(!el) return;
   if(!state.compare.series.length){ el.innerHTML = '<span class="cmp-hint">Nenhuma série. Monte um produto acima e clique em Adicionar.</span>'; return; }
+  var lastIdx = state.compare.series.length-1;
   el.innerHTML = state.compare.series.map(function(s,i){
-    return '<span class="cmp-chip"><span class="sw" style="background:'+cmpColor(i)+'"></span>'+escapeHtml(seriesLabel(s))+'<button data-idx="'+i+'" aria-label="remover">×</button></span>';
+    return '<span class="cmp-chip'+(i===lastIdx?' cmp-chip-new':'')+'"><span class="sw" style="background:'+cmpColor(i)+'"></span>'+escapeHtml(seriesLabel(s))+'<button data-idx="'+i+'" aria-label="remover">×</button></span>';
   }).join('');
   el.querySelectorAll('button').forEach(function(btn){
     btn.addEventListener('click', function(){
