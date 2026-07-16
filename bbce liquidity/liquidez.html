@@ -1812,15 +1812,15 @@ function renderComparador(result){
 
   var html = ''
     + '<div class="content-header" style="margin-bottom:16px;"><h2>Comparador de liquidez</h2>'
-    + '<p>Compare a liquidez de até 8 produtos, no mesmo prazo ou em prazos diferentes, no período filtrado à esquerda (aba Análise). Monte por <strong>submercado + prazo + horizonte</strong> (M+N, A+N, T+N…) ou busque pelo <strong>nome exato do produto</strong> na nomenclatura BBCE. A evolução é exibida por dia útil, para o maior detalhe possível. Responde perguntas como “o SE Mensal M+1 é mais líquido que o SU Mensal M+1?”.</p></div>'
+    + '<p>Compare a liquidez de até 8 produtos, da mesma família ou de famílias diferentes, no período filtrado à esquerda (aba Análise). Monte por <strong>submercado + família + horizonte</strong> — o horizonte (M+N, A+N, T+N…) é o prazo entre a DATA/HORA de criação e a entrega — ou busque pelo <strong>nome exato do produto</strong> na nomenclatura BBCE. A evolução é exibida por dia útil, para o maior detalhe possível. Responde perguntas como “o SE Mensal M+1 é mais líquido que o SU Mensal M+1?”.</p></div>'
     + '<div class="cmp-controls">'
-    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);">A) Montar por atributos — submercado · prazo · horizonte (M+N)</div>'
+    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);">A) Montar por atributos — submercado · família · horizonte (M+N)</div>'
     + '<div class="cmp-row">'
     + '<label class="cmp-field">Submercado<select id="cmp-sub">'
     + meta.submarkets.map(function(sub){return '<option value="'+escapeHtml(sub)+'">'+escapeHtml(sub)+'</option>';}).join('')
     + '</select></label>'
-    + '<label class="cmp-field">Prazo (família)<select id="cmp-fam"></select></label>'
-    + '<label class="cmp-field">Horizonte<select id="cmp-horizon"></select></label>'
+    + '<label class="cmp-field">Família de produto<select id="cmp-fam"></select></label>'
+    + '<label class="cmp-field">Horizonte (prazo até a entrega)<select id="cmp-horizon"></select></label>'
     + '<div class="cmp-field" style="flex-direction:row;gap:8px;align-self:flex-end;">'
     + '<button class="btn-ghost" id="cmp-add-btn" type="button" title="Mantém as demais séries e acrescenta esta">+ Adicionar à comparação</button>'
     + '<button class="btn-primary" id="cmp-replace-btn" type="button" style="width:auto;white-space:nowrap;" title="Remove todas as outras séries e mostra só esta">Analisar somente este</button>'
@@ -1879,7 +1879,7 @@ function renderComparador(result){
 
   function seriesFromCascade(){
     var sub = subSel.value, fam = famSel.value, hv = horizonSel.value;
-    if(!sub || !fam || hv===''){ cmpFeedback('Selecione submercado, prazo e horizonte.', 'warn'); return null; }
+    if(!sub || !fam || hv===''){ cmpFeedback('Selecione submercado, família e horizonte.', 'warn'); return null; }
     return {kind:'rel', sub:sub, fam:fam, h:+hv};
   }
   document.getElementById('cmp-add-btn').addEventListener('click', function(){
