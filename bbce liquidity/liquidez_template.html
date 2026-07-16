@@ -1792,11 +1792,11 @@ function renderComparador(result){
     + '<label class="cmp-field"><span class="visually-hidden">Data inicial</span>Início<input type="date" id="cmp-date-start" value="'+isoDate(cd.start)+'" min="'+isoDate(state.minDate)+'" max="'+isoDate(state.maxDate)+'"></label>'
     + '<label class="cmp-field"><span class="visually-hidden">Data final</span>Fim<input type="date" id="cmp-date-end" value="'+isoDate(cd.end)+'" min="'+isoDate(state.minDate)+'" max="'+isoDate(state.maxDate)+'"></label>'
     + '<div class="cmp-field" style="flex-direction:row;gap:8px;align-self:flex-end;">'
-    + '<button class="btn-ghost" id="cmp-period-all-btn" type="button">Tudo</button>'
     + '<button class="btn-primary" id="cmp-period-apply-btn" type="button" style="width:auto;white-space:nowrap;">Aplicar período</button>'
     + '</div>'
     + '<div class="cmp-hint" style="align-self:center;">'+fmtInt(cd.totalBiz)+' dias úteis · '+fmtDateRange(cd.start,cd.end)+'</div>'
     + '</div>'
+    + '<div class="presets" id="cmp-presets"></div>'
     + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:12px;">A) Montar por atributos — submercado · prazo · horizonte (M+N)</div>'
     + '<div class="cmp-row">'
     + '<label class="cmp-field">Submercado<select id="cmp-sub">'
@@ -1841,22 +1841,41 @@ function renderComparador(result){
     + '<section class="block"><div class="block-head"><h3>Tabela comparativa</h3><span class="note">Valores por mês e total/agregado no período</span></div><div id="cmp-table"></div></section>';
   container.innerHTML = html;
 
+  function applyComparePeriod(s, e, okMsg){
+    if(s>e){ cmpFeedback('A data inicial não pode ser depois da final.', 'warn'); return; }
+    if(s<state.minDate) s = state.minDate;
+    if(e>state.maxDate) e = state.maxDate;
+    var threshold = (parseFloat(document.getElementById('threshold').value)||0)/100;
+    state.result.compareData = buildCompareIndex(s, e, threshold);
+    renderComparador(state.result);
+    cmpFeedback(okMsg || ('✓ Período do comparador atualizado: ' + fmtDateRange(s,e)), 'ok');
+  }
   document.getElementById('cmp-period-apply-btn').addEventListener('click', function(){
     var dsv = document.getElementById('cmp-date-start').value;
     var dev = document.getElementById('cmp-date-end').value;
     if(!dsv || !dev){ cmpFeedback('Informe as duas datas do período.', 'warn'); return; }
-    var s = new Date(dsv+'T00:00:00'), e = new Date(dev+'T23:59:59');
-    if(s>e){ cmpFeedback('A data inicial não pode ser depois da final.', 'warn'); return; }
-    var threshold = (parseFloat(document.getElementById('threshold').value)||0)/100;
-    state.result.compareData = buildCompareIndex(s, e, threshold);
-    renderComparador(state.result);
-    cmpFeedback('✓ Período do comparador atualizado: ' + fmtDateRange(s,e), 'ok');
+    applyComparePeriod(new Date(dsv+'T00:00:00'), new Date(dev+'T23:59:59'));
   });
-  document.getElementById('cmp-period-all-btn').addEventListener('click', function(){
-    var threshold = (parseFloat(document.getElementById('threshold').value)||0)/100;
-    state.result.compareData = buildCompareIndex(state.minDate, state.maxDate, threshold);
-    renderComparador(state.result);
-    cmpFeedback('✓ Período do comparador: toda a base carregada.', 'ok');
+  var cmpPresetsEl = document.getElementById('cmp-presets');
+  var cmpPresetOpts = [
+    {label:'Últimos 7 dias',    fn:function(){ return [addDays(state.maxDate,-6), state.maxDate]; }},
+    {label:'Últimas 2 semanas', fn:function(){ return [addDays(state.maxDate,-13), state.maxDate]; }},
+    {label:'Últimas 4 semanas', fn:function(){ return [addDays(state.maxDate,-27), state.maxDate]; }},
+    {label:'Último mês',        fn:function(){ return [new Date(state.maxDate.getFullYear(), state.maxDate.getMonth(),1), state.maxDate]; }},
+    {label:'Últimos 3 meses',   fn:function(){ return [addDays(state.maxDate,-89), state.maxDate]; }},
+    {label:'Ano corrente',      fn:function(){ return [new Date(state.maxDate.getFullYear(),0,1), state.maxDate]; }},
+    {label:'Tudo',              fn:function(){ return [state.minDate, state.maxDate]; }}
+  ];
+  cmpPresetOpts.forEach(function(o){
+    var b = document.createElement('button');
+    b.type='button'; b.className='chip'; b.textContent=o.label;
+    b.addEventListener('click', function(){
+      var range = o.fn();
+      document.getElementById('cmp-date-start').value = isoDate(range[0]<state.minDate?state.minDate:range[0]);
+      document.getElementById('cmp-date-end').value = isoDate(range[1]);
+      applyComparePeriod(range[0], range[1]);
+    });
+    cmpPresetsEl.appendChild(b);
   });
 
   var subSel = document.getElementById('cmp-sub');
