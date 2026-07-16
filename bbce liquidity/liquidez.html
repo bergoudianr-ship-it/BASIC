@@ -1123,6 +1123,20 @@ function computeAndRender(){
     var ia=SUB_ORDER.indexOf(a.sub), ib=SUB_ORDER.indexOf(b.sub);
     return (ia<0?99:ia)-(ib<0?99:ib) || familySlot(a.fam)-familySlot(b.fam) || a.sort-b.sort || a.produto.localeCompare(b.produto);
   });
+  // Lista achatada de entrega/horizonte (submercado + prazo + horizonte, tudo num só campo de busca)
+  var horizonOptions = [];
+  compareMeta.submarkets.forEach(function(sub){
+    (compareMeta.familiesBySub[sub]||[]).forEach(function(fam){
+      var sf = sub+'|'+fam;
+      (compareMeta.horizonsBySubFam[sf]||[]).forEach(function(h){
+        horizonOptions.push({kind:'rel', sub:sub, fam:fam, h:h});
+      });
+      (compareMeta.deliveriesBySubFam[sf]||[]).forEach(function(d){
+        horizonOptions.push({kind:'abs', sub:sub, fam:fam, dk:d.key, dl:d.label});
+      });
+    });
+  });
+  compareMeta.horizonOptions = horizonOptions.map(function(s){ return {def:s, label:seriesLabel(s)}; });
 
   var result = {
     start:start, end:end, threshold:threshold,
@@ -1765,23 +1779,22 @@ function renderComparador(result){
 
   var html = ''
     + '<div class="content-header" style="margin-bottom:16px;"><h2>Comparador de liquidez</h2>'
-    + '<p>Monte produtos como na BBCE — <strong>submercado + prazo + entrega</strong> — e compare a liquidez de até 8 deles. Escolha um horizonte relativo (M+0, M+1…) ou um prazo de entrega específico (ex.: AGO/26, JAN/27–DEZ/27). Responde perguntas como “o SE Mensal M+1 é mais líquido que o SU Mensal M+1?” ou “como está a liquidez do trimestre JAN/27–MAR/27?”.</p></div>'
+    + '<p>Compare a liquidez de até 8 produtos, no mesmo prazo ou em prazos diferentes. Busque por <strong>entrega/horizonte</strong> (ex.: “SE Mensal M+1”, “SU Trimestral T+0”, “SE Mensal AGO/26”) ou pelo <strong>nome exato do produto</strong> na nomenclatura BBCE. Responde perguntas como “o SE Mensal M+1 é mais líquido que o SU Mensal M+1?” ou “como está a liquidez do trimestre JAN/27–MAR/27 comparada ao anual JAN/27–DEZ/27?”.</p></div>'
     + '<div class="cmp-controls">'
-    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);">A) Montar por atributos — submercado · prazo · entrega/horizonte</div>'
+    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);">A) Buscar por entrega / horizonte — submercado + prazo + entrega, tudo num campo</div>'
     + '<div class="cmp-row">'
-    + '<label class="cmp-field">Submercado<select id="cmp-sub">'
-    + meta.submarkets.map(function(sub){return '<option value="'+escapeHtml(sub)+'">'+escapeHtml(sub)+'</option>';}).join('')
-    + '</select></label>'
-    + '<label class="cmp-field">Prazo (família)<select id="cmp-fam"></select></label>'
-    + '<label class="cmp-field">Entrega / Horizonte<select id="cmp-prazo"></select></label>'
+    + '<label class="cmp-field" style="flex:1;min-width:280px;">Entrega / Horizonte ('+fmtInt(meta.horizonOptions.length)+' disponíveis)'
+    + '<input id="cmp-horizon-input" list="cmp-horizon-list" placeholder="digite para buscar — ex.: SE Mensal M+1 · SU Trimestral T+0 · SE Mensal AGO/26" autocomplete="off">'
+    + '<datalist id="cmp-horizon-list">'+ meta.horizonOptions.map(function(o){ return '<option value="'+escapeHtml(o.label)+'"></option>'; }).join('') +'</datalist>'
+    + '</label>'
     + '<div class="cmp-field" style="flex-direction:row;gap:8px;align-self:flex-end;">'
     + '<button class="btn-ghost" id="cmp-add-btn" type="button" title="Mantém as demais séries e acrescenta esta">+ Adicionar à comparação</button>'
     + '<button class="btn-primary" id="cmp-replace-btn" type="button" style="width:auto;white-space:nowrap;" title="Remove todas as outras séries e mostra só esta">Analisar somente este</button>'
     + '</div>'
     + '</div>'
-    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:12px;">B) Escolher por produto — nomenclatura BBCE</div>'
+    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:12px;">B) Buscar por produto — nomenclatura BBCE exata</div>'
     + '<div class="cmp-row">'
-    + '<label class="cmp-field" style="flex:1;min-width:280px;">Buscar produto ('+fmtInt(meta.products.length)+' disponíveis)'
+    + '<label class="cmp-field" style="flex:1;min-width:280px;">Produto ('+fmtInt(meta.products.length)+' disponíveis)'
     + '<input id="cmp-prod-input" list="cmp-prod-list" placeholder="digite para buscar — ex.: SE CON MEN AGO/26 · SU CON ANU JAN/27 DEZ/27" autocomplete="off">'
     + '<datalist id="cmp-prod-list">'+ meta.products.map(function(p){ return '<option value="'+escapeHtml(prodShortLabel(p.produto))+'"></option>'; }).join('') +'</datalist>'
     + '</label>'
@@ -1811,45 +1824,27 @@ function renderComparador(result){
     + '<section class="block"><div class="block-head"><h3>Tabela comparativa</h3><span class="note">Valores por mês e total/agregado no período</span></div><div id="cmp-table"></div></section>';
   container.innerHTML = html;
 
-  var subSel = document.getElementById('cmp-sub');
-  var famSel = document.getElementById('cmp-fam');
-  var prazoSel = document.getElementById('cmp-prazo');
-
-  function fillFam(){
-    var sub = subSel.value;
-    var fams = meta.familiesBySub[sub] || [];
-    famSel.innerHTML = fams.map(function(f){ return '<option value="'+escapeHtml(f)+'">'+escapeHtml(famName(f)+' ('+f+')')+'</option>'; }).join('');
-    fillPrazo();
-  }
-  function fillPrazo(){
-    var sub = subSel.value, fam = famSel.value, cfg = familyConfig(fam);
-    var sf = sub+'|'+fam;
-    var hs = meta.horizonsBySubFam[sf] || [];
-    var dels = meta.deliveriesBySubFam[sf] || [];
-    var h = '';
-    if(hs.length) h += '<optgroup label="Horizonte (relativo)">'+hs.map(function(x){return '<option value="rel|'+x+'">'+horizonLabel(cfg.prefix,x)+'</option>';}).join('')+'</optgroup>';
-    if(dels.length) h += '<optgroup label="Entrega (prazo específico)">'+dels.map(function(d){return '<option value="abs|'+escapeHtml(d.key)+'">'+escapeHtml(d.label)+'</option>';}).join('')+'</optgroup>';
-    prazoSel.innerHTML = h;
-  }
-  subSel.addEventListener('change', fillFam);
-  famSel.addEventListener('change', fillPrazo);
-  fillFam();
-
-  function seriesFromCascade(){
-    var sub = subSel.value, fam = famSel.value, pv = prazoSel.value;
-    if(!sub || !fam || !pv){ cmpFeedback('Selecione submercado, prazo e entrega/horizonte.', 'warn'); return null; }
-    if(pv.indexOf('rel|')===0){ return {kind:'rel', sub:sub, fam:fam, h:+pv.slice(4)}; }
-    var dk = pv.slice(4);
-    var arr = meta.deliveriesBySubFam[sub+'|'+fam] || [];
-    var d = arr.filter(function(x){return x.key===dk;})[0];
-    return {kind:'abs', sub:sub, fam:fam, dk:dk, dl:d?d.label:dk};
+  var horizonByLabel = {};
+  meta.horizonOptions.forEach(function(o){ horizonByLabel[o.label] = o.def; });
+  function horizonFromInput(){
+    var inp = document.getElementById('cmp-horizon-input');
+    var lbl = (inp.value||'').trim();
+    if(!lbl){ cmpFeedback('Digite ou selecione uma entrega/horizonte da lista.', 'warn'); return null; }
+    var def = horizonByLabel[lbl];
+    if(!def){
+      var hit = Object.keys(horizonByLabel).filter(function(k){ return k.toLowerCase()===lbl.toLowerCase(); })[0];
+      def = hit ? horizonByLabel[hit] : null;
+    }
+    if(!def){ cmpFeedback('Não encontrado — escolha uma opção da lista sugerida.', 'warn'); return null; }
+    return def;
   }
   document.getElementById('cmp-add-btn').addEventListener('click', function(){
-    var s = seriesFromCascade(); if(s) addSeries(s);
+    var s = horizonFromInput(); if(s){ addSeries(s); document.getElementById('cmp-horizon-input').value=''; }
   });
   document.getElementById('cmp-replace-btn').addEventListener('click', function(){
-    var s = seriesFromCascade(); if(s) replaceSeries(s);
+    var s = horizonFromInput(); if(s){ replaceSeries(s); document.getElementById('cmp-horizon-input').value=''; }
   });
+  document.getElementById('cmp-horizon-input').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); var s=horizonFromInput(); if(s){ addSeries(s); this.value=''; } } });
 
   var productByLabel = {};
   meta.products.forEach(function(p){ productByLabel[prodShortLabel(p.produto)] = p.produto; });
