@@ -1762,7 +1762,7 @@ function cmpSeriesMonthly(result, s){
   return monthKeys.map(function(mk){ var g=byMonth[mk]; return {month:mk, biz:biz[mk], vol:g.vol, n:g.n, pv:g.pv, daysSize:g.days.size}; });
 }
 function cmpSeriesDaily(result, s){
-  var dayKeys = eachBusinessDayKeys(result.start, result.end);
+  var dayKeys = eachBusinessDayKeys(result.compareData.start, result.compareData.end);
   var byDay = {}; dayKeys.forEach(function(dk){ byDay[dk] = {vol:0,n:0,pv:0}; });
   var recs = result.compareData.cleanRecords;
   for(var i=0;i<recs.length;i++){
@@ -1778,7 +1778,7 @@ function cmpSeriesDaily(result, s){
   return dayKeys.map(function(dk){ var g=byDay[dk]; return {day:dk, biz:1, vol:g.vol, n:g.n, pv:g.pv, daysSize:(g.n>0?1:0)}; });
 }
 function cmpSeriesWeekly(result, s){
-  var weekKeys = eachWeekKeys(result.start, result.end);
+  var weekKeys = eachWeekKeys(result.compareData.start, result.compareData.end);
   var byWeek = {}; weekKeys.forEach(function(wk){ byWeek[wk] = {vol:0,n:0,pv:0,days:new Set()}; });
   var recs = result.compareData.cleanRecords;
   for(var i=0;i<recs.length;i++){
@@ -1792,7 +1792,7 @@ function cmpSeriesWeekly(result, s){
     var g = byWeek[wk]; if(!g) continue;
     g.vol += r.qn; g.n += 1; g.pv += r.preco*r.qn; g.days.add(r.day);
   }
-  return weekKeys.map(function(wk){ var g=byWeek[wk]; return {week:wk, biz:bizForWeek(wk,result.start,result.end), vol:g.vol, n:g.n, pv:g.pv, daysSize:g.days.size}; });
+  return weekKeys.map(function(wk){ var g=byWeek[wk]; return {week:wk, biz:bizForWeek(wk,result.compareData.start,result.compareData.end), vol:g.vol, n:g.n, pv:g.pv, daysSize:g.days.size}; });
 }
 var cmpFeedbackTimer = null;
 function cmpFeedback(msg, kind){
@@ -1857,12 +1857,23 @@ function renderComparador(result){
   var mode = state.compare.mode || 'daily';
   var gran = state.compare.granularity || 'day';
   var multiSub = meta.submarkets.length>1;
+  var cd = result.compareData;
 
   var html = ''
     + '<div class="content-header" style="margin-bottom:16px;"><h2>Comparador de liquidez</h2>'
-    + '<p>Compare a liquidez de até 8 produtos, da mesma família ou de famílias diferentes, no período filtrado à esquerda (aba Análise). Busque pelo <strong>nome exato do produto</strong> na nomenclatura BBCE e escolha o detalhe do eixo X — dia, semana ou mês — para uma análise mais micro ou mais macro. Responde perguntas como “o SE Mensal M+1 é mais líquido que o SU Mensal M+1?”.</p></div>'
+    + '<p>Compare a liquidez de até 8 produtos, da mesma família ou de famílias diferentes, num período próprio — independente do período da aba Análise. Busque pelo <strong>nome exato do produto</strong> na nomenclatura BBCE e escolha o detalhe do eixo X — dia, semana ou mês — para uma análise mais micro ou mais macro. Responde perguntas como “o SE Mensal M+1 é mais líquido que o SU Mensal M+1?”.</p></div>'
     + '<div class="cmp-controls">'
-    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);">Buscar produto — nomenclatura BBCE exata</div>'
+    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);">Período do comparador (DATA/HORA de criação) — independente da aba Análise</div>'
+    + '<div class="cmp-row">'
+    + '<label class="cmp-field"><span class="visually-hidden">Data inicial</span>Início<input type="date" id="cmp-date-start" value="'+isoDate(cd.start)+'" min="'+isoDate(state.minDate)+'" max="'+isoDate(state.maxDate)+'"></label>'
+    + '<label class="cmp-field"><span class="visually-hidden">Data final</span>Fim<input type="date" id="cmp-date-end" value="'+isoDate(cd.end)+'" min="'+isoDate(state.minDate)+'" max="'+isoDate(state.maxDate)+'"></label>'
+    + '<div class="cmp-field" style="flex-direction:row;gap:8px;align-self:flex-end;">'
+    + '<button class="btn-primary" id="cmp-period-apply-btn" type="button" style="width:auto;white-space:nowrap;">Aplicar período</button>'
+    + '</div>'
+    + '<div class="cmp-hint" style="align-self:center;">'+fmtInt(cd.totalBiz)+' dias úteis · '+fmtDateRange(cd.start,cd.end)+'</div>'
+    + '</div>'
+    + '<div class="presets" id="cmp-presets"></div>'
+    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:12px;">Buscar produto — nomenclatura BBCE exata</div>'
     + '<div class="cmp-row">'
     + '<label class="cmp-field" style="flex:1;min-width:280px;">Produto ('+fmtInt(meta.products.length)+' disponíveis)'
     + '<input id="cmp-prod-input" list="cmp-prod-list" placeholder="digite para buscar — ex.: SE CON MEN AGO/26 · SU CON ANU JAN/27 DEZ/27" autocomplete="off">'
@@ -1898,6 +1909,44 @@ function renderComparador(result){
     + '<div class="chart-card"><div class="legend" id="cmp-legend"></div><div id="cmp-chart"></div></div>'
     + '<section class="block"><div class="block-head"><h3>Tabela comparativa</h3><span class="note">Valores por mês e total/agregado no período</span></div><div id="cmp-table"></div></section>';
   container.innerHTML = html;
+
+  function applyComparePeriod(s, e, okMsg){
+    if(s>e){ cmpFeedback('A data inicial não pode ser depois da final.', 'warn'); return; }
+    if(s<state.minDate) s = state.minDate;
+    if(e>state.maxDate) e = state.maxDate;
+    var threshold = (parseFloat(document.getElementById('threshold').value)||0)/100;
+    state.result.compareData = buildCompareIndex(s, e, threshold);
+    renderComparador(state.result);
+    cmpFeedback(okMsg || ('✓ Período do comparador atualizado: ' + fmtDateRange(s,e)), 'ok');
+  }
+  document.getElementById('cmp-period-apply-btn').addEventListener('click', function(){
+    var dsv = document.getElementById('cmp-date-start').value;
+    var dev = document.getElementById('cmp-date-end').value;
+    if(!dsv || !dev){ cmpFeedback('Informe as duas datas do período.', 'warn'); return; }
+    applyComparePeriod(new Date(dsv+'T00:00:00'), new Date(dev+'T23:59:59'));
+  });
+  var cmpPresetsEl = document.getElementById('cmp-presets');
+  var cmpPresetOpts = [
+    {label:'Últimos 7 dias',    fn:function(){ return [addDays(state.maxDate,-6), state.maxDate]; }},
+    {label:'Últimas 2 semanas', fn:function(){ return [addDays(state.maxDate,-13), state.maxDate]; }},
+    {label:'Últimas 4 semanas', fn:function(){ return [addDays(state.maxDate,-27), state.maxDate]; }},
+    {label:'Último mês',        fn:function(){ return [new Date(state.maxDate.getFullYear(), state.maxDate.getMonth(),1), state.maxDate]; }},
+    {label:'Últimos 3 meses',   fn:function(){ return [addDays(state.maxDate,-89), state.maxDate]; }},
+    {label:'Ano corrente',      fn:function(){ return [new Date(state.maxDate.getFullYear(),0,1), state.maxDate]; }},
+    {label:'Tudo',              fn:function(){ return [state.minDate, state.maxDate]; }}
+  ];
+  cmpPresetOpts.forEach(function(o){
+    var b = document.createElement('button');
+    b.type='button'; b.className='chip'; b.textContent=o.label;
+    b.addEventListener('click', function(){
+      var range = o.fn();
+      var s = range[0] < state.minDate ? state.minDate : range[0];
+      document.getElementById('cmp-date-start').value = isoDate(s);
+      document.getElementById('cmp-date-end').value = isoDate(range[1]);
+      applyComparePeriod(s, range[1]);
+    });
+    cmpPresetsEl.appendChild(b);
+  });
 
   var productByLabel = {};
   meta.products.forEach(function(p){ productByLabel[prodShortLabel(p.produto)] = p.produto; });
@@ -1979,9 +2028,9 @@ function drawCompare(){
   }
   if(legendEl) legendEl.innerHTML = series.map(function(s){ return '<span class="item"><span class="sw" style="background:'+s.color+'"></span>'+escapeHtml(s.label)+'</span>'; }).join('');
   var xKeys, shortLabelFn, fullLabelFn;
-  if(gran==='week'){ xKeys = eachWeekKeys(result.start, result.end); shortLabelFn = weekLabelShort; fullLabelFn = weekLabelFull; }
+  if(gran==='week'){ xKeys = eachWeekKeys(result.compareData.start, result.compareData.end); shortLabelFn = weekLabelShort; fullLabelFn = weekLabelFull; }
   else if(gran==='month'){ xKeys = result.compareData.monthKeys; shortLabelFn = monthLabel; fullLabelFn = monthLabel; }
-  else { xKeys = eachBusinessDayKeys(result.start, result.end); shortLabelFn = dayLabelShort; fullLabelFn = dayLabelFull; }
+  else { xKeys = eachBusinessDayKeys(result.compareData.start, result.compareData.end); shortLabelFn = dayLabelShort; fullLabelFn = dayLabelFull; }
   if(state.compare.mode==='bars') drawCompareBars(chartEl, series, metric, mConf);
   else drawCompareLines(chartEl, series, metric, mConf, xKeys, shortLabelFn, fullLabelFn);
   if(tableEl) drawCompareTable(tableEl, series, metric, mConf, result.compareData.monthKeys);
