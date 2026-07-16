@@ -1219,6 +1219,18 @@ function eachMonthKeys(start, end){
   }
   return keys;
 }
+function eachBusinessDayKeys(start, end){
+  var keys = [];
+  var d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  var endD = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while(d<=endD){
+    if(isBusinessDay(d)) keys.push(isoDate(d));
+    d = addDays(d,1);
+  }
+  return keys;
+}
+function dayLabelShort(dk){ var p = dk.split('-'); return p[2]+'/'+p[1]; }
+function dayLabelFull(dk){ var p = dk.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
 
 function buildMonthly(byFamily, familyOrder, start, end){
   var monthKeys = eachMonthKeys(start, end);
@@ -1719,6 +1731,22 @@ function cmpSeriesMonthly(result, s){
   }
   return monthKeys.map(function(mk){ var g=byMonth[mk]; return {month:mk, biz:biz[mk], vol:g.vol, n:g.n, pv:g.pv, daysSize:g.days.size}; });
 }
+function cmpSeriesDaily(result, s){
+  var dayKeys = eachBusinessDayKeys(result.start, result.end);
+  var byDay = {}; dayKeys.forEach(function(dk){ byDay[dk] = {vol:0,n:0,pv:0}; });
+  var recs = result.compareData.cleanRecords;
+  for(var i=0;i<recs.length;i++){
+    var r = recs[i];
+    if(s.kind==='prod'){ if(r.produto!==s.produto) continue; }
+    else {
+      if(r.sub!==s.sub || r.fam!==s.fam) continue;
+      if(s.kind==='rel'){ if(r.h!==s.h) continue; } else { if(r.dk!==s.dk) continue; }
+    }
+    var g = byDay[r.day]; if(!g) continue;
+    g.vol += r.qn; g.n += 1; g.pv += r.preco*r.qn;
+  }
+  return dayKeys.map(function(dk){ var g=byDay[dk]; return {day:dk, biz:1, vol:g.vol, n:g.n, pv:g.pv, daysSize:(g.n>0?1:0)}; });
+}
 var cmpFeedbackTimer = null;
 function cmpFeedback(msg, kind){
   var el = document.getElementById('cmp-feedback'); if(!el) return;
@@ -1779,25 +1807,14 @@ function renderComparador(result){
     state.compare.series = seeds.slice(0,8);
   }
   var metric = state.compare.metric || 'vol';
-  var mode = state.compare.mode || 'monthly';
+  var mode = state.compare.mode || 'daily';
   var multiSub = meta.submarkets.length>1;
-  var cd = result.compareData;
 
   var html = ''
     + '<div class="content-header" style="margin-bottom:16px;"><h2>Comparador de liquidez</h2>'
-    + '<p>Compare a liquidez de até 8 produtos, no mesmo prazo ou em prazos diferentes, agrupada por mês de criação (DATA/HORA). Monte por <strong>submercado + prazo + horizonte</strong> (M+N, A+N, T+N…) ou busque pelo <strong>nome exato do produto</strong> na nomenclatura BBCE. Responde perguntas como “o SE Mensal M+1 é mais líquido que o SU Mensal M+1?”.</p></div>'
+    + '<p>Compare a liquidez de até 8 produtos, no mesmo prazo ou em prazos diferentes, no período filtrado à esquerda (aba Análise). Monte por <strong>submercado + prazo + horizonte</strong> (M+N, A+N, T+N…) ou busque pelo <strong>nome exato do produto</strong> na nomenclatura BBCE. A evolução é exibida por dia útil, para o maior detalhe possível. Responde perguntas como “o SE Mensal M+1 é mais líquido que o SU Mensal M+1?”.</p></div>'
     + '<div class="cmp-controls">'
-    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);">Período do comparador (DATA/HORA) — independente da aba Análise</div>'
-    + '<div class="cmp-row">'
-    + '<label class="cmp-field"><span class="visually-hidden">Data inicial</span>Início<input type="date" id="cmp-date-start" value="'+isoDate(cd.start)+'" min="'+isoDate(state.minDate)+'" max="'+isoDate(state.maxDate)+'"></label>'
-    + '<label class="cmp-field"><span class="visually-hidden">Data final</span>Fim<input type="date" id="cmp-date-end" value="'+isoDate(cd.end)+'" min="'+isoDate(state.minDate)+'" max="'+isoDate(state.maxDate)+'"></label>'
-    + '<div class="cmp-field" style="flex-direction:row;gap:8px;align-self:flex-end;">'
-    + '<button class="btn-primary" id="cmp-period-apply-btn" type="button" style="width:auto;white-space:nowrap;">Aplicar período</button>'
-    + '</div>'
-    + '<div class="cmp-hint" style="align-self:center;">'+fmtInt(cd.totalBiz)+' dias úteis · '+fmtDateRange(cd.start,cd.end)+'</div>'
-    + '</div>'
-    + '<div class="presets" id="cmp-presets"></div>'
-    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:12px;">A) Montar por atributos — submercado · prazo · horizonte (M+N)</div>'
+    + '<div class="cmp-hint" style="font-weight:600;color:var(--text-secondary);">A) Montar por atributos — submercado · prazo · horizonte (M+N)</div>'
     + '<div class="cmp-row">'
     + '<label class="cmp-field">Submercado<select id="cmp-sub">'
     + meta.submarkets.map(function(sub){return '<option value="'+escapeHtml(sub)+'">'+escapeHtml(sub)+'</option>';}).join('')
@@ -1826,7 +1843,7 @@ function renderComparador(result){
     + Object.keys(CMP_METRICS).map(function(k){return '<option value="'+k+'"'+(k===metric?' selected':'')+'>'+CMP_METRICS[k].label+'</option>';}).join('')
     + '</select></label>'
     + '<div class="cmp-field">Visualização<div class="toggle-group" id="cmp-mode">'
-    + '<button data-mode="monthly" aria-pressed="'+(mode!=='bars')+'">Evolução mensal</button>'
+    + '<button data-mode="daily" aria-pressed="'+(mode!=='bars')+'">Evolução diária</button>'
     + '<button data-mode="bars" aria-pressed="'+(mode==='bars')+'">Total no período</button>'
     + '</div></div>'
     + '</div>'
@@ -1840,43 +1857,6 @@ function renderComparador(result){
     + '<div class="chart-card"><div class="legend" id="cmp-legend"></div><div id="cmp-chart"></div></div>'
     + '<section class="block"><div class="block-head"><h3>Tabela comparativa</h3><span class="note">Valores por mês e total/agregado no período</span></div><div id="cmp-table"></div></section>';
   container.innerHTML = html;
-
-  function applyComparePeriod(s, e, okMsg){
-    if(s>e){ cmpFeedback('A data inicial não pode ser depois da final.', 'warn'); return; }
-    if(s<state.minDate) s = state.minDate;
-    if(e>state.maxDate) e = state.maxDate;
-    var threshold = (parseFloat(document.getElementById('threshold').value)||0)/100;
-    state.result.compareData = buildCompareIndex(s, e, threshold);
-    renderComparador(state.result);
-    cmpFeedback(okMsg || ('✓ Período do comparador atualizado: ' + fmtDateRange(s,e)), 'ok');
-  }
-  document.getElementById('cmp-period-apply-btn').addEventListener('click', function(){
-    var dsv = document.getElementById('cmp-date-start').value;
-    var dev = document.getElementById('cmp-date-end').value;
-    if(!dsv || !dev){ cmpFeedback('Informe as duas datas do período.', 'warn'); return; }
-    applyComparePeriod(new Date(dsv+'T00:00:00'), new Date(dev+'T23:59:59'));
-  });
-  var cmpPresetsEl = document.getElementById('cmp-presets');
-  var cmpPresetOpts = [
-    {label:'Últimos 7 dias',    fn:function(){ return [addDays(state.maxDate,-6), state.maxDate]; }},
-    {label:'Últimas 2 semanas', fn:function(){ return [addDays(state.maxDate,-13), state.maxDate]; }},
-    {label:'Últimas 4 semanas', fn:function(){ return [addDays(state.maxDate,-27), state.maxDate]; }},
-    {label:'Último mês',        fn:function(){ return [new Date(state.maxDate.getFullYear(), state.maxDate.getMonth(),1), state.maxDate]; }},
-    {label:'Últimos 3 meses',   fn:function(){ return [addDays(state.maxDate,-89), state.maxDate]; }},
-    {label:'Ano corrente',      fn:function(){ return [new Date(state.maxDate.getFullYear(),0,1), state.maxDate]; }},
-    {label:'Tudo',              fn:function(){ return [state.minDate, state.maxDate]; }}
-  ];
-  cmpPresetOpts.forEach(function(o){
-    var b = document.createElement('button');
-    b.type='button'; b.className='chip'; b.textContent=o.label;
-    b.addEventListener('click', function(){
-      var range = o.fn();
-      document.getElementById('cmp-date-start').value = isoDate(range[0]<state.minDate?state.minDate:range[0]);
-      document.getElementById('cmp-date-end').value = isoDate(range[1]);
-      applyComparePeriod(range[0], range[1]);
-    });
-    cmpPresetsEl.appendChild(b);
-  });
 
   var subSel = document.getElementById('cmp-sub');
   var famSel = document.getElementById('cmp-fam');
@@ -1969,7 +1949,8 @@ function drawCompare(){
   var mConf = CMP_METRICS[metric];
   var series = state.compare.series.map(function(s,i){
     var monthly = cmpSeriesMonthly(result, s);
-    return {def:s, color:cmpColor(i), label:seriesLabel(s), monthly:monthly, agg:cmpAgg(monthly, result.compareData.totalBiz)};
+    var daily = cmpSeriesDaily(result, s);
+    return {def:s, color:cmpColor(i), label:seriesLabel(s), monthly:monthly, daily:daily, agg:cmpAgg(monthly, result.compareData.totalBiz)};
   });
   if(!series.length){
     if(legendEl) legendEl.innerHTML='';
@@ -1978,32 +1959,33 @@ function drawCompare(){
     return;
   }
   if(legendEl) legendEl.innerHTML = series.map(function(s){ return '<span class="item"><span class="sw" style="background:'+s.color+'"></span>'+escapeHtml(s.label)+'</span>'; }).join('');
+  var dayKeys = eachBusinessDayKeys(result.start, result.end);
   if(state.compare.mode==='bars') drawCompareBars(chartEl, series, metric, mConf);
-  else drawCompareLines(chartEl, series, metric, mConf, result.compareData.monthKeys);
+  else drawCompareLines(chartEl, series, metric, mConf, dayKeys);
   if(tableEl) drawCompareTable(tableEl, series, metric, mConf, result.compareData.monthKeys);
 }
-function drawCompareLines(container, series, metric, mConf, monthKeys){
-  var n = monthKeys.length;
+function drawCompareLines(container, series, metric, mConf, dayKeys){
+  var n = dayKeys.length;
   var w = Math.max(container.clientWidth||600, 320);
   var leftPad=56, rightPad=16, topPad=12, bottomPad=26;
   var plotW = Math.max(1, w-leftPad-rightPad);
   var chartH = 240;
   var H = chartH+topPad+bottomPad;
   var vals = [];
-  series.forEach(function(s){ s.pts = s.monthly.map(function(g){ return cmpVal(g, metric); }); vals = vals.concat(s.pts); });
+  series.forEach(function(s){ s.pts = s.daily.map(function(g){ return cmpVal(g, metric); }); vals = vals.concat(s.pts); });
   var maxV = Math.max.apply(null, vals.concat([0.0001])) * 1.08;
   function xAt(i){ return n<=1 ? leftPad+plotW/2 : leftPad + (i/(n-1))*plotW; }
   function yAt(v){ return topPad + chartH - (v/maxV)*chartH; }
-  var svg = '<svg class="chart" viewBox="0 0 '+w+' '+H+'" role="img" aria-label="Comparação mensal">';
+  var svg = '<svg class="chart" viewBox="0 0 '+w+' '+H+'" role="img" aria-label="Comparação por dia útil">';
   for(var t=0;t<=4;t++){
     var gv = maxV*t/4; var gy = yAt(gv);
     svg += '<line class="gridline" x1="'+leftPad+'" y1="'+gy.toFixed(1)+'" x2="'+(w-rightPad)+'" y2="'+gy.toFixed(1)+'"></line>';
     svg += '<text class="axis-text" x="'+(leftPad-6)+'" y="'+(gy+3).toFixed(1)+'" text-anchor="end">'+(mConf.pct?fmt(gv*100,0)+'%':fmt(gv, gv>=100?0:1))+'</text>';
   }
-  var step = Math.ceil(n/12);
-  monthKeys.forEach(function(mk,i){
+  var step = Math.ceil(n/14) || 1;
+  dayKeys.forEach(function(dk,i){
     if(i%step!==0 && i!==n-1) return;
-    svg += '<text class="axis-text" x="'+xAt(i).toFixed(1)+'" y="'+(topPad+chartH+16)+'" text-anchor="middle">'+monthLabel(mk)+'</text>';
+    svg += '<text class="axis-text" x="'+xAt(i).toFixed(1)+'" y="'+(topPad+chartH+16)+'" text-anchor="middle">'+dayLabelShort(dk)+'</text>';
   });
   series.forEach(function(s){
     var d = s.pts.map(function(v,i){ return (i===0?'M':'L')+xAt(i).toFixed(1)+' '+yAt(v).toFixed(1); }).join(' ');
@@ -2024,7 +2006,7 @@ function drawCompareLines(container, series, metric, mConf, monthKeys){
     var cx = xAt(i);
     cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.style.opacity='1';
     var rows = series.map(function(s){ return '<div style="display:flex;gap:6px;align-items:center;"><span style="width:10px;height:3px;border-radius:2px;background:'+s.color+';display:inline-block;flex-shrink:0;"></span>'+escapeHtml(s.label)+': '+fmtMetric(s.pts[i], metric, mConf)+'</div>'; }).join('');
-    showTooltip(e.clientX, e.clientY, '<div class="t-title">'+monthLabel(monthKeys[i])+'</div>'+rows);
+    showTooltip(e.clientX, e.clientY, '<div class="t-title">'+dayLabelFull(dayKeys[i])+'</div>'+rows);
   });
   overlay.addEventListener('mouseleave', function(){ cross.style.opacity='0'; hideTooltip(); });
 }
