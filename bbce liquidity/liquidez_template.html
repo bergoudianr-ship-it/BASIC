@@ -1155,11 +1155,13 @@ function buildCompareIndex(start, end, threshold){
     bizByMonth[mk] = countBusinessDays(rs, re);
   });
   return {
+    _v: ++cmpIndexVersion,
     start:start, end:end, totalBiz: countBusinessDays(start,end),
     monthKeys:monthKeys, bizByMonth:bizByMonth,
     cleanRecords:cleanRecords, compareMeta:compareMeta
   };
 }
+var cmpIndexVersion = 0;
 
 function buildLiquidezTable(records, totalBiz){
   var byH = new Map();
@@ -1282,8 +1284,9 @@ function buildMonthly(byFamily, familyOrder, start, end){
     records.forEach(function(r){
       if(!g[r.month]) return;
       g[r.month].vol += r.qn; g[r.month].n += 1;
-      if(!g[r.month][r.horizonte]) g[r.month][r.horizonte]=0;
-      g[r.month][r.horizonte] += r.qn;
+      if(!g[r.month][r.horizonte]) g[r.month][r.horizonte] = {vol:0, n:0};
+      g[r.month][r.horizonte].vol += r.qn;
+      g[r.month][r.horizonte].n += 1;
       if(r.horizonte>maxH) maxH = r.horizonte;
     });
     grids[fam] = {grid:g, maxH:maxH};
@@ -1531,11 +1534,11 @@ function wireEvolution(result){
     var cfg = familyConfig(fam);
     document.getElementById('evo-title').textContent = fam + ' ' + horizonLabel(cfg.prefix, h);
     var monthly = result.monthly;
-    var records = result.byFamily.get(fam) || [];
     var series = monthly.rows.map(function(row){
       var cell = monthly.grids[fam].grid[row.month];
-      var vol = (cell && cell[h]) || 0;
-      var n = records.filter(function(r){return r.month===row.month && r.horizonte===h;}).length;
+      var hc = cell && cell[h];
+      var vol = hc ? hc.vol : 0;
+      var n = hc ? hc.n : 0;
       var perbiz = row.biz>0 ? vol/row.biz : 0;
       return {month:row.month, vol:vol, n:n, perbiz:perbiz, biz:row.biz};
     });
@@ -1624,14 +1627,15 @@ function gradeTable(monthly, fam, cfg){
   var cols = [];
   for(var i=0;i<=g.maxH;i++) cols.push(i);
   var head = '<th>Mês criação</th><th>Dias úteis</th>'+cols.map(function(c){return '<th>'+horizonLabel(cfg.prefix,c)+'</th>';}).join('')+'<th>TOTAL/dia útil</th>';
+  function cellVol(mk, c){ var cell = g.grid[mk] && g.grid[mk][c]; return cell ? cell.vol : 0; }
   var rows = monthly.rows.map(function(r){
     var biz = r.biz;
     var cells = cols.map(function(c){
-      var v = (g.grid[r.month] && g.grid[r.month][c]) || 0;
+      var v = cellVol(r.month, c);
       var perbiz = biz>0? v/biz : 0;
       return '<td>'+(v>0?fmt(perbiz,2):'—')+'</td>';
     });
-    var rowTotal = biz>0 ? sum(cols.map(function(c){ return (g.grid[r.month] && g.grid[r.month][c])||0; }))/biz : 0;
+    var rowTotal = biz>0 ? sum(cols.map(function(c){ return cellVol(r.month, c); }))/biz : 0;
     return '<tr><td class="rowhead">'+monthLabel(r.month)+'</td><td>'+fmtInt(biz)+'</td>'+cells.join('')+'<td>'+fmt(rowTotal,2)+'</td></tr>';
   }).join('');
   return '<div class="table-wrap"><table><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
@@ -1794,6 +1798,19 @@ function cmpSeriesWeekly(result, s){
   }
   return weekKeys.map(function(wk){ var g=byWeek[wk]; return {week:wk, biz:bizForWeek(wk,result.compareData.start,result.compareData.end), vol:g.vol, n:g.n, pv:g.pv, daysSize:g.days.size}; });
 }
+/* Cache das agregações por série (mensal/diária/semanal), invalidada automaticamente
+   sempre que buildCompareIndex() roda de novo (via cmpIndexVersion) -- evita reprocessar
+   os mesmos negócios ao só trocar métrica, modo de visualização ou redimensionar a janela. */
+var cmpAggCache = {}, cmpAggCacheVersion = -1;
+function cmpCached(result, prefix, s, fn){
+  if(cmpAggCacheVersion !== result.compareData._v){ cmpAggCache = {}; cmpAggCacheVersion = result.compareData._v; }
+  var key = prefix+'|'+seriesKey(s);
+  if(!(key in cmpAggCache)) cmpAggCache[key] = fn(result, s);
+  return cmpAggCache[key];
+}
+function getSeriesMonthly(result, s){ return cmpCached(result, 'm', s, cmpSeriesMonthly); }
+function getSeriesDaily(result, s){ return cmpCached(result, 'd', s, cmpSeriesDaily); }
+function getSeriesWeekly(result, s){ return cmpCached(result, 'w', s, cmpSeriesWeekly); }
 var cmpFeedbackTimer = null;
 function cmpFeedback(msg, kind){
   var el = document.getElementById('cmp-feedback'); if(!el) return;
@@ -2016,8 +2033,8 @@ function drawCompare(){
   var mConf = CMP_METRICS[metric];
   var gran = state.compare.granularity || 'day';
   var series = state.compare.series.map(function(s,i){
-    var monthly = cmpSeriesMonthly(result, s);
-    var granData = gran==='day' ? cmpSeriesDaily(result, s) : gran==='week' ? cmpSeriesWeekly(result, s) : monthly;
+    var monthly = getSeriesMonthly(result, s);
+    var granData = gran==='day' ? getSeriesDaily(result, s) : gran==='week' ? getSeriesWeekly(result, s) : monthly;
     return {def:s, color:cmpColor(i), label:seriesLabel(s), monthly:monthly, granData:granData, agg:cmpAgg(monthly, result.compareData.totalBiz)};
   });
   if(!series.length){
