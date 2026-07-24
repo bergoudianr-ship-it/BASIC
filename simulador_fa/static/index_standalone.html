@@ -79,6 +79,10 @@ input[type=number],input[type=text],input[type=date]{
   color:var(--text);padding:7px 9px;border-radius:6px;font-size:12px;
   transition:border-color .15s,box-shadow .15s;}
 input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(26,106,99,.12);}
+/* Remove as setinhas (spin buttons) dos campos numericos — mais limpo para digitar */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 /* ---- BUTTONS ---- */
 .btn{background:var(--acc);color:#fff;border:none;padding:8px 17px;
@@ -117,10 +121,12 @@ td{padding:6px 9px;border-bottom:1px solid #eee8db;text-align:right;vertical-ali
 td:first-child,td:nth-child(2){text-align:left;color:var(--muted);}
 tbody tr:nth-child(even) td{background:rgba(239,235,224,.4);}
 tbody tr:hover td{background:rgba(26,106,99,.06);}
-td input{width:90px;background:var(--surf);border:1px solid var(--border);
-  color:var(--text);padding:4px 6px;border-radius:5px;font-size:11px;text-align:right;
-  font-variant-numeric:tabular-nums;transition:border-color .15s;}
-td input:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 2px rgba(26,106,99,.12);}
+td input{width:104px;background:var(--surf);border:1px solid var(--border);
+  color:var(--text);padding:6px 9px;border-radius:6px;font-size:12px;text-align:right;
+  font-variant-numeric:tabular-nums;transition:border-color .15s,box-shadow .15s,background .15s;}
+td input:hover{border-color:#c9c2b0;}
+td input:focus{border-color:var(--acc);outline:none;background:var(--surf3);
+  box-shadow:0 0 0 3px rgba(26,106,99,.14);}
 .row-section td{background:rgba(177,106,58,.1)!important;color:var(--amb)!important;
   font-weight:700;font-size:11px;letter-spacing:.6px;text-align:left!important;
   text-transform:uppercase;}
@@ -583,8 +589,9 @@ function __emptySection(){
   const z=()=>{const o={};__VERT.forEach(v=>o[v]=0);return o;};
   return { subm:Object.fromEntries(__SUBM.map(s=>[s,z()])), recurso:z(), pm_recurso:z(), requisito:z(), pm_requisito:z() };
 }
-const __CAMPOS=[["Exposicao Submercado","subm"],["Recurso","recurso"],["PM Recurso","pm_recurso"],["Requisito","requisito"],["PM Requisito","pm_requisito"]];
-const __SECOES=[["Preco Fixo","preco_fixo"],["Preco Variavel","preco_variavel"],["Derivativos","derivativos"]];
+const __SUBM_LABEL={"SE/CO":"SUDESTE/CENTRO-OESTE","SUL":"SUL","NE":"NORDESTE","N":"NORTE"};
+const __CAMPOS=[["Exposicao Liquida por Submercado","subm"],["Recurso","recurso"],["Preco Medio Recurso","pm_recurso"],["Requisito","requisito"],["Preco Medio Requisito","pm_requisito"]];
+const __SECOES=[["Preco Fixo - Consumo e Geracao","preco_fixo"],["Preco Variavel (PLD+)","preco_variavel"],["Derivativos de Energia","derivativos"]];
 function __row(cells){ return cells.join(";"); }
 function __genPortfolioCSV(emp){
   const L=[]; L.push(__row(["Secao","Campo","Submercado",...__VERT]));
@@ -594,11 +601,11 @@ function __genPortfolioCSV(emp){
   __SECOES.forEach(([lbl,key])=>{
     const sec=emp[key]||{};
     __CAMPOS.forEach(([clbl,ckey])=>{
-      if(ckey==="subm"){ __SUBM.forEach(s=>{ L.push(__row([lbl,clbl,s,...__VERT.map(v=>__num(((sec.subm||{})[s]||{})[v]||0))])); }); }
+      if(ckey==="subm"){ __SUBM.forEach(s=>{ L.push(__row([lbl,clbl,__SUBM_LABEL[s],...__VERT.map(v=>__num(((sec.subm||{})[s]||{})[v]||0))])); }); }
       else { L.push(__row([lbl,clbl,"",...__VERT.map(v=>__num((sec[ckey]||{})[v]||0))])); }
     });
   });
-  L.push(__row(["EFM","Efeitos Financeiros Mercado Regulado","",...__VERT.map(v=>__num((emp.efm_regulado||{})[v]||0))]));
+  L.push(__row(["EFM","Efeitos Financeiros do Mercado Regulado (ACR etc)","",...__VERT.map(v=>__num((emp.efm_regulado||{})[v]||0))]));
   return L.join("\r\n")+"\r\n";
 }
 function __genExtraCSV(extra){
@@ -606,11 +613,11 @@ function __genExtraCSV(extra){
   __SECOES.forEach(([lbl,key])=>{
     const sec=extra[key]||{};
     __CAMPOS.forEach(([clbl,ckey])=>{
-      if(ckey==="subm"){ __SUBM.forEach(s=>{ L.push(__row([lbl,clbl,s,...__VERT.map(v=>__num(((sec.subm||{})[s]||{})[v]||0))])); }); }
+      if(ckey==="subm"){ __SUBM.forEach(s=>{ L.push(__row([lbl,clbl,__SUBM_LABEL[s],...__VERT.map(v=>__num(((sec.subm||{})[s]||{})[v]||0))])); }); }
       else { L.push(__row([lbl,clbl,"",...__VERT.map(v=>__num((sec[ckey]||{})[v]||0))])); }
     });
   });
-  L.push(__row(["EFM","Efeitos Financeiros Mercado Regulado","",...__VERT.map(v=>__num((extra.efm_regulado||{})[v]||0))]));
+  L.push(__row(["EFM","Efeitos Financeiros do Mercado Regulado (ACR etc)","",...__VERT.map(v=>__num((extra.efm_regulado||{})[v]||0))]));
   return L.join("\r\n")+"\r\n";
 }
 function __genHistCSV(hist){
@@ -627,9 +634,14 @@ function __pnum(x){
 function __parseCSV(text){
   const first=(text.split(/\r?\n/)[0]||""); const delim=(first.split(";").length-1)>=(first.split(",").length-1)?";":",";
   const rows=text.split(/\r?\n/).filter(l=>l.trim()!=="").map(l=>l.split(delim));
-  const secMap={"preco fixo":"preco_fixo","preco variavel":"preco_variavel","derivativos":"derivativos"};
-  const campoMap={"exposicao submercado":"subm","recurso":"recurso","pm recurso":"pm_recurso","requisito":"requisito","pm requisito":"pm_requisito"};
-  const submMap={"se/co":"SE/CO","sul":"SUL","ne":"NE","n":"N","sudeste/centro-oeste":"SE/CO"};
+  const secMap={"preco fixo":"preco_fixo","preco fixo - consumo e geracao":"preco_fixo",
+    "preco variavel":"preco_variavel","preco variavel (pld+)":"preco_variavel",
+    "derivativos":"derivativos","derivativos de energia":"derivativos"};
+  const campoMap={"exposicao submercado":"subm","exposicao liquida por submercado":"subm",
+    "recurso":"recurso","pm recurso":"pm_recurso","preco medio recurso":"pm_recurso",
+    "requisito":"requisito","pm requisito":"pm_requisito","preco medio requisito":"pm_requisito"};
+  const submMap={"se/co":"SE/CO","sul":"SUL","ne":"NE","n":"N","nordeste":"NE","norte":"N",
+    "sudeste/centro-oeste":"SE/CO","sudeste":"SE/CO","co":"SE/CO"};
   const start=(rows.length && (__norm(rows[0][0])==="secao"||__norm(rows[0][0])==="secao"||__norm(rows[0][0])==="seção"))?1:0;
   return {rows,start,secMap,campoMap,submMap};
 }

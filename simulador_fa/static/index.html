@@ -79,6 +79,10 @@ input[type=number],input[type=text],input[type=date]{
   color:var(--text);padding:7px 9px;border-radius:6px;font-size:12px;
   transition:border-color .15s,box-shadow .15s;}
 input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(26,106,99,.12);}
+/* Remove as setinhas (spin buttons) dos campos numericos — mais limpo para digitar */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 /* ---- BUTTONS ---- */
 .btn{background:var(--acc);color:#fff;border:none;padding:8px 17px;
@@ -117,10 +121,12 @@ td{padding:6px 9px;border-bottom:1px solid #eee8db;text-align:right;vertical-ali
 td:first-child,td:nth-child(2){text-align:left;color:var(--muted);}
 tbody tr:nth-child(even) td{background:rgba(239,235,224,.4);}
 tbody tr:hover td{background:rgba(26,106,99,.06);}
-td input{width:90px;background:var(--surf);border:1px solid var(--border);
-  color:var(--text);padding:4px 6px;border-radius:5px;font-size:11px;text-align:right;
-  font-variant-numeric:tabular-nums;transition:border-color .15s;}
-td input:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 2px rgba(26,106,99,.12);}
+td input{width:104px;background:var(--surf);border:1px solid var(--border);
+  color:var(--text);padding:6px 9px;border-radius:6px;font-size:12px;text-align:right;
+  font-variant-numeric:tabular-nums;transition:border-color .15s,box-shadow .15s,background .15s;}
+td input:hover{border-color:#c9c2b0;}
+td input:focus{border-color:var(--acc);outline:none;background:var(--surf3);
+  box-shadow:0 0 0 3px rgba(26,106,99,.14);}
 .row-section td{background:rgba(177,106,58,.1)!important;color:var(--amb)!important;
   font-weight:700;font-size:11px;letter-spacing:.6px;text-align:left!important;
   text-transform:uppercase;}
