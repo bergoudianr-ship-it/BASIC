@@ -27,18 +27,37 @@ O modo `mock` já deixa a integração ponta-a-ponta funcionando (front → back
 CSV → análise). Bom para testar e até para a demo, enquanto o modo `live` não é
 liberado.
 
-## Como rodar
+## Como rodar (o jeito fácil)
+
+- **Windows:** dê **duplo-clique em `run.bat`**.
+- **Mac/Linux:** rode `bash run.sh` na pasta `backend/`.
+
+Isso sobe o serviço, **cria o `.env` sozinho** na primeira vez e **abre a
+ferramenta no navegador** (`http://127.0.0.1:8787/`). Na primeira execução ele
+sobe em modo demonstração (base de exemplo).
+
+**Para puxar os dados reais da BBCE:** abra o `.env` que foi criado na pasta
+`backend/`, preencha suas credenciais e troque `BBCE_MODE=mock` por
+`BBCE_MODE=live`; depois rode de novo:
+
+```
+BBCE_MODE=live
+BBCE_API_KEY=sua_apikey
+BBCE_COMPANY_CODE=1266
+BBCE_EMAIL=seu_email
+BBCE_PASSWORD=sua_senha
+BBCE_WALLET_IDS=2
+```
+
+Na ferramenta, use a aba **Dados BBCE** → **Carregar todos os negócios**. Cada
+clique autentica e puxa os negócios atualizados na hora.
+
+### Rodar pela linha de comando (equivalente)
 
 ```bash
 cd "bbce liquidity/backend"
-
-# 1) Modo demonstração (sem credenciais):
-python3 server.py
-
-# 2) Modo ao vivo:
-cp .env.example .env      # preencha os valores no .env
-# ajuste BBCE_MODE=live no .env
-python3 server.py
+python3 server.py            # sobe + abre o navegador
+python3 server.py --no-browser   # sem abrir o navegador
 ```
 
 ### Testar só o acesso (login)

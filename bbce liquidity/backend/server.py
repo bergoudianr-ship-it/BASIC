@@ -124,13 +124,40 @@ def check_login():
         pass
 
 
+def _ensure_env_file():
+    """Cria backend/.env a partir de .env.example na primeira execução."""
+    base = os.path.dirname(os.path.abspath(__file__))
+    env_path, example = os.path.join(base, ".env"), os.path.join(base, ".env.example")
+    if os.path.exists(env_path) or not os.path.exists(example):
+        return
+    try:
+        with open(example, "r", encoding="utf-8") as src, open(env_path, "w", encoding="utf-8") as dst:
+            dst.write(src.read())
+        print(f"Criei {env_path} a partir de .env.example.")
+        print("Preencha suas credenciais nele e reinicie para o modo 'live'.\n")
+    except OSError:
+        pass
+
+
 def main():
     if "--check-login" in sys.argv:
         return check_login()
+    _ensure_env_file()
     srv = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
-    print(f"BBCE bridge em http://{config.HOST}:{config.PORT}  (modo: {config.MODE})")
-    print("  GET /health")
-    print("  GET /api/negocios")
+    url = f"http://{config.HOST}:{config.PORT}/"
+    print("=" * 60)
+    print(f"  Calculadora de Liquidez BBCE  —  modo: {config.MODE}")
+    print(f"  Abra no navegador:  {url}")
+    if config.MODE == "mock":
+        print("  (demonstração — preencha o .env e use BBCE_MODE=live para dados reais)")
+    print("  Ctrl+C para parar.")
+    print("=" * 60)
+    if "--no-browser" not in sys.argv and os.environ.get("BBCE_OPEN_BROWSER", "1") != "0":
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception:  # noqa: BLE001 - abrir navegador é só conveniência
+            pass
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
