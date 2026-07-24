@@ -473,13 +473,13 @@ footer{text-align:center;padding:20px;color:var(--muted);font-size:10px;
 <script>
 
 // ============================================================
-// STANDALONE SHIM — sem backend. Dados embutidos + cálculo em JS.
-// Intercepta chamadas /api/* e roda tudo no navegador.
+// STANDALONE SHIM — sem backend. Dados embutidos + calculo em JS.
 // ============================================================
 const __DB = {"premissas": {"data_referencia": "2026-05-25", "forward": {"M+0": {"SECO": 222.72, "SUL": 23.8, "NE": -61.59, "N": -60.5, "I0": 1.69, "I5": 30.17, "I8": 172.09, "I1": 172.09}, "M+1": {"SECO": 227.35, "SUL": 5.28, "NE": -36.7, "N": -32.64, "I0": 1.83, "I5": 28.61, "I8": 170.29, "I1": 170.29}, "M+2": {"SECO": 229.93, "SUL": 2.72, "NE": -30.27, "N": -15.07, "I0": 1.83, "I5": 29.4, "I8": 171.12, "I1": 171.12}, "M+3": {"SECO": 263.05, "SUL": 2.16, "NE": -28.37, "N": -11.42, "I0": 1.65, "I5": 29.28, "I8": 169.97, "I1": 169.97}, "M+4": {"SECO": 292.63, "SUL": 2.58, "NE": -23.71, "N": -7.36, "I0": 1.61, "I5": 27.84, "I8": 167.61, "I1": 167.61}, "M+5": {"SECO": 313.43, "SUL": 1.81, "NE": -18.07, "N": -7.05, "I0": 1.61, "I5": 28.98, "I8": 169.53, "I1": 169.53}, "M+6": {"SECO": 313.43, "SUL": 1.81, "NE": -18.07, "N": -7.05, "I0": 1.61, "I5": 28.98, "I8": 169.53, "I1": 169.53}}, "volatilidades": {"M+0": 0.07339999999999999, "M+1": 0.11894, "M+2": 0.10205, "M+3": 0.08728, "M+4": 0.067, "M+5": 0.05623, "M+6": 0.048600000000000004}, "stress_long": {"M+0": 168.47, "M+1": 134.86, "M+2": 139.94, "M+3": 173.77, "M+4": 219.12, "M+5": 231.91, "M+6": 232.69}, "stress_short": {"M+0": 279.76, "M+1": 326.52, "M+2": 333.03, "M+3": 365.56, "M+4": 372.34, "M+5": 395.11, "M+6": 389.62}, "horas": {"M+0": 744, "M+1": 720, "M+2": 744, "M+3": 744, "M+4": 720, "M+5": 744, "M+6": 720}, "phi_norm": -1.6449, "dias_liquidacao": 1, "K": 0, "theta": 0, "rho": 1, "pld_min": 57.31, "pld_max": 785.27}, "empresa": {"nome": "Minha Empresa", "pla": {"pl_bruto": 0, "deducoes": [{"item": "I", "valor": 0, "descricao": ""}, {"item": "II", "valor": 0, "descricao": ""}, {"item": "III", "valor": 0, "descricao": ""}, {"item": "IV", "valor": 0, "descricao": ""}, {"item": "V", "valor": 0, "descricao": ""}, {"item": "VI", "valor": 0, "descricao": ""}, {"item": "VII", "valor": 0, "descricao": ""}, {"item": "VIII", "valor": 0, "descricao": ""}]}, "preco_fixo": {"subm": {"SE/CO": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "SUL": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "NE": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "N": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "preco_variavel": {"subm": {"SE/CO": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "SUL": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "NE": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "N": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "derivativos": {"subm": {"SE/CO": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "SUL": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "NE": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "N": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "efm_regulado": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "portfolio_extra": {"ativo": false, "nome": "Portfólio Extra (Simulação)", "preco_fixo": {"subm": {"SE/CO": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "SUL": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "NE": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "N": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "preco_variavel": {"subm": {"SE/CO": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "SUL": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "NE": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "N": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "derivativos": {"subm": {"SE/CO": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "SUL": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "NE": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "N": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_recurso": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}, "pm_requisito": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "efm_regulado": {"M+0": 0, "M+1": 0, "M+2": 0, "M+3": 0, "M+4": 0, "M+5": 0, "M+6": 0}}, "historico": [{"data": "2026-05-27", "semana": "22/2026", "fa_ris": 0.0, "fa_divulgado": 0.0, "rwa": 0.0, "pnl": 0.0, "res_fin": 0.0, "pla": 0.0, "var_tot": 0.0, "stest_tot": 0.0}]};
 const __VERT = ["M+0","M+1","M+2","M+3","M+4","M+5","M+6"];
 const __SUBM = ["SE/CO","SUL","NE","N"];
 const __SPREAD = {"SE/CO":"SECO","SUL":"SUL","NE":"NE","N":"N"};
+const __DED = ["I","II","III","IV","V","VI","VII","VIII"];
 const __num = x => { const n = parseFloat(x); return isNaN(n)?0:n; };
 function __clone(o){ return JSON.parse(JSON.stringify(o)); }
 function __pla(emp){
@@ -494,7 +494,6 @@ function __fwdSubm(prem, vi, subm){
   return seco + __num(fwd[__SPREAD[subm]]||0);
 }
 function __vv(d,key,vi){ return __num(((d||{})[key]||{})[vi]||0); }
-function __zeros(){ const o={}; __VERT.forEach(v=>o[v]=0); return o; }
 function __mergeSection(base, extra){
   base=base||{}; extra=extra||{};
   const out={subm:{},recurso:{},pm_recurso:{},requisito:{},pm_requisito:{}};
@@ -579,21 +578,120 @@ function calcular_fa(empresa, prem){
     fa_ris: fa_ris!=null?r4(fa_ris):null, fa_divulgado: fa_div!=null?r4(fa_div):null, pla_negativo:pla_neg
   }};
 }
-// ---- Mock fetch: roteia /api/* para a lógica local ----
+// ---- CSV helpers ----
+function __emptySection(){
+  const z=()=>{const o={};__VERT.forEach(v=>o[v]=0);return o;};
+  return { subm:Object.fromEntries(__SUBM.map(s=>[s,z()])), recurso:z(), pm_recurso:z(), requisito:z(), pm_requisito:z() };
+}
+const __CAMPOS=[["Exposicao Submercado","subm"],["Recurso","recurso"],["PM Recurso","pm_recurso"],["Requisito","requisito"],["PM Requisito","pm_requisito"]];
+const __SECOES=[["Preco Fixo","preco_fixo"],["Preco Variavel","preco_variavel"],["Derivativos","derivativos"]];
+function __row(cells){ return cells.join(";"); }
+function __genPortfolioCSV(emp){
+  const L=[]; L.push(__row(["Secao","Campo","Submercado",...__VERT]));
+  // PLA
+  L.push(__row(["PLA","PL Bruto","", __num((emp.pla||{}).pl_bruto||0),"","","","","",""]));
+  __DED.forEach((it,i)=>{ const d=((emp.pla||{}).deducoes||[])[i]||{}; L.push(__row(["PLA","Deducao "+it,"", __num(d.valor||0),"","","","","",""])); });
+  __SECOES.forEach(([lbl,key])=>{
+    const sec=emp[key]||{};
+    __CAMPOS.forEach(([clbl,ckey])=>{
+      if(ckey==="subm"){ __SUBM.forEach(s=>{ L.push(__row([lbl,clbl,s,...__VERT.map(v=>__num(((sec.subm||{})[s]||{})[v]||0))])); }); }
+      else { L.push(__row([lbl,clbl,"",...__VERT.map(v=>__num((sec[ckey]||{})[v]||0))])); }
+    });
+  });
+  L.push(__row(["EFM","Efeitos Financeiros Mercado Regulado","",...__VERT.map(v=>__num((emp.efm_regulado||{})[v]||0))]));
+  return L.join("\r\n")+"\r\n";
+}
+function __genExtraCSV(extra){
+  extra=extra||{}; const L=[]; L.push(__row(["Secao","Campo","Submercado",...__VERT]));
+  __SECOES.forEach(([lbl,key])=>{
+    const sec=extra[key]||{};
+    __CAMPOS.forEach(([clbl,ckey])=>{
+      if(ckey==="subm"){ __SUBM.forEach(s=>{ L.push(__row([lbl,clbl,s,...__VERT.map(v=>__num(((sec.subm||{})[s]||{})[v]||0))])); }); }
+      else { L.push(__row([lbl,clbl,"",...__VERT.map(v=>__num((sec[ckey]||{})[v]||0))])); }
+    });
+  });
+  L.push(__row(["EFM","Efeitos Financeiros Mercado Regulado","",...__VERT.map(v=>__num((extra.efm_regulado||{})[v]||0))]));
+  return L.join("\r\n")+"\r\n";
+}
+function __genHistCSV(hist){
+  hist=hist||[]; const cols=["data","semana","fa_ris","fa_divulgado","rwa","pnl","res_fin","pla","var_tot","stest_tot"];
+  const L=[cols.join(";")]; hist.forEach(h=>L.push(cols.map(c=>h[c]==null?"":h[c]).join(";"))); return L.join("\r\n")+"\r\n";
+}
+function __norm(s){ return (s==null?"":(""+s)).normalize("NFKD").replace(/[̀-ͯ]/g,"").trim().toLowerCase(); }
+function __pnum(x){
+  if(x==null) return 0; let s=(""+x).trim().replace(/\s/g,""); if(s==="") return 0;
+  if(s.indexOf(",")>=0 && s.indexOf(".")>=0) s=s.replace(/\./g,"").replace(",",".");
+  else if(s.indexOf(",")>=0) s=s.replace(",",".");
+  const n=parseFloat(s); return isNaN(n)?0:n;
+}
+function __parseCSV(text){
+  const first=(text.split(/\r?\n/)[0]||""); const delim=(first.split(";").length-1)>=(first.split(",").length-1)?";":",";
+  const rows=text.split(/\r?\n/).filter(l=>l.trim()!=="").map(l=>l.split(delim));
+  const secMap={"preco fixo":"preco_fixo","preco variavel":"preco_variavel","derivativos":"derivativos"};
+  const campoMap={"exposicao submercado":"subm","recurso":"recurso","pm recurso":"pm_recurso","requisito":"requisito","pm requisito":"pm_requisito"};
+  const submMap={"se/co":"SE/CO","sul":"SUL","ne":"NE","n":"N","sudeste/centro-oeste":"SE/CO"};
+  const start=(rows.length && (__norm(rows[0][0])==="secao"||__norm(rows[0][0])==="secao"||__norm(rows[0][0])==="seção"))?1:0;
+  return {rows,start,secMap,campoMap,submMap};
+}
+function __parsePortfolioCSV(text){
+  const {rows,start,secMap,campoMap,submMap}=__parseCSV(text);
+  const emp={ preco_fixo:__emptySection(), preco_variavel:__emptySection(), derivativos:__emptySection(),
+    efm_regulado:Object.fromEntries(__VERT.map(v=>[v,0])),
+    pla:{pl_bruto:0, deducoes:__DED.map(it=>({item:it,valor:0,descricao:""}))} };
+  for(let i=start;i<rows.length;i++){
+    const r=rows[i]; const sec=__norm(r[0]), campo=__norm(r[1]), subm=__norm(r[2]);
+    const vals=__VERT.map((_,k)=> __pnum(r[3+k]));
+    if(sec==="pla"){
+      if(campo==="pl bruto") emp.pla.pl_bruto=vals[0];
+      else { const m=campo.match(/deducao\s+([ivx]+)/); if(m){ const it=m[1].toUpperCase(); const idx=__DED.indexOf(it); if(idx>=0) emp.pla.deducoes[idx].valor=vals[0]; } }
+      continue;
+    }
+    if(sec==="efm" || campo.indexOf("efeitos financeiros")>=0){ __VERT.forEach((v,k)=>emp.efm_regulado[v]=vals[k]); continue; }
+    const sk=secMap[sec], ck=campoMap[campo]; if(!sk||!ck) continue;
+    if(ck==="subm"){ const sr=submMap[subm]; if(sr) __VERT.forEach((v,k)=>emp[sk].subm[sr][v]=vals[k]); }
+    else __VERT.forEach((v,k)=>emp[sk][ck][v]=vals[k]);
+  }
+  return emp;
+}
+function __parseExtraCSV(text){
+  const {rows,start,secMap,campoMap,submMap}=__parseCSV(text);
+  const extra={ preco_fixo:__emptySection(), preco_variavel:__emptySection(), derivativos:__emptySection(),
+    efm_regulado:Object.fromEntries(__VERT.map(v=>[v,0])) };
+  for(let i=start;i<rows.length;i++){
+    const r=rows[i]; const sec=__norm(r[0]), campo=__norm(r[1]), subm=__norm(r[2]);
+    const vals=__VERT.map((_,k)=> __pnum(r[3+k]));
+    if(sec==="efm" || campo.indexOf("efeitos financeiros")>=0){ __VERT.forEach((v,k)=>extra.efm_regulado[v]=vals[k]); continue; }
+    const sk=secMap[sec], ck=campoMap[campo]; if(!sk||!ck) continue;
+    if(ck==="subm"){ const sr=submMap[subm]; if(sr) __VERT.forEach((v,k)=>extra.subm?0:(extra[sk].subm[sr][v]=vals[k])); }
+    else __VERT.forEach((v,k)=>extra[sk][ck][v]=vals[k]);
+  }
+  return extra;
+}
+function __triggerDownload(filename, text){
+  const blob=new Blob(["﻿"+text],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },100);
+}
+function __toBody(opts){
+  if(!opts||!opts.body) return null;
+  if(typeof opts.body==="string"){ try{return JSON.parse(opts.body);}catch(e){return opts.body;} }
+  try{ return new TextDecoder("utf-8").decode(new Uint8Array(opts.body)); }catch(e){ return null; }
+}
+// ---- Mock fetch ----
 const __origFetch = window.fetch ? window.fetch.bind(window) : null;
 window.fetch = async function(url, opts){
   opts = opts||{};
   const u = (''+url).split('?')[0];
   const method = (opts.method||'GET').toUpperCase();
-  const body = opts.body ? (typeof opts.body==='string'? JSON.parse(opts.body): null) : null;
   const J = obj => ({ ok:true, json: async()=>obj, text: async()=>JSON.stringify(obj) });
   try{
     if(u==='/api/premissas' && method==='GET') return J(__DB.premissas);
-    if(u==='/api/premissas' && method==='POST'){ __DB.premissas=body; return J({ok:true}); }
+    if(u==='/api/premissas' && method==='POST'){ __DB.premissas=__toBody(opts); return J({ok:true}); }
     if(u==='/api/empresa' && method==='GET') return J(__DB.empresa);
-    if(u==='/api/empresa' && method==='POST'){ __DB.empresa=body; return J(calcular_fa(body,__DB.premissas)); }
+    if(u==='/api/empresa' && method==='POST'){ __DB.empresa=__toBody(opts); return J(calcular_fa(__DB.empresa,__DB.premissas)); }
     if(u==='/api/portfolio_extra' && method==='GET') return J(__DB.portfolio_extra);
-    if(u==='/api/portfolio_extra' && method==='POST'){ __DB.portfolio_extra=body; return J({ok:true}); }
+    if(u==='/api/portfolio_extra' && method==='POST'){ __DB.portfolio_extra=__toBody(opts); return J({ok:true}); }
     if(u==='/api/historico' && method==='GET') return J(__DB.historico||[]);
     if(u==='/api/calcular' && method==='GET'){
       const extra=__DB.portfolio_extra||{}; const ativo=!!extra.ativo;
@@ -601,6 +699,7 @@ window.fetch = async function(url, opts){
       const r=calcular_fa(base,__DB.premissas); r.extra_ativo=ativo; return J(r);
     }
     if(u==='/api/calcular/extra-preview' && method==='POST'){
+      const body=__toBody(opts);
       const real=calcular_fa(__DB.empresa,__DB.premissas);
       const comb=calcular_fa(combinar_portfolios(__DB.empresa,body),__DB.premissas);
       return J({real, combinado:comb});
@@ -613,17 +712,34 @@ window.fetch = async function(url, opts){
       __DB.historico=(__DB.historico||[]).filter(h=>h.data!==d); __DB.historico.push(entry);
       return J({ok:true, entry});
     }
-    // Endpoints de upload/download (xlsx/csv) não existem no modo standalone
-    if(u.startsWith('/api/upload/')) return J({ok:false, errors:['Importação de planilhas indisponível na versão standalone (sem backend). Use a versão com servidor Python para importar arquivos.']});
+    if(u==='/api/upload/portfolio' && method==='POST'){
+      const txt=__toBody(opts);
+      if(typeof txt!=="string" || txt.length<10) return J({ok:false, errors:["Arquivo vazio ou invalido. Envie o modelo CSV preenchido."]});
+      try{ return J({ok:true, data:__parsePortfolioCSV(txt), errors:[]}); }
+      catch(e){ return J({ok:false, errors:["Falha ao ler CSV: "+e+". Baixe o modelo CSV e preencha sem alterar as colunas Secao/Campo/Submercado."]}); }
+    }
+    if(u==='/api/upload/portfolio_extra_csv' && method==='POST'){
+      const txt=__toBody(opts);
+      if(typeof txt!=="string" || txt.length<10) return J({ok:false, errors:["CSV vazio ou invalido."]});
+      try{ return J({ok:true, data:__parseExtraCSV(txt), errors:[]}); }
+      catch(e){ return J({ok:false, errors:["Falha ao ler CSV: "+e]}); }
+    }
+    if(u==='/api/upload/premissas' && method==='POST'){
+      return J({ok:false, errors:["Importacao da planilha CCEE (.xlsx) nao esta disponivel na versao standalone. Edite as premissas direto na aba Premissas (Forward, Volatilidade, Stress, Horas, phi, D, PLD)."]});
+    }
+    if(u.startsWith('/api/upload/')) return J({ok:false, errors:["Indisponivel no modo standalone."]});
     if(u.startsWith('/api/download/')) return J({ok:false});
   }catch(e){ return J({ok:false, errors:[''+e]}); }
   if(__origFetch) return __origFetch(url,opts);
   return J({});
 };
-// download/window.open desabilitados graciosamente
+// ---- Downloads: gera arquivos reais no navegador ----
 const __origOpen = window.open ? window.open.bind(window) : null;
 window.open = function(u){
-  if(typeof u==='string' && u.startsWith('/api/')){ alert('Download/importação indisponível na versão standalone (sem servidor).'); return null; }
+  if(typeof u==='string' && u.split('?')[0]==='/api/download/modelo'){ __triggerDownload("modelo_portfolio.csv", __genPortfolioCSV(__DB.empresa)); return null; }
+  if(typeof u==='string' && u.split('?')[0]==='/api/download/modelo_extra_csv'){ __triggerDownload("modelo_portfolio_extra.csv", __genExtraCSV(__DB.portfolio_extra)); return null; }
+  if(typeof u==='string' && u.split('?')[0]==='/api/download/historico_csv'){ __triggerDownload("historico_fa.csv", __genHistCSV(__DB.historico)); return null; }
+  if(typeof u==='string' && u.startsWith('/api/')){ return null; }
   return __origOpen? __origOpen.apply(null,arguments): null;
 };
 
