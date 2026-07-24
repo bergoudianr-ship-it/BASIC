@@ -19,10 +19,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import config
 import transform
 
-_SAMPLE_CSV = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "Todos_Negocios.csv",
-)
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_SAMPLE_CSV = os.path.join(_ROOT, "data", "Todos_Negocios.csv")
+_HTML_PATH = os.path.join(_ROOT, "liquidez.html")
 
 _client = None  # criado sob demanda no modo live
 
@@ -67,6 +66,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if path in ("/", "/index.html", "/liquidez.html"):
+            # serve a própria ferramenta: mesma origem do /api/negocios -> sem CORS,
+            # sem mixed-content, sem os limites de fetch de páginas file:// ou artifact.
+            try:
+                with open(_HTML_PATH, "rb") as f:
+                    self._send(200, f.read(), "text/html; charset=utf-8")
+            except FileNotFoundError:
+                self._json(404, {"error": "liquidez.html não encontrado — rode scripts/build.py primeiro."})
+            return
         if path == "/health":
             self._json(200, {"status": "ok", "mode": config.MODE})
             return

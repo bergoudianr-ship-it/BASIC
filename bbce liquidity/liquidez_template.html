@@ -823,6 +823,11 @@ pasteArea.addEventListener('change', function(){
 
 var bbceUrlEl = document.getElementById('bbce-url');
 var bbceLoadBtn = document.getElementById('bbce-load-btn');
+// se a própria página já vier servida pelo backend local, use a mesma origem
+// (fetch same-origin, sem CORS/CSP). Caso contrário mantém o padrão 127.0.0.1:8787.
+if((location.protocol==='http:'||location.protocol==='https:') && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)){
+  bbceUrlEl.value = location.origin;
+}
 function loadFromBBCE(){
   var base = (bbceUrlEl.value || '').trim().replace(/\/+$/, '');
   if(!base){
@@ -847,8 +852,15 @@ function loadFromBBCE(){
     .then(function(text){ ingestText(text, 'BBCE ao vivo'); })
     .catch(function(err){
       loadStatusEl.className='status-line err';
-      loadStatusEl.textContent = 'Falha ao carregar da BBCE: ' + err.message
-        + ' (o backend está rodando e a URL está correta?).';
+      var hint;
+      if(/claude\.ai|artifact|usercontent/i.test(location.host)){
+        hint = 'Este link (artifact) bloqueia conexões externas por segurança. Para carregar ao vivo, rode o backend e abra a ferramenta em http://127.0.0.1:8787/.';
+      } else if(location.protocol==='file:'){
+        hint = 'Confira se o backend está rodando (python3 server.py na pasta backend) e se a porta bate com a URL. Dica: abrir a ferramenta direto em http://127.0.0.1:8787/ evita esse tipo de bloqueio.';
+      } else {
+        hint = 'Confira se o backend está rodando e acessível nessa URL.';
+      }
+      loadStatusEl.textContent = 'Falha ao carregar da BBCE: ' + err.message + '. ' + hint;
     })
     .finally(function(){ bbceLoadBtn.disabled = false; });
 }
