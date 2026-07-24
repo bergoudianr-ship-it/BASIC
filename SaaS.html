@@ -224,6 +224,16 @@ function normFonte(raw){
   if(/\buhe\b|\bute\b|usina hidr|hidrel[eé]tr|termel|t[eé]rmic|g[aá]s natural|carv[aã]o|[oó]leo|nuclear|f[oó]ssil/.test(l)){ return 'Convencional'; }
   return s;
 }
+// Normaliza nomes de submercado para o padrão CCEE (SE/CO, S, NE, N).
+function normSub(raw){
+  var s=(raw||'').toString().trim(); if(!s) return s;
+  var l=s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  if(l.indexOf('sudeste')>=0||l.indexOf('centro')>=0||l==='se'||l==='se/co'||l==='seco'||l==='se-co') return 'SE/CO';
+  if(l.indexOf('nordeste')>=0||l==='ne') return 'NE';
+  if(l==='norte'||l==='n') return 'N';
+  if(l==='sul'||l==='s') return 'S';
+  return s;
+}
 
 // ── CSV parser (zero deps) ───────────────────────────────────────────────
 function detectDelim(line){ var c=['\t','|',';',','].map(function(d){return {d:d,n:line.split(d).length};}); c.sort(function(a,b){return b.n-a.n;}); return c[0].d; }
@@ -273,7 +283,7 @@ function mesRegistro(r){
     pld: num(g(r,['PLD'])),
     agio: num(g(r,['Ágio','Agio'])),
     indiceReaj: g(r,['Índice de reajuste','Indice de reajuste']),
-    submercado: g(r,['Submercado']),
+    submercado: normSub(g(r,['Submercado'])),
     fonte: normFonte(g(r,['Fonte de energia'])),
     condPag: g(r,['Condição de pagamento','Condicao de pagamento']),
     valorNF: num(g(r,['Valor NF']))
@@ -323,7 +333,7 @@ function parseContracts(raw){
       volAjMWm: num(g(r0,['Volume ajustado (MWm)'])),
       volAjMWh: num(g(r0,['Volume ajustado (MWh)'])),
       possuiAjVol: lc(g(r0,['Possui ajuste de volume'])),
-      submercado: repr('submercado')||g(r0,['Submercado']),
+      submercado: normSub(repr('submercado')||g(r0,['Submercado'])),
       possuiAjSub: lc(g(r0,['Possui ajuste de submercado'])),
       fonte: normFonte(repr('fonte')||g(r0,['Fonte de energia'])),
       retusd: lc(g(r0,['RETUSD'])),
