@@ -247,56 +247,117 @@ function parseCSV(raw){
   return rows;
 }
 function g(row,keys){ for(var i=0;i<keys.length;i++){ if(row[keys[i]]!=null && row[keys[i]]!=='') return row[keys[i]]; if(row[keys[i]]!=null) return row[keys[i]]; } return ''; }
+// ── Parser: agrupa por Negócio (boleta) — cada boleta pode ter várias linhas
+// (uma por mês de fornecimento), com volume/preço/reajuste diferentes por mês. ──
+// Aceita mm/aaaa, dd/mm/aaaa, aaaa-mm, aaaa-mm-dd e datetime do Excel.
+function parseMesForn(s){
+  s=String(s||'').trim(); if(!s) return null;
+  var iso=s.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/); if(iso) return new Date(+iso[1],(+iso[2])-1,+(iso[3]||1));
+  var p=s.split('/');
+  if(p.length===2){ var a=parseInt(p[0],10),b=parseInt(p[1],10); if(b>=1000) return new Date(b,(a||1)-1,1); if(a>=1000) return new Date(a,(b||1)-1,1); }
+  if(p.length===3 && p[2].length>=4) return new Date(parseInt(p[2],10),(parseInt(p[1],10)||1)-1,parseInt(p[0],10)||1);
+  return parseDate(s);
+}
+function mesRegistro(r){
+  var mf=parseMesForn(g(r,['Data do fornecimento','Data do Fornecimento','Mês de fornecimento','Mes de fornecimento','Competência','Competencia']));
+  return {
+    mesForn: mf,
+    mesKey: mf? (mf.getFullYear()+'-'+String(mf.getMonth()+1).padStart(2,'0')) : '',
+    volMWm: num(g(r,['Volume previsto (MWm)'])),
+    volMWh: num(g(r,['Volume previsto (MWh)'])),
+    volAjMWm: num(g(r,['Volume ajustado (MWm)'])),
+    volAjMWh: num(g(r,['Volume ajustado (MWh)'])),
+    precPrev: num(g(r,['Preço previsto','Preco previsto'])),
+    precAj: num(g(r,['Preço ajustado','Preço  ajustado','Preco ajustado'])),
+    precoFinal: num(g(r,['Preço final','Preco final'])),
+    pld: num(g(r,['PLD'])),
+    agio: num(g(r,['Ágio','Agio'])),
+    indiceReaj: g(r,['Índice de reajuste','Indice de reajuste']),
+    submercado: g(r,['Submercado']),
+    fonte: normFonte(g(r,['Fonte de energia'])),
+    condPag: g(r,['Condição de pagamento','Condicao de pagamento']),
+    valorNF: num(g(r,['Valor NF']))
+  };
+}
 function parseContracts(raw){
   var rows = parseCSV(raw);
-  return rows.map(function(r,i){
+  if(!rows.length) return [];
+  var groups={}, order=[];
+  rows.forEach(function(r){
+    var neg=(g(r,['Negócio','Negocio','Boleta'])||'').trim();
+    if(!neg){ neg='NEG-'+(order.length+1); }
+    if(!groups[neg]){ groups[neg]=[]; order.push(neg); }
+    groups[neg].push(r);
+  });
+  return order.map(function(neg,gi){
+    var grp=groups[neg], r0=grp[0];
+    var meses=grp.map(mesRegistro);
+    meses.sort(function(a,b){ return (a.mesForn?+a.mesForn:0)-(b.mesForn?+b.mesForn:0); });
+    function repr(field){ var c={},best='',bc=-1; meses.forEach(function(m){ var v=m[field]; if(v===''||v==null) return; var k=String(v); c[k]=(c[k]||0)+1; if(c[k]>bc){bc=c[k];best=v;} }); return best; }
+    function varies(field){ var s={}; meses.forEach(function(m){ if(m[field]!==''&&m[field]!=null) s[String(m[field])]=1; }); return Object.keys(s).length>1; }
+    var totMWh=0, wsum=0; meses.forEach(function(m){ totMWh+=m.volMWh; wsum+=m.volMWh*(m.precPrev||0); });
+    var precoMed = totMWh>0? wsum/totMWh : (meses.length?meses[meses.length-1].precPrev:num(g(r0,['Preço previsto','Preco previsto'])));
+    var precosVal=meses.map(function(m){return m.precPrev;}).filter(function(v){return v>0;});
+    var iniAll=null,fimAll=null; meses.forEach(function(m){ if(m.mesForn){ if(!iniAll||m.mesForn<iniAll)iniAll=m.mesForn; if(!fimAll||m.mesForn>fimAll)fimAll=m.mesForn; } });
+    var ini=parseDate(g(r0,['Início do fornecimento','Inicio do fornecimento']))||iniAll;
+    var fim=parseDate(g(r0,['Fim do fornecimento']))||(fimAll?new Date(fimAll.getFullYear(),fimAll.getMonth()+1,0):null);
+    var volMWmRep=repr('volMWm'); if(volMWmRep==='') volMWmRep=(meses.length?meses[0].volMWm:num(g(r0,['Volume previsto (MWm)'])));
     return {
-      _id:i,
-      negocio: g(r,['Negócio','Negocio'])||('NEG-'+(i+1)),
-      entrega: g(r,['Entrega']),
-      unidadeNegocio: g(r,['Unidade de negócio','Unidade de negocio']),
-      tipoOp: g(r,['Tipo de operação','Tipo de operacao']),
-      natureza: g(r,['Natureza de operação','Natureza de operacao']),
-      empresa: g(r,['Empresa Responsável','Empresa Responsavel']),
-      negociante: g(r,['Negociante']),
-      operador: g(r,['Operador']),
-      origem: g(r,['Origem da operação','Origem da operacao']),
-      dataCriacao: parseDate(g(r,['Data de criação','Data de criacao'])),
-      contratoCCEE: g(r,['Contrato CCEE']),
-      inicioForn: parseDate(g(r,['Início do fornecimento','Inicio do fornecimento'])),
-      fimForn: parseDate(g(r,['Fim do fornecimento'])),
-      volPrevMWm: num(g(r,['Volume previsto (MWm)'])),
-      volPrevMWh: num(g(r,['Volume previsto (MWh)'])),
-      volAjMWm: num(g(r,['Volume ajustado (MWm)'])),
-      volAjMWh: num(g(r,['Volume ajustado (MWh)'])),
-      possuiAjVol: lc(g(r,['Possui ajuste de volume'])),
-      submercado: g(r,['Submercado']),
-      possuiAjSub: lc(g(r,['Possui ajuste de submercado'])),
-      fonte: normFonte(g(r,['Fonte de energia'])),
-      retusd: lc(g(r,['RETUSD'])),
-      classificacao: g(r,['Classificação','Classificacao']),
-      modulacao: g(r,['Tipo de modulação','Tipo de modulacao']),
-      flexMensal: num(g(r,['Flexibilidade mensal'])),
-      flexSup: num(g(r,['Flexibilidade superior'])),
-      flexInf: num(g(r,['Flexibilidade inferior'])),
-      volDiferenciado: g(r,['Volume diferenciado por período','Volume diferenciado por periodo']),
-      condPag: g(r,['Condição de pagamento','Condicao de pagamento']),
-      datIniCondPag: parseDate(g(r,['Data Inicial Condição de pagamento','Data Inicial Condicao de pagamento'])),
-      datFimCondPag: parseDate(g(r,['Data Final Condição de pagamento','Data Final Condicao de pagamento'])),
-      obsFinanceiro: g(r,['Observação Financeiro','Observacao Financeiro']),
-      precoDiferenciado: g(r,['Preço diferenciado por período','Preco diferenciado por periodo']),
-      precPrev: num(g(r,['Preço previsto','Preco previsto'])),
-      precAj: num(g(r,['Preço ajustado','Preco ajustado'])),
-      possuiAjPreco: lc(g(r,['Possui ajuste de preço','Possui ajuste de preco'])),
-      flexPreco: g(r,['Flexibilidade de preço','Flexibilidade de preco']),
-      tipoSpread: g(r,['Tipo de Spread']),
-      indice: g(r,['Índice','Indice']),
-      spread: num(g(r,['Spread'])),
-      pisoFlex: num(g(r,['Piso da flexibilidade de preço','Piso da flexibilidade de preco'])),
-      tetoFlex: num(g(r,['Teto da flexibilidade de preço','Teto da flexibilidade de preco'])),
-      indiceReaj: g(r,['Índice de reajuste','Indice de reajuste']),
-      dataPrimReaj: parseDate(g(r,['Data do 1o reajuste','Data do 1º reajuste'])),
-      valorNF: num(g(r,['Valor NF']))
+      _id:'op_'+gi,
+      negocio: neg,
+      boleta: neg,
+      entrega: g(r0,['Entrega']),
+      unidadeNegocio: g(r0,['Unidade de negócio','Unidade de negocio']),
+      tipoOp: g(r0,['Tipo de operação','Tipo de operacao']),
+      natureza: g(r0,['Natureza de operação','Natureza de operacao']),
+      empresa: g(r0,['Empresa Responsável','Empresa Responsavel']),
+      negociante: g(r0,['Negociante']),
+      operador: g(r0,['Operador']),
+      origem: g(r0,['Origem da operação','Origem da operacao']),
+      dataCriacao: parseDate(g(r0,['Data de criação','Data de criacao'])),
+      contratoCCEE: g(r0,['Contrato CCEE']),
+      inicioForn: ini,
+      fimForn: fim,
+      volPrevMWm: +volMWmRep||0,
+      volPrevMWh: totMWh,
+      volAjMWm: num(g(r0,['Volume ajustado (MWm)'])),
+      volAjMWh: num(g(r0,['Volume ajustado (MWh)'])),
+      possuiAjVol: lc(g(r0,['Possui ajuste de volume'])),
+      submercado: repr('submercado')||g(r0,['Submercado']),
+      possuiAjSub: lc(g(r0,['Possui ajuste de submercado'])),
+      fonte: normFonte(repr('fonte')||g(r0,['Fonte de energia'])),
+      retusd: lc(g(r0,['RETUSD'])),
+      classificacao: g(r0,['Classificação','Classificacao']),
+      modulacao: g(r0,['Tipo de modulação','Tipo de modulacao']),
+      flexMensal: num(g(r0,['Flexibilidade mensal'])),
+      flexSup: num(g(r0,['Flexibilidade superior'])),
+      flexInf: num(g(r0,['Flexibilidade inferior'])),
+      volDiferenciado: g(r0,['Volume diferenciado por período','Volume diferenciado por periodo']),
+      condPag: g(r0,['Condição de pagamento','Condicao de pagamento']),
+      datIniCondPag: parseDate(g(r0,['Data Inicial Condição de pagamento','Data Incial Condição de pagamento','Data Inicial Condicao de pagamento'])),
+      datFimCondPag: parseDate(g(r0,['Data Final Condição de pagamento','Data Final Condicao de pagamento'])),
+      obsFinanceiro: g(r0,['Observação Financeiro','Observacao Financeiro']),
+      precoDiferenciado: g(r0,['Preço diferenciado por período','Preco diferenciado por periodo']),
+      precPrev: precoMed,
+      precAj: num(g(r0,['Preço ajustado','Preço  ajustado','Preco ajustado'])),
+      possuiAjPreco: lc(g(r0,['Possui ajuste de preço','Possui ajuste de preco'])),
+      flexPreco: g(r0,['Flexibilidade de preço','Flexibilidade de preco']),
+      tipoSpread: g(r0,['Tipo de Spread']),
+      indice: g(r0,['Índice','Indice']),
+      spread: num(g(r0,['Spread'])),
+      pisoFlex: num(g(r0,['Piso da flexibilidade de preço','Piso da flexibilidade de preco'])),
+      tetoFlex: num(g(r0,['Teto da flexibilidade de preço','Teto da flexibilidade de preco'])),
+      indiceReaj: repr('indiceReaj')||g(r0,['Índice de reajuste','Indice de reajuste']),
+      dataBase: parseDate(g(r0,['Data base'])),
+      dataPrimReaj: parseDate(g(r0,['Data do 1o reajuste','Data do 1º reajuste'])),
+      valorNF: num(g(r0,['Valor NF'])),
+      observacoes: g(r0,['Observações','Observacoes']),
+      cnpjParte: g(r0,['CNPJ da parte']),
+      cnpjContraparte: g(r0,['CPF/CNPJ da contraparte']),
+      meses: meses,
+      varMap: { vol:varies('volMWm'), preco:varies('precPrev'), reaj:varies('indiceReaj'), sub:varies('submercado'), fonte:varies('fonte') },
+      precoMin: precosVal.length?Math.min.apply(null,precosVal):precoMed,
+      precoMax: precosVal.length?Math.max.apply(null,precosVal):precoMed
     };
   });
 }
@@ -861,21 +922,28 @@ function contratosQuadroHTML(csAll,rows){
     '<th>Fonte'+sel('qFonte',distinctVals(csAll,'fonte'),CT_COL_FONTE)+'</th>'+
     '<th>Classificação'+sel('qClassif',distinctVals(csAll,'classificacao'),CT_COL_CLASSIF)+'</th>'+
     '<th>Status'+selPairs('qStatus',statusPairs,CT_COL_STATUS)+'</th>'+
-    '<th>Volume MWm</th><th>Preço R$/MWh</th><th>Início</th><th>Fim</th><th>Alertas</th>'+
+    '<th>Meses</th><th>Volume MWm</th><th>Preço médio R$/MWh</th><th>Início</th><th>Fim</th><th>Alertas</th>'+
     '</tr></thead><tbody>';
-  if(!rows.length){ h+='<tr><td colspan="13" style="text-align:center;color:#64748b">Nenhum contrato para os filtros aplicados</td></tr>'; }
+  if(!rows.length){ h+='<tr><td colspan="14" style="text-align:center;color:#64748b">Nenhum contrato para os filtros aplicados</td></tr>'; }
   rows.forEach(function(c){ var st=status(c), al=alerts(c);
+    var nMeses=(c.meses&&c.meses.length)||0, v=c.varMap||{};
+    var volCell = v.vol ? '<span title="Varia por mês">'+fmt(volMWm(c))+' ~</span>' : fmt(volMWm(c));
+    var pmv = c.precAj||c.precPrev;
+    var precoCell = (v.preco && c.precoMin!=null && c.precoMax!=null && c.precoMin!==c.precoMax)
+      ? '<span title="Faixa: R$ '+fmt(c.precoMin)+' – R$ '+fmt(c.precoMax)+'">'+fmt(pmv)+'</span>'
+      : fmt(pmv);
     h+='<tr data-qrow="'+c._id+'" style="cursor:pointer">'+
       '<td style="font-weight:600;color:#f1f5f9">'+esc(c.negocio)+'</td>'+
       '<td>'+esc(c.empresa||'—')+'</td>'+
       '<td>'+esc(c.negociante||'—')+'</td>'+
       '<td><span class="badge '+(isVenda(c)?'badge-green':'badge-blue')+'">'+esc(c.tipoOp||'—')+'</span></td>'+
-      '<td>'+esc(c.submercado||'—')+'</td>'+
+      '<td>'+esc(c.submercado||'—')+(v.sub?' <span class="badge badge-gray" style="font-size:9px">+</span>':'')+'</td>'+
       '<td>'+esc(c.fonte||'—')+'</td>'+
       '<td>'+esc(c.classificacao||'—')+'</td>'+
       '<td><span class="'+st.cls+'">'+esc(st.label)+'</span></td>'+
-      '<td class="td-num">'+fmt(volMWm(c))+'</td>'+
-      '<td class="td-num">'+fmt(c.precAj||c.precPrev)+'</td>'+
+      '<td class="td-num">'+(nMeses?nMeses:'—')+'</td>'+
+      '<td class="td-num">'+volCell+'</td>'+
+      '<td class="td-num">'+precoCell+'</td>'+
       '<td>'+(c.inicioForn?c.inicioForn.toLocaleDateString('pt-BR'):'—')+'</td>'+
       '<td>'+(c.fimForn?c.fimForn.toLocaleDateString('pt-BR'):'—')+'</td>'+
       '<td>'+(al.length?'<span class="badge badge-red">'+al.length+'</span>':'—')+'</td>'+
@@ -1111,9 +1179,52 @@ function fichaHTML(c){
   h+=fld('Valor NF','<span style="color:'+((c.valorNF===0&&st.code==='ativo')?'#ef4444':'#e2e8f0')+'">'+fmtR(c.valorNF)+'</span>');
   h+=fld('Exposição financeira','<span style="color:#fbbf24">'+fmtR(exf)+'</span>');
   h+='</div>';
+  // Detalhamento por mês de fornecimento (boleta com várias linhas)
+  h+=fichaMesesHTML(c);
   if(al.length){ h+='<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">'; al.forEach(function(a){ h+='<span class="badge '+(a.crit==='Crítico'?'badge-red':'badge-yellow')+'">'+esc(a.crit)+': '+esc(a.msg)+'</span>'; }); h+='</div>'; }
   if(c.obsFinanceiro){ h+='<div style="margin-top:10px;padding:8px 12px;background:#0f1a2e;border-radius:6px;color:#94a3b8;font-size:12px;border:1px solid #1e3a5f">Obs: '+esc(c.obsFinanceiro)+'</div>'; }
   h+='</div></div>';
+  return h;
+}
+// Tabela de detalhamento por mês de fornecimento — mostra o que varia entre os meses da boleta.
+function fichaMesesHTML(c){
+  var meses=c.meses||[]; if(meses.length<=0) return '';
+  function subh(t){ return '<div style="font-size:10px;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">'+t+'</div>'; }
+  var v=c.varMap||{};
+  var variam=[]; if(v.vol)variam.push('volume'); if(v.preco)variam.push('preço'); if(v.reaj)variam.push('índice de reajuste'); if(v.sub)variam.push('submercado'); if(v.fonte)variam.push('fonte');
+  var nota = variam.length? 'Variam por mês: <b>'+variam.join(', ')+'</b>.' : 'Volume e preço são constantes ao longo dos meses.';
+  var h=subh('Detalhamento por mês de fornecimento — '+meses.length+' mês(es)');
+  h+='<div style="color:#5b6678;font-size:11px;margin-bottom:8px">'+nota+' Cada linha da boleta '+esc(c.negocio)+' corresponde a um mês de suprimento.</div>';
+  h+='<div class="table-wrap" style="max-height:360px;overflow:auto;border:1px solid #1e2235;border-radius:8px"><table><thead><tr>'+
+     '<th style="position:sticky;top:0;background:#13161f">Mês</th>'+
+     '<th style="position:sticky;top:0;background:#13161f;text-align:right">Vol MWm</th>'+
+     '<th style="position:sticky;top:0;background:#13161f;text-align:right">Vol MWh</th>'+
+     '<th style="position:sticky;top:0;background:#13161f;text-align:right">Preço prev.</th>'+
+     '<th style="position:sticky;top:0;background:#13161f;text-align:right">Preço aj.</th>'+
+     '<th style="position:sticky;top:0;background:#13161f;text-align:right">Preço final</th>'+
+     '<th style="position:sticky;top:0;background:#13161f">Reajuste</th>'+
+     '<th style="position:sticky;top:0;background:#13161f;text-align:right">PLD</th>'+
+     (v.sub?'<th style="position:sticky;top:0;background:#13161f">Submercado</th>':'')+
+     (v.fonte?'<th style="position:sticky;top:0;background:#13161f">Fonte</th>':'')+
+     '</tr></thead><tbody>';
+  var prevPreco=null;
+  meses.forEach(function(m){
+    var label=m.mesForn? m.mesForn.toLocaleDateString('pt-BR',{month:'short',year:'numeric'}) : (m.mesKey||'—');
+    var reajUp = (prevPreco!=null && m.precPrev>prevPreco); prevPreco=m.precPrev;
+    h+='<tr>'+
+      '<td>'+esc(label)+'</td>'+
+      '<td class="td-num">'+(m.volMWm?fmt(m.volMWm,3):'—')+'</td>'+
+      '<td class="td-num">'+(m.volMWh?fmt(m.volMWh,0):'—')+'</td>'+
+      '<td class="td-num'+(reajUp?' delta-pos':'')+'">'+(m.precPrev?'R$ '+fmt(m.precPrev):'—')+'</td>'+
+      '<td class="td-num">'+(m.precAj?'R$ '+fmt(m.precAj):'—')+'</td>'+
+      '<td class="td-num">'+(m.precoFinal?'R$ '+fmt(m.precoFinal):'—')+'</td>'+
+      '<td>'+esc(m.indiceReaj||'—')+'</td>'+
+      '<td class="td-num" style="color:#94a3b8">'+(m.pld?fmt(m.pld):'—')+'</td>'+
+      (v.sub?'<td>'+esc(m.submercado||'—')+'</td>':'')+
+      (v.fonte?'<td>'+esc(m.fonte||'—')+'</td>':'')+
+      '</tr>';
+  });
+  h+='</tbody></table></div>';
   return h;
 }
 
@@ -1192,34 +1303,42 @@ function viewRecomendacoes(){
 }
 
 // ── Import screen ────────────────────────────────────────────────────────
-var SAMPLE='Negócio;Unidade de negócio;Tipo de operação;Natureza de operação;Empresa Responsável;Negociante;Operador;Origem da operação;Data de criação;Contrato CCEE;Início do fornecimento;Fim do fornecimento;Volume previsto (MWm);Volume previsto (MWh);Volume ajustado (MWm);Volume ajustado (MWh);Possui ajuste de volume;Submercado;Possui ajuste de submercado;Fonte de energia;RETUSD;Classificação;Flexibilidade superior;Flexibilidade inferior;Condição de pagamento;Data Final Condição de pagamento;Observação Financeiro;Preço previsto;Preço ajustado;Possui ajuste de preço;Tipo de Spread;Índice;Spread;Piso da flexibilidade de preço;Teto da flexibilidade de preço;Índice de reajuste;Data do 1o reajuste;Valor NF\n'+
-'NEG-001;Comercial;Compra;Bilateral;Empresa Alpha S.A.;João Silva;Pedro Costa;Mesa;01/01/2026;CCEE-2026-001;01/01/2026;31/12/2026;10;7320;10;7320;Não;SE/CO;Não;Convencional;Não;ACL;0;0;D+30;31/12/2026;;250;255;Sim;;;0;0;0;IPCA;01/01/2027;255000\n'+
-'NEG-002;Comercial;Venda;Bilateral;Empresa Beta Ltda;Maria Santos;Pedro Costa;Mesa;15/01/2026;CCEE-2026-002;01/01/2026;30/06/2026;5;3660;5;3660;Não;SE/CO;Não;Incentivada 50%;Não;ACL;10;10;D+15;30/06/2026;;300;300;Não;;;0;0;0;IPCA;01/07/2026;1098000\n'+
-'NEG-003;Comercial;Compra;Bilateral;Empresa Gamma S.A.;João Silva;Ana Lima;Corretora;10/02/2026;CCEE-2026-003;01/03/2026;28/02/2027;8;5856;8;5856;Não;S;Não;Incentivada 50%;Não;ACL;5;5;D+30;28/02/2027;;220;225;Não;;;0;180;280;IGP-M;01/03/2027;225000\n'+
-'NEG-004;Industrial;Venda;Bilateral;Empresa Delta S.A.;Carlos Rocha;Ana Lima;Indicação;05/03/2026;;01/06/2026;31/12/2027;15;10980;15;10980;Não;NE;Não;Incentivada 100%;Sim;ACL;0;0;D+30;31/12/2027;Reajuste pendente;280;0;Sim;;;0;0;0;IPCA;01/06/2027;0\n'+
-'NEG-005;Comercial;Venda;Bilateral;Empresa Epsilon Ltda;Maria Santos;Pedro Costa;Mesa;20/04/2026;CCEE-2026-005;01/06/2026;30/06/2026;3;2190;3;2190;Não;SE/CO;Não;Convencional;Não;ACL;0;0;D+15;30/06/2026;;310;310;Não;;;0;0;0;;;930000';
+// Exemplo com boletas de VÁRIOS meses (o mesmo Negócio repete por mês de fornecimento; preço/MWh/PLD variam).
+var SAMPLE='Negócio;Tipo de operação;Natureza de operação;Empresa Responsável;Negociante;Origem da operação;Data de criação;Contrato CCEE;Data do fornecimento;Início do fornecimento;Fim do fornecimento;Volume previsto (MWm);Volume previsto (MWh);Submercado;Fonte de energia;RETUSD;Classificação;Flexibilidade superior;Flexibilidade inferior;Condição de pagamento;Preço previsto;Índice de reajuste;PLD;Preço final\n'+
+'CI1001-16;Compra;Bilateral;EQUATORIAL RENOV;João Silva;Mesa;01/01/2026;CCEE-2026-001;01/2026;01/01/2026;31/12/2026;18;13392;SE/CO;Incentivada 100%;Sim;ACL;0;0;Dia 10;229,64;IPCA;35,66;229,64\n'+
+'CI1001-16;Compra;Bilateral;EQUATORIAL RENOV;João Silva;Mesa;01/01/2026;CCEE-2026-001;02/2026;01/01/2026;31/12/2026;18;12546;SE/CO;Incentivada 100%;Sim;ACL;0;0;Dia 10;229,64;IPCA;30,42;229,64\n'+
+'CI1001-16;Compra;Bilateral;EQUATORIAL RENOV;João Silva;Mesa;01/01/2026;CCEE-2026-001;03/2026;01/01/2026;31/12/2026;18;13392;SE/CO;Incentivada 100%;Sim;ACL;0;0;Dia 10;229,64;IPCA;37,73;229,64\n'+
+'VC001-18;Venda;Bilateral;Empresa Beta Ltda;Maria Santos;Mesa;15/01/2026;CCEE-2026-002;01/2026;01/01/2026;30/06/2026;5;3720;SE/CO;Convencional;Não;ACL;10;10;D+15;300,00;IPCA;72,10;300,00\n'+
+'VC001-18;Venda;Bilateral;Empresa Beta Ltda;Maria Santos;Mesa;15/01/2026;CCEE-2026-002;02/2026;01/01/2026;30/06/2026;5;3480;SE/CO;Convencional;Não;ACL;10;10;D+15;300,00;IPCA;68,90;300,00\n'+
+'VC001-18;Venda;Bilateral;Empresa Beta Ltda;Maria Santos;Mesa;15/01/2026;CCEE-2026-002;03/2026;01/01/2026;30/06/2026;5;3720;SE/CO;Convencional;Não;ACL;10;10;D+15;318,00;IPCA;70,20;318,00';
 
-var TEMPLATE_HEADERS = ['Negócio','Entrega','Unidade de negócio','Tipo de operação','Natureza de operação','Empresa Responsável','Negociante','Operador','Origem da operação','Data de criação','Data do fornecimento','Contrato CCEE','Início do fornecimento','Fim do fornecimento','Volume previsto (MWm)','Volume previsto (MWh)','Volume ajustado (MWm)','Volume ajustado (MWh)','Possui ajuste de volume','Submercado','Possui ajuste de submercado','Fonte de energia','RETUSD','Classificação','Tipo de modulação','Flexibilidade mensal','Flexibilidade superior','Flexibilidade inferior','Volume diferenciado por período','Condição de pagamento','Data Inicial Condição de pagamento','Data Final Condição de pagamento','Observação Financeiro','Preço diferenciado por período','Preço previsto','Preço ajustado','Possui ajuste de preço','Flexibilidade de preço','Tipo de Spread','Índice','Spread','Piso da flexibilidade de preço','Teto da flexibilidade de preço','Índice de reajuste','Data base','Data do 1o reajuste','Valor NF'];
-var TEMPLATE_ROW1 = ['NEG-001','Mensal','Comercial','Compra','Bilateral','Empresa Alpha S.A.','João Silva','Pedro Costa','Mesa','01/01/2026','01/2026','CCEE-2026-001','01/01/2026','31/12/2026','10','7320','10','7320','Não','SE/CO','Não','Convencional','Não','ACL','Flat','0','10','10','Não','D+30','01/01/2026','31/12/2026','','Não','250,00','255,00','Sim','Não','','','0','0','0','IPCA','01/01/2026','01/01/2027','255000'];
-var TEMPLATE_ROW2 = ['NEG-002','Mensal','Comercial','Venda','Bilateral','Empresa Beta Ltda','Maria Santos','Pedro Costa','Mesa','15/01/2026','01/2026','CCEE-2026-002','01/01/2026','30/06/2026','5','3660','5','3660','Não','SE/CO','Não','Incentivada 50%','Não','ACL','Flat','0','0','0','Não','D+15','01/01/2026','30/06/2026','','Não','300,00','300,00','Não','Não','','','0','0','0','IPCA','01/01/2026','01/07/2026','1098000'];
-var FORMAT_HINTS = {'Tipo de operação':'Compra ou Venda','Data de criação':'dd/mm/aaaa','Início do fornecimento':'dd/mm/aaaa','Fim do fornecimento':'dd/mm/aaaa','Volume previsto (MWm)':'número (vírgula decimal)','Volume previsto (MWh)':'número','Possui ajuste de volume':'Sim ou Não','Submercado':'SE/CO, S, NE ou N','Possui ajuste de submercado':'Sim ou Não','Fonte de energia':'Convencional, Incentivada 50%, Incentivada 100%, Cogeração Qualificada 50%...','RETUSD':'Sim ou Não','Flexibilidade superior':'% (ex.: 10)','Flexibilidade inferior':'% (ex.: 10)','Preço previsto':'R$/MWh (vírgula decimal)','Preço ajustado':'R$/MWh (usa previsto se vazio)','Possui ajuste de preço':'Sim ou Não','Índice de reajuste':'IPCA, IGP-M...','Data base':'dd/mm/aaaa','Data do 1o reajuste':'dd/mm/aaaa','Valor NF':'número (R$)'};
+// Modelo idêntico à base "todasoperacoesdiario" — 1 linha por Negócio (boleta) × mês de fornecimento.
+var TEMPLATE_HEADERS = ['Negócio','Entrega','Unidade de negócio','Tipo de operação','Natureza de operação','Empresa Responsável','Negociante','Operador','Origem da operação','Data de criação','Data do fornecimento','Contrato CCEE','Início do fornecimento','Fim do fornecimento','Volume previsto (MWm)','Volume previsto (MWh)','Volume ajustado (MWm)','Volume ajustado (MWh)','Possui ajuste de volume','Submercado','Possui ajuste de submercado','Fonte de energia','RETUSD','Classificação','Tipo de modulação','Flexibilidade mensal','Flexibilidade superior','Flexibilidade inferior','Volume diferenciado por período','Condição de pagamento','Data Incial Condição de pagamento','Data Final Condição de pagamento','Observação Financeiro','Preço diferenciado por período','Preço previsto','Preço  ajustado','Possui ajuste de preço','Flexibilidade de preço','Tipo de Spread','Índice','Spread','Piso da flexibilidade de preço','Teto da flexibilidade de preço','Índice de reajuste','Data base','Data do 1º reajuste','Valor NF','Observações','CNPJ da parte','CPF/CNPJ da contraparte','PLD','Ágio','Código Integração','Parte - Código Perfil','Parte - Perfil','Contraparte - Código Perfil','Contraparte - perfil','N5X','Preço final'];
+// Duas linhas da MESMA boleta (CI1001-16) em meses diferentes — mesmo negócio, MWh e PLD variam por mês.
+var TEMPLATE_ROW1 = ['CI1001-16','Mensal','Comercial','Compra','Bilateral','EQUATORIAL RENOV','João Silva','Pedro Costa','Mesa','01/01/2016','01/2016','CCEE-2016-001','01/01/2016','31/12/2023','18','13392','','','Não','Sudeste','Não','Incentivada 100%','Sim','ACL','Flat','0','0','0','','Dia 10','01/01/2016','31/12/2023','','','229,64','','Não','','','','0','0','0','IPCA','01/01/2016','01/01/2017','','','00.000.000/0001-00','11.111.111/0001-11','35,66','0','','','','','','','229,64'];
+var TEMPLATE_ROW2 = ['CI1001-16','Mensal','Comercial','Compra','Bilateral','EQUATORIAL RENOV','João Silva','Pedro Costa','Mesa','01/01/2016','02/2016','CCEE-2016-001','01/01/2016','31/12/2023','18','12546','','','Não','Sudeste','Não','Incentivada 100%','Sim','ACL','Flat','0','0','0','','Dia 10','01/01/2016','31/12/2023','','','229,64','','Não','','','','0','0','0','IPCA','01/01/2016','01/01/2017','','','00.000.000/0001-00','11.111.111/0001-11','30,42','0','','','','','','','229,64'];
+var FORMAT_HINTS = {'Negócio':'nº da boleta — repita a mesma boleta em várias linhas, uma por mês','Data do fornecimento':'mm/aaaa — mês de suprimento desta linha','Tipo de operação':'Compra ou Venda','Data de criação':'dd/mm/aaaa','Início do fornecimento':'dd/mm/aaaa','Fim do fornecimento':'dd/mm/aaaa','Volume previsto (MWm)':'número (vírgula decimal)','Volume previsto (MWh)':'número — energia do mês','Possui ajuste de volume':'Sim ou Não','Submercado':'SE/CO, S, NE ou N (aceita Sudeste, Sul, Nordeste, Norte)','Possui ajuste de submercado':'Sim ou Não','Fonte de energia':'Convencional, Incentivada 50%, Incentivada 100%, Cogeração Qualificada 50%...','RETUSD':'Sim ou Não','Flexibilidade superior':'% (ex.: 10)','Flexibilidade inferior':'% (ex.: 10)','Preço previsto':'R$/MWh (vírgula decimal) — pode mudar por mês (reajuste)','Preço  ajustado':'R$/MWh (usa previsto se vazio)','Possui ajuste de preço':'Sim ou Não','Índice de reajuste':'IPCA, IGP-M...','Data base':'dd/mm/aaaa','Data do 1º reajuste':'dd/mm/aaaa','Valor NF':'número (R$)','PLD':'R$/MWh do mês','Ágio':'número','Preço final':'R$/MWh efetivo do mês'};
 function templateCSV(){ return TEMPLATE_HEADERS.join(';')+'\n'+TEMPLATE_ROW1.join(';')+'\n'+TEMPLATE_ROW2.join(';'); }
 function csvCell(v){ v=(v==null?'':String(v)); if(/[;\n"]/.test(v)){ v='"'+v.replace(/"/g,'""')+'"'; } return v; }
 function csvDate(d){ return d?new Date(d).toLocaleDateString('pt-BR'):''; }
 function csvNum(n){ if(n==null||n===''||isNaN(n)) return ''; return String(n).replace('.',','); }
 function csvSimNao(s){ s=(s||'').toString().toLowerCase(); if(s==='sim'||s==='yes') return 'Sim'; if(s==='') return ''; return 'Não'; }
+function mmYYYY(d){ return d? (String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear()) : ''; }
 function contractsToCSV(cs){
   var rows=[ TEMPLATE_HEADERS.map(csvCell).join(';') ];
   cs.forEach(function(c){
-    var mesForn = c.inicioForn ? (String(c.inicioForn.getMonth()+1).padStart(2,'0')+'/'+c.inicioForn.getFullYear()) : '';
-    var vals=[ c.negocio, c.entrega, c.unidadeNegocio, c.tipoOp, c.natureza, c.empresa, c.negociante, c.operador, c.origem,
-      csvDate(c.dataCriacao), mesForn, c.contratoCCEE, csvDate(c.inicioForn), csvDate(c.fimForn),
-      csvNum(c.volPrevMWm), csvNum(c.volPrevMWh), csvNum(c.volAjMWm), csvNum(c.volAjMWh), csvSimNao(c.possuiAjVol),
-      c.submercado, csvSimNao(c.possuiAjSub), c.fonte, csvSimNao(c.retusd), c.classificacao, c.modulacao,
-      csvNum(c.flexMensal), csvNum(c.flexSup), csvNum(c.flexInf), c.volDiferenciado, c.condPag, csvDate(c.datIniCondPag), csvDate(c.datFimCondPag), c.obsFinanceiro,
-      c.precoDiferenciado, csvNum(c.precPrev), csvNum(c.precAj), csvSimNao(c.possuiAjPreco), c.flexPreco, c.tipoSpread, c.indice,
-      csvNum(c.spread), csvNum(c.pisoFlex), csvNum(c.tetoFlex), c.indiceReaj, csvDate(c.dataBase), csvDate(c.dataPrimReaj), csvNum(c.valorNF) ];
-    rows.push(vals.map(csvCell).join(';'));
+    var meses=(c.meses&&c.meses.length)?c.meses:[{mesForn:c.inicioForn,volMWm:c.volPrevMWm,volMWh:c.volPrevMWh,volAjMWm:c.volAjMWm,volAjMWh:c.volAjMWh,precPrev:c.precPrev,precAj:c.precAj,precoFinal:c.precAj||c.precPrev,pld:0,agio:0,indiceReaj:c.indiceReaj,submercado:c.submercado,fonte:c.fonte,condPag:c.condPag,valorNF:c.valorNF}];
+    meses.forEach(function(m){
+      var vals=[ c.negocio, c.entrega, c.unidadeNegocio, c.tipoOp, c.natureza, c.empresa, c.negociante, c.operador, c.origem,
+        csvDate(c.dataCriacao), mmYYYY(m.mesForn), c.contratoCCEE, csvDate(c.inicioForn), csvDate(c.fimForn),
+        csvNum(m.volMWm), csvNum(m.volMWh), csvNum(m.volAjMWm), csvNum(m.volAjMWh), csvSimNao(c.possuiAjVol),
+        m.submercado||c.submercado, csvSimNao(c.possuiAjSub), m.fonte||c.fonte, csvSimNao(c.retusd), c.classificacao, c.modulacao,
+        csvNum(c.flexMensal), csvNum(c.flexSup), csvNum(c.flexInf), c.volDiferenciado, m.condPag||c.condPag, csvDate(c.datIniCondPag), csvDate(c.datFimCondPag), c.obsFinanceiro,
+        c.precoDiferenciado, csvNum(m.precPrev), csvNum(m.precAj), csvSimNao(c.possuiAjPreco), c.flexPreco, c.tipoSpread, c.indice,
+        csvNum(c.spread), csvNum(c.pisoFlex), csvNum(c.tetoFlex), m.indiceReaj||c.indiceReaj, csvDate(c.dataBase), csvDate(c.dataPrimReaj), csvNum(m.valorNF||c.valorNF),
+        c.observacoes, c.cnpjParte, c.cnpjContraparte, csvNum(m.pld), csvNum(m.agio), '', '', '', '', '', '', csvNum(m.precoFinal) ];
+      rows.push(vals.map(csvCell).join(';'));
+    });
   });
   return rows.join('\n');
 }
@@ -1236,7 +1355,7 @@ function viewImport(){
     '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-primary" id="analyzeBtn">Analisar</button><button class="btn btn-ghost" id="sampleBtn">Carregar dados de exemplo</button></div></div>'+
     '<div class="card" style="margin-top:28px"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><div><div style="font-size:14px;font-weight:600;color:#f1f5f9">Modelo de preenchimento da base</div><div style="color:#64748b;font-size:12px;margin-top:2px">Use exatamente estas '+TEMPLATE_HEADERS.length+' colunas (separador ; · datas dd/mm/aaaa · decimais com vírgula · campos Sim/Não)</div></div><button class="btn btn-primary" id="tmplBtn" style="margin-left:auto">Baixar modelo .csv</button></div>'+
     '<div class="table-wrap" style="max-height:340px;overflow:auto;border:1px solid #1e2235;border-radius:8px"><table><thead><tr><th style="position:sticky;top:0;background:#13161f">Coluna</th><th style="position:sticky;top:0;background:#13161f">Exemplo</th><th style="position:sticky;top:0;background:#13161f">Formato</th></tr></thead><tbody>'+modelRows+'</tbody></table></div>'+
-    '<div style="color:#475569;font-size:11px;margin-top:8px">O modelo baixado já vem com 2 linhas de exemplo (uma compra e uma venda). Apague-as e cole sua base mantendo o cabeçalho. Colunas ausentes são toleradas — quanto mais completas, mais rica a análise.</div></div>'+
+    '<div style="color:#475569;font-size:11px;margin-top:8px">Cada <b>Negócio (boleta)</b> pode ter <b>várias linhas — uma por mês de fornecimento</b> (coluna "Data do fornecimento"), com volume, preço, reajuste e PLD diferentes por mês. A plataforma agrupa as linhas pela boleta: resume na aba Contratos e, ao abrir, mostra o detalhamento mês a mês. O modelo baixado já traz 2 meses da mesma boleta de exemplo. Colunas ausentes são toleradas.</div></div>'+
     '</div>';
 }
 
@@ -2019,7 +2138,7 @@ function cloudLoadAll(cb){
   }catch(e){ if(cb)cb(); }
 }
 function saveContracts(){ try{ localStorage.setItem('saas_contracts', JSON.stringify(STATE.contracts)); }catch(e){} cloudSave('saas_contracts'); }
-function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datIniCondPag','datFimCondPag','dataPrimReaj','dataBase'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); c.fonte=normFonte(c.fonte); return c; }
+function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datIniCondPag','datFimCondPag','dataPrimReaj','dataBase'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); c.fonte=normFonte(c.fonte); if(c.meses&&c.meses.length){ c.meses.forEach(function(m){ m.mesForn=m.mesForn?new Date(m.mesForn):null; }); } return c; }
 function loadContracts(){ try{ var s=localStorage.getItem('saas_contracts'); if(!s) return null; var a=JSON.parse(s); return a&&a.length?a.map(reviveContract):null; }catch(e){ return null; } }
 function clearStored(){ try{ localStorage.removeItem('saas_contracts'); }catch(e){} }
 
