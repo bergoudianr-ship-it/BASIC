@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 
 import config
+import transform
 
 
 class BBCEError(Exception):
@@ -94,14 +95,37 @@ class BBCEClient:
         TODO(confirmar): o método/caminho/paginação dependem da doc do grupo
         Orders/Trades da BBCE, ainda não recebida. Assim que o endpoint for
         conhecido, defina `BBCE_TRADES_PATH` e ajuste aqui se houver paginação.
+
+        Duas formas de configurar (ver .env):
+          (a) BBCE_TRADES_PATH  -> um endpoint que já devolve TODOS os negócios.
+          (b) BBCE_TICKER_IDS   -> busca via /v1/negotiation-data/{tickerId} por
+              ticker e junta os resultados (usa BBCE_NEGOTIATION_PATH).
         """
-        if not config.TRADES_PATH:
-            raise BBCEError("BBCE_TRADES_PATH não configurado — endpoint de negócios "
-                            "ainda desconhecido (aguardando doc do grupo Orders/Trades).")
+        if config.TRADES_PATH:
+            return self._get_with_retry(config.TRADES_PATH)
+        if config.TICKER_IDS:
+            combined = []
+            for ticker_id in config.TICKER_IDS:
+                data = self.fetch_negotiation_data(ticker_id)
+                records = data if isinstance(data, list) else (transform.extract_records(data) or [data])
+                for rec in records:
+                    if isinstance(rec, dict):
+                        rec.setdefault("tickerId", ticker_id)
+                        combined.append(rec)
+            return {"data": combined}
+        raise BBCEError("Configure BBCE_TRADES_PATH (endpoint único) ou BBCE_TICKER_IDS "
+                        "(lista de tickers para /v1/negotiation-data).")
+
+    def fetch_negotiation_data(self, ticker_id):
+        """GET /v1/negotiation-data/{tickerId} — resumo de preços do dia do ticker."""
+        path = config.NEGOTIATION_PATH.replace("{tickerId}", str(ticker_id))
+        return self._get_with_retry(path)
+
+    def _get_with_retry(self, path):
         self.ensure_session()
         try:
-            return self._request("GET", config.TRADES_PATH, auth=True)
+            return self._request("GET", path, auth=True)
         except BBCEError:
             # token pode ter sido invalidado por outra sessão -> relogin e 1 retry
             self.login()
-            return self._request("GET", config.TRADES_PATH, auth=True)
+            return self._request("GET", path, auth=True)

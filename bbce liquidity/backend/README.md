@@ -50,16 +50,31 @@ Na ferramenta (painel **Base de operações**), informe a URL do backend em
 **"Carregar da BBCE"** e clique em carregar — os dados entram pelo mesmo caminho
 de um CSV colado.
 
-## Pendência para o modo `live`
+## Modo `live`: como buscar os negócios
 
-O endpoint que retorna os **negócios executados** ("Todos os Negócios") ainda não
-foi documentado para nós — a doc recebida cobre só a autenticação. Falta:
+Há duas formas (configuráveis no `.env`):
 
-1. O caminho do endpoint (grupo Orders/Trades) → variável `BBCE_TRADES_PATH`.
-2. Os nomes dos campos na resposta → ajuste em `transform.py` (`FIELD_CANDIDATES`).
+- **(a) Endpoint único** — se a BBCE tiver um endpoint que devolve todos os
+  negócios de uma vez, aponte `BBCE_TRADES_PATH` para ele.
+- **(b) Por ticker** — usando `GET /v1/negotiation-data/{tickerId}`: liste os
+  IDs em `BBCE_TICKER_IDS` (ex.: `4221,5489,...`). O serviço busca cada ticker e
+  junta os resultados.
 
-Enquanto isso, o mapeamento em `transform.py` é uma hipótese documentada e
-coberta por `test_transform.py`. Assim que a doc chegar, muda só esse arquivo.
+### Ainda preciso de 2 coisas para fechar o modo live
+
+1. **A `apiKey`** — nunca foi recebida (aparece mascarada na doc). Coloque-a em
+   `BBCE_API_KEY` no `.env` (não mande por chat).
+2. **Como listar todos os tickers** — o `/v1/negotiation-data/{tickerId}` busca
+   **um** ticker por vez. Para pegar *todos* os negócios, preciso do endpoint que
+   lista os tickers/produtos (grupo Products), ou de um endpoint único de negócios.
+   Além disso, esse endpoint devolve um **resumo de preços do dia** — confirme se
+   é isso mesmo que deve alimentar a ferramenta (ela foi construída sobre os
+   **negócios individuais** do export "Todos os Negócios", que é mais granular).
+
+O mapeamento de campos em `transform.py` (`FIELD_CANDIDATES`) é uma hipótese
+documentada e coberta por `test_transform.py`. Assim que você rodar uma vez e me
+mandar **um exemplo de resposta JSON** do `negotiation-data`, ajusto só esse
+arquivo para bater com os nomes reais.
 
 ## Arquivos
 

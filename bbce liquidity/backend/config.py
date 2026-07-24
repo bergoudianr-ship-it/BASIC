@@ -37,9 +37,12 @@ COMPANY_CODE = _get("BBCE_COMPANY_CODE")
 EMAIL = _get("BBCE_EMAIL")
 PASSWORD = _get("BBCE_PASSWORD")
 
-# Caminho do endpoint que retorna os negócios executados ("Todos os Negócios").
-# TODO(confirmar): depende da doc do grupo Orders/Trades da BBCE, ainda não recebida.
+# --- de onde vêm os negócios (duas formas alternativas) ---
+# (a) endpoint único que já devolve TODOS os negócios de uma vez (se existir):
 TRADES_PATH = _get("BBCE_TRADES_PATH")
+# (b) busca por ticker via /v1/negotiation-data/{tickerId} e junta:
+NEGOTIATION_PATH = _get("BBCE_NEGOTIATION_PATH", "/v1/negotiation-data/{tickerId}")
+TICKER_IDS = [t.strip() for t in _get("BBCE_TICKER_IDS").split(",") if t.strip()]
 
 # CORS: origem permitida para o front. '*' é aceitável pois o endpoint só devolve
 # negócios agregados (sem credenciais). Restrinja se hospedar o front num domínio fixo.
@@ -56,7 +59,9 @@ def require_live_credentials():
         ("BBCE_COMPANY_CODE", COMPANY_CODE),
         ("BBCE_EMAIL", EMAIL),
         ("BBCE_PASSWORD", PASSWORD),
-        ("BBCE_TRADES_PATH", TRADES_PATH),
     ) if not val]
     if missing:
         raise SystemExit("Modo 'live' exige as variáveis: " + ", ".join(missing))
+    if not TRADES_PATH and not TICKER_IDS:
+        raise SystemExit("Modo 'live' exige BBCE_TRADES_PATH (endpoint único) ou "
+                         "BBCE_TICKER_IDS (lista de tickers para /v1/negotiation-data).")
