@@ -52,29 +52,33 @@ de um CSV colado.
 
 ## Modo `live`: como buscar os negócios
 
-Há duas formas (configuráveis no `.env`):
+Fluxo automático (recomendado): informe o `BBCE_WALLET_IDS` e o serviço faz o
+resto — lista os tickers da carteira em `GET /v1/negotiable-tickers?walletId=`
+e busca `GET /v1/negotiation-data/{tickerId}` de cada um, juntando tudo num só
+CSV. O nome do produto (`PRODUTO`) é reconstruído no formato "FEN - ..." que a
+ferramenta espera, a partir do `stamp` + `description` do ticker.
 
-- **(a) Endpoint único** — se a BBCE tiver um endpoint que devolve todos os
-  negócios de uma vez, aponte `BBCE_TRADES_PATH` para ele.
-- **(b) Por ticker** — usando `GET /v1/negotiation-data/{tickerId}`: liste os
-  IDs em `BBCE_TICKER_IDS` (ex.: `4221,5489,...`). O serviço busca cada ticker e
-  junta os resultados.
+Alternativas: `BBCE_TRADES_PATH` (endpoint único, se existir) ou
+`BBCE_TICKER_IDS` (lista fixa de tickers).
 
 ### Ainda preciso de 2 coisas para fechar o modo live
 
 1. **A `apiKey`** — nunca foi recebida (aparece mascarada na doc). Coloque-a em
    `BBCE_API_KEY` no `.env` (não mande por chat).
-2. **Como listar todos os tickers** — o `/v1/negotiation-data/{tickerId}` busca
-   **um** ticker por vez. Para pegar *todos* os negócios, preciso do endpoint que
-   lista os tickers/produtos (grupo Products), ou de um endpoint único de negócios.
-   Além disso, esse endpoint devolve um **resumo de preços do dia** — confirme se
-   é isso mesmo que deve alimentar a ferramenta (ela foi construída sobre os
-   **negócios individuais** do export "Todos os Negócios", que é mais granular).
+2. **Um exemplo da resposta do `negotiation-data`** — a listagem de tickers e a
+   autenticação já estão mapeadas e testadas, mas o `negotiation-data` devolve um
+   **resumo de preços do dia**, e ainda não vi o formato real da resposta. Rode
+   uma vez e me mande **um JSON de exemplo** para eu confirmar os campos de
+   data/preço/volume em `transform.py` (`FIELD_CANDIDATES`).
 
-O mapeamento de campos em `transform.py` (`FIELD_CANDIDATES`) é uma hipótese
-documentada e coberta por `test_transform.py`. Assim que você rodar uma vez e me
-mandar **um exemplo de resposta JSON** do `negotiation-data`, ajusto só esse
-arquivo para bater com os nomes reais.
+> Nota de granularidade: o `negotiation-data` é um **resumo diário**, enquanto a
+> ferramenta foi construída sobre os **negócios individuais** (cada boleta, com
+> hora exata) do export "Todos os Negócios". O resumo diário funciona, mas o
+> filtro intradiário (±20%) e o ticket por negócio ficam aproximados. Se houver
+> um endpoint de negócios individuais, ele reproduz a metodologia com mais fidelidade.
+
+Todo o mapeamento está isolado em `transform.py` e coberto por
+`test_transform.py`.
 
 ## Arquivos
 

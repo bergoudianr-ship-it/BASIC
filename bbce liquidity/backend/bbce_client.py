@@ -18,6 +18,26 @@ class BBCEError(Exception):
     pass
 
 
+def _ticker_meta(ticker):
+    """Deriva PRODUTO e unidades no formato da ferramenta a partir do ticker.
+
+    O campo `description` vem sem o prefixo de classe (ex.: "SE CON MEN SET/25 -
+    Preço Fixo"), mas a ferramenta espera "FEN - SE CON MEN SET/25 - Preço Fixo".
+    O prefixo é reconstruído de stamp.classAbbreviation + stamp.productAbbreviation
+    (ex.: "F" + "EN" = "FEN"), mantendo o mesmo formato do export "Todos os Negócios".
+    """
+    stamp = ticker.get("stamp") or {}
+    prefix = (str(stamp.get("classAbbreviation", "")) +
+              str(stamp.get("productAbbreviation", ""))).strip()
+    desc = str(ticker.get("description", "")).strip()
+    product = (prefix + " - " + desc) if (prefix and desc) else desc
+    return {
+        "_product": product,
+        "_tradingUnit": ticker.get("tradingUnit", ""),
+        "_measurementUnit": ticker.get("measurementUnit", ""),
+    }
+
+
 class BBCEClient:
     def __init__(self):
         self._id_token = None
@@ -96,25 +116,64 @@ class BBCEClient:
         Orders/Trades da BBCE, ainda não recebida. Assim que o endpoint for
         conhecido, defina `BBCE_TRADES_PATH` e ajuste aqui se houver paginação.
 
-        Duas formas de configurar (ver .env):
-          (a) BBCE_TRADES_PATH  -> um endpoint que já devolve TODOS os negócios.
-          (b) BBCE_TICKER_IDS   -> busca via /v1/negotiation-data/{tickerId} por
-              ticker e junta os resultados (usa BBCE_NEGOTIATION_PATH).
+        Três formas de configurar (ver .env):
+          (a) BBCE_TRADES_PATH -> um endpoint que já devolve TODOS os negócios.
+          (b) BBCE_WALLET_IDS  -> enumera os tickers de cada carteira via
+              /v1/negotiable-tickers e busca negotiation-data de cada um.
+          (c) BBCE_TICKER_IDS  -> lista fixa de tickers (pula a enumeração).
         """
         if config.TRADES_PATH:
             return self._get_with_retry(config.TRADES_PATH)
+
+        # monta {tickerId: metadados do produto} a partir dos tickers negociáveis
+        meta_by_ticker = {}
         if config.TICKER_IDS:
-            combined = []
-            for ticker_id in config.TICKER_IDS:
-                data = self.fetch_negotiation_data(ticker_id)
-                records = data if isinstance(data, list) else (transform.extract_records(data) or [data])
-                for rec in records:
-                    if isinstance(rec, dict):
-                        rec.setdefault("tickerId", ticker_id)
-                        combined.append(rec)
-            return {"data": combined}
-        raise BBCEError("Configure BBCE_TRADES_PATH (endpoint único) ou BBCE_TICKER_IDS "
-                        "(lista de tickers para /v1/negotiation-data).")
+            ticker_ids = list(dict.fromkeys(config.TICKER_IDS))
+        else:
+            ticker_ids = []
+            for wallet_id in self._wallet_ids():
+                for ticker in self.list_tickers(wallet_id):
+                    if not isinstance(ticker, dict) or "id" not in ticker:
+                        continue
+                    tid = str(ticker["id"])
+                    if tid not in meta_by_ticker:
+                        ticker_ids.append(tid)
+                        meta_by_ticker[tid] = _ticker_meta(ticker)
+
+        if not ticker_ids:
+            raise BBCEError("Nenhum ticker para buscar. Configure BBCE_WALLET_IDS ou BBCE_TICKER_IDS.")
+
+        combined = []
+        for tid in ticker_ids:
+            data = self.fetch_negotiation_data(tid)
+            records = data if isinstance(data, list) else (transform.extract_records(data) or [data])
+            meta = meta_by_ticker.get(tid, {})
+            for rec in records:
+                if not isinstance(rec, dict):
+                    continue
+                rec.setdefault("tickerId", tid)
+                for key, val in meta.items():  # PRODUTO/unidades vêm do ticker
+                    if val:
+                        rec.setdefault(key, val)
+                combined.append(rec)
+            if config.REQUEST_DELAY:
+                time.sleep(config.REQUEST_DELAY)
+        return {"data": combined}
+
+    def _wallet_ids(self):
+        if config.WALLET_IDS:
+            return config.WALLET_IDS
+        data = self._get_with_retry(config.WALLETS_PATH)
+        wallets = data if isinstance(data, list) else (
+            data.get("wallets") or data.get("data") or [])
+        return [str(w["id"]) for w in wallets if isinstance(w, dict) and "id" in w]
+
+    def list_tickers(self, wallet_id):
+        """GET /v1/negotiable-tickers?walletId=X — ativos negociáveis da carteira."""
+        path = config.TICKERS_PATH + "?walletId=" + str(wallet_id)
+        data = self._get_with_retry(path)
+        tickers = data.get("tickers") if isinstance(data, dict) else data
+        return tickers or []
 
     def fetch_negotiation_data(self, ticker_id):
         """GET /v1/negotiation-data/{tickerId} — resumo de preços do dia do ticker."""

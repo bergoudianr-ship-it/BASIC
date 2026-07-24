@@ -11,15 +11,17 @@ import datetime
 
 CSV_HEADER = "PRODUTO;DATA/HORA;Q.N;U.N.;Q.M;U.M.;PREÇO;TIPO DE CONTRATO;TENDÊNCIA;STATUS"
 
-# coluna do CSV -> nomes candidatos no JSON da BBCE (o 1º presente vence)
+# coluna do CSV -> nomes candidatos no JSON da BBCE (o 1º presente vence).
+# Campos com prefixo "_" são injetados pelo cliente a partir do ticker negociável
+# (PRODUTO reconstruído no formato "FEN - ...", unidades de negociação/medida).
 FIELD_CANDIDATES = {
-    "PRODUTO": ["product", "productName", "produto", "instrument"],
-    "DATA/HORA": ["tradeDateTime", "createdAt", "dateTime", "dataHora", "timestamp"],
+    "PRODUTO": ["_product", "product", "productName", "produto", "instrument"],
+    "DATA/HORA": ["tradeDateTime", "createdAt", "dateTime", "dataHora", "date", "timestamp"],
     "Q.N": ["quantity", "volume", "qN", "quantidade"],
-    "U.N.": ["unit", "unidade", "uN"],
+    "U.N.": ["_tradingUnit", "unit", "unidade", "uN"],
     "Q.M": ["quantityMwh", "energyVolume", "qM"],
-    "U.M.": ["energyUnit", "uM"],
-    "PREÇO": ["price", "preco", "valor"],
+    "U.M.": ["_measurementUnit", "energyUnit", "uM"],
+    "PREÇO": ["price", "preco", "valor", "avgPrice", "lastPrice"],
     "TIPO DE CONTRATO": ["contractType", "tipoContrato", "type"],
     "TENDÊNCIA": ["side", "trend", "tendencia", "direction"],
     "STATUS": ["status", "situacao"],

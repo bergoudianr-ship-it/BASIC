@@ -37,12 +37,18 @@ COMPANY_CODE = _get("BBCE_COMPANY_CODE")
 EMAIL = _get("BBCE_EMAIL")
 PASSWORD = _get("BBCE_PASSWORD")
 
-# --- de onde vêm os negócios (duas formas alternativas) ---
+# --- de onde vêm os negócios ---
 # (a) endpoint único que já devolve TODOS os negócios de uma vez (se existir):
 TRADES_PATH = _get("BBCE_TRADES_PATH")
-# (b) busca por ticker via /v1/negotiation-data/{tickerId} e junta:
+# (b) enumerar tickers (wallet -> negotiable-tickers) e buscar negotiation-data de cada:
+WALLETS_PATH = _get("BBCE_WALLETS_PATH", "/wallets")
+WALLET_IDS = [w.strip() for w in _get("BBCE_WALLET_IDS").split(",") if w.strip()]
+TICKERS_PATH = _get("BBCE_TICKERS_PATH", "/v1/negotiable-tickers")
 NEGOTIATION_PATH = _get("BBCE_NEGOTIATION_PATH", "/v1/negotiation-data/{tickerId}")
+# opcional: restringir a estes tickers em vez de enumerar todos:
 TICKER_IDS = [t.strip() for t in _get("BBCE_TICKER_IDS").split(",") if t.strip()]
+# pausa (segundos) entre chamadas por ticker, para respeitar o rate limit da BBCE:
+REQUEST_DELAY = float(_get("BBCE_REQUEST_DELAY", "0") or "0")
 
 # CORS: origem permitida para o front. '*' é aceitável pois o endpoint só devolve
 # negócios agregados (sem credenciais). Restrinja se hospedar o front num domínio fixo.
@@ -62,6 +68,7 @@ def require_live_credentials():
     ) if not val]
     if missing:
         raise SystemExit("Modo 'live' exige as variáveis: " + ", ".join(missing))
-    if not TRADES_PATH and not TICKER_IDS:
-        raise SystemExit("Modo 'live' exige BBCE_TRADES_PATH (endpoint único) ou "
-                         "BBCE_TICKER_IDS (lista de tickers para /v1/negotiation-data).")
+    if not (TRADES_PATH or WALLET_IDS or TICKER_IDS):
+        raise SystemExit("Modo 'live' exige uma destas: BBCE_TRADES_PATH (endpoint único), "
+                         "BBCE_WALLET_IDS (enumera os tickers da carteira) ou BBCE_TICKER_IDS "
+                         "(lista fixa de tickers).")
