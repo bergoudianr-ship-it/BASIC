@@ -30,6 +30,7 @@ PLACEHOLDER = "__EMBEDDED_DATA_PLACEHOLDER__"
 # placeholder no template -> arquivo de imagem em assets/ (base64 puro, sem gzip)
 ASSET_PLACEHOLDERS = {
     "__ECHOENERGIA_LOGO_B64__": "echoenergia-logo.png",
+    "__EQUATORIAL_LOGO_B64__": "equatorial-logo.png",
 }
 
 
