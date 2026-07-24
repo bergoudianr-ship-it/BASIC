@@ -442,7 +442,7 @@ function cceeValidate(c){
 }
 // Resumo de lastro/garantias do portfólio (Bloco 4) — usa garantias declaradas em Configurações.
 function loadGarantias(){ try{ return JSON.parse(localStorage.getItem('saas_garantias')||'null')||{fisica:0,financeira:0}; }catch(e){ return {fisica:0,financeira:0}; } }
-function saveGarantias(g){ try{ localStorage.setItem('saas_garantias',JSON.stringify(g)); }catch(e){} }
+function saveGarantias(g){ try{ localStorage.setItem('saas_garantias',JSON.stringify(g)); }catch(e){} cloudSave('saas_garantias'); }
 function garantiaResumo(){
   var g=loadGarantias(), compra=0, venda=0, expPLD=0;
   STATE.contracts.forEach(function(c){
@@ -638,7 +638,7 @@ var DEFAULT_LAYOUT=[
   {id:'table_neg',span:2},{id:'chart_saldo',span:2},{id:'table_mensal',span:2}
 ];
 function loadDashLayout(){ try{ var a=JSON.parse(localStorage.getItem('saas_dashboard_layout')||'null'); if(a&&a.length) return a; }catch(e){} return DEFAULT_LAYOUT.map(function(x){return {id:x.id,span:x.span};}); }
-function saveDashLayout(a){ try{ localStorage.setItem('saas_dashboard_layout',JSON.stringify(a)); }catch(e){} }
+function saveDashLayout(a){ try{ localStorage.setItem('saas_dashboard_layout',JSON.stringify(a)); }catch(e){} cloudSave('saas_dashboard_layout'); }
 function layoutHasId(l,id){ for(var i=0;i<l.length;i++) if(l[i].id===id) return true; return false; }
 function layoutIdx(l,id){ for(var i=0;i<l.length;i++) if(l[i].id===id) return i; return -1; }
 // Reconcilia widgets recém-registrados: na 1ª execução semeia "conhecidos";
@@ -1255,7 +1255,7 @@ function defaultRefMonth(){ var d=new Date(TODAY); d.setMonth(d.getMonth()-1); r
 function loadMtM(){ try{ var s=JSON.parse(localStorage.getItem('saas_mtm')||'null'); if(s){ if(!s.base)s.base={}; if(!s.subPrice)s.subPrice={}; if(!s.spread)s.spread={}; if(!s.refMonth)s.refMonth=defaultRefMonth(); return s; } }catch(e){} return {refMonth:defaultRefMonth(),base:{},subPrice:{},spread:{}}; }
 function isConvencional(fonte){ return (fonte||'').toLowerCase().indexOf('convenc')>=0; }
 var SUBS_OTHER=['S','NE','N'];
-function saveMtM(m){ try{ localStorage.setItem('saas_mtm',JSON.stringify(m)); }catch(e){} }
+function saveMtM(m){ try{ localStorage.setItem('saas_mtm',JSON.stringify(m)); }catch(e){} cloudSave('saas_mtm'); }
 function mKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function mKeyToDate(k){ var p=String(k).split('-'); return new Date(+p[0],(+p[1]||1)-1,1); }
 function mLabel(k){ return mKeyToDate(k).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}); }
@@ -1414,12 +1414,12 @@ var CCEE_PERFIS=['Comercializador','Consumidor Livre','Consumidor Especial','Ger
 var CCEE_PERFILIZACAO=['Conforme curva de carga','Modulação'];
 var PAG_TIPOS=['PIX','TED','Boleto','DOC'];
 function loadCP(){ try{ return JSON.parse(localStorage.getItem('saas_contrapartes')||'[]'); }catch(e){ return []; } }
-function saveCP(a){ try{ localStorage.setItem('saas_contrapartes', JSON.stringify(a)); }catch(e){} }
+function saveCP(a){ try{ localStorage.setItem('saas_contrapartes', JSON.stringify(a)); }catch(e){} cloudSave('saas_contrapartes'); }
 // ── Condições de pagamento (presets reutilizáveis + calendário bancário) ────
 var COND_PAG_BASES=[['fim_mes','Fim do mês de suprimento'],['emissao_nf','Emissão da NF'],['fim_forn','Fim do fornecimento']];
 function condPagBaseLabel(b){ for(var i=0;i<COND_PAG_BASES.length;i++) if(COND_PAG_BASES[i][0]===b) return COND_PAG_BASES[i][1]; return 'Fim do mês de suprimento'; }
 function loadCondPag(){ try{ return JSON.parse(localStorage.getItem('saas_cond_pagamento')||'null')||condPagDefault(); }catch(e){ return condPagDefault(); } }
-function saveCondPag(a){ try{ localStorage.setItem('saas_cond_pagamento', JSON.stringify(a)); }catch(e){} }
+function saveCondPag(a){ try{ localStorage.setItem('saas_cond_pagamento', JSON.stringify(a)); }catch(e){} cloudSave('saas_cond_pagamento'); }
 function condPagDefault(){ return [
   {id:'cp_d7', nome:'D+7', dias:7, base:'fim_mes', obs:'Curto prazo'},
   {id:'cp_d15', nome:'D+15', dias:15, base:'fim_mes', obs:''},
@@ -1997,7 +1997,28 @@ function bindBackoffice(){
 }
 
 // ── Persistência de contratos/operações ─────────────────────────────────
-function saveContracts(){ try{ localStorage.setItem('saas_contracts', JSON.stringify(STATE.contracts)); }catch(e){} }
+// ── Sincronização com Supabase (persistência dos dados por usuário) ────────
+// Todos os blocos abaixo são salvos no localStorage E replicados no Supabase
+// (tabela app_estado via RPC SECURITY DEFINER), permitindo acesso entre dispositivos.
+var CLOUD_KEYS=['saas_contracts','saas_contrapartes','saas_cond_pagamento','saas_mtm','saas_garantias','saas_dashboard_layout'];
+var CLOUD_SYNCED=false;
+function cloudEmail(){ return (typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER.email : null; }
+function cloudSave(chave){
+  if(!sb||!cloudEmail()) return;
+  var raw=null; try{ raw=localStorage.getItem(chave); }catch(e){}
+  var valor; try{ valor=raw==null?null:JSON.parse(raw); }catch(e){ valor=raw; }
+  try{ sb.rpc('fn_estado_salvar',{p_email:cloudEmail(),p_chave:chave,p_valor:valor}).then(function(){},function(){}); }catch(e){}
+}
+function cloudLoadAll(cb){
+  if(!sb||!cloudEmail()){ if(cb)cb(); return; }
+  try{
+    sb.rpc('fn_estado_carregar',{p_email:cloudEmail()}).then(function(r){
+      if(r&&!r.error&&r.data){ r.data.forEach(function(row){ if(CLOUD_KEYS.indexOf(row.chave)>=0 && row.valor!=null){ try{ localStorage.setItem(row.chave, JSON.stringify(row.valor)); }catch(e){} } }); }
+      if(cb)cb();
+    },function(){ if(cb)cb(); });
+  }catch(e){ if(cb)cb(); }
+}
+function saveContracts(){ try{ localStorage.setItem('saas_contracts', JSON.stringify(STATE.contracts)); }catch(e){} cloudSave('saas_contracts'); }
 function reviveContract(c){ ['dataCriacao','inicioForn','fimForn','datIniCondPag','datFimCondPag','dataPrimReaj','dataBase'].forEach(function(f){ c[f]=c[f]?new Date(c[f]):null; }); c.fonte=normFonte(c.fonte); return c; }
 function loadContracts(){ try{ var s=localStorage.getItem('saas_contracts'); if(!s) return null; var a=JSON.parse(s); return a&&a.length?a.map(reviveContract):null; }catch(e){ return null; } }
 function clearStored(){ try{ localStorage.removeItem('saas_contracts'); }catch(e){} }
@@ -2463,7 +2484,7 @@ function localSaveUser(u){ try{ if(u) localStorage.setItem('saas_local_user',JSO
 function localLoadUser(){ try{ return JSON.parse(localStorage.getItem('saas_local_user')||'null'); }catch(e){ return null; } }
 function authLoadSession(){ return CURRENT_USER; }
 function isAdmin(){ return CURRENT_USER && CURRENT_USER.role === 'admin'; }
-function authLogout(){ CURRENT_USER=null; localSaveUser(null); if(sb) sb.auth.signOut().catch(function(){}); boot(); }
+function authLogout(){ CURRENT_USER=null; CLOUD_SYNCED=false; localSaveUser(null); if(sb) sb.auth.signOut().catch(function(){}); boot(); }
 
 function viewLoginEmail(){
   var warn = sb ? '' : '<div class="login-err" style="display:block">Serviço indisponível (Supabase não carregou). Verifique a conexão.</div>';
@@ -2636,7 +2657,10 @@ function boot(){
   var root=document.getElementById('root');
   if(!LOGIN_ENABLED){ if(!CURRENT_USER) CURRENT_USER={email:'bergoudianr@gmail.com',nome:'Rafael Campos',role:'admin'}; render(); return; }
   if(!CURRENT_USER){ var lu=localLoadUser(); if(lu && lu.email){ CURRENT_USER=lu; } }
-  if(CURRENT_USER){ render(); return; }
+  if(CURRENT_USER){
+    if(!CLOUD_SYNCED){ CLOUD_SYNCED=true; render(); cloudLoadAll(function(){ var s=loadContracts(); if(s) STATE.contracts=s; render(); }); return; }
+    render(); return;
+  }
   if(AUTH_MODE==='signup'){ root.innerHTML=viewSignup(); bindSignup(); var se=document.getElementById('suEmail'); if(se) se.focus(); return; }
   root.innerHTML=viewLoginEmail(); bindLoginEmail();
   var le=document.getElementById('loginEmail'); if(le) le.focus();
