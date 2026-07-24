@@ -595,9 +595,6 @@ const __SECOES=[["Preco Fixo - Consumo e Geracao","preco_fixo"],["Preco Variavel
 function __row(cells){ return cells.join(";"); }
 function __genPortfolioCSV(emp){
   const L=[]; L.push(__row(["Secao","Campo","Submercado",...__VERT]));
-  // PLA
-  L.push(__row(["PLA","PL Bruto","", __num((emp.pla||{}).pl_bruto||0),"","","","","",""]));
-  __DED.forEach((it,i)=>{ const d=((emp.pla||{}).deducoes||[])[i]||{}; L.push(__row(["PLA","Deducao "+it,"", __num(d.valor||0),"","","","","",""])); });
   __SECOES.forEach(([lbl,key])=>{
     const sec=emp[key]||{};
     __CAMPOS.forEach(([clbl,ckey])=>{
@@ -648,12 +645,13 @@ function __parseCSV(text){
 function __parsePortfolioCSV(text){
   const {rows,start,secMap,campoMap,submMap}=__parseCSV(text);
   const emp={ preco_fixo:__emptySection(), preco_variavel:__emptySection(), derivativos:__emptySection(),
-    efm_regulado:Object.fromEntries(__VERT.map(v=>[v,0])),
-    pla:{pl_bruto:0, deducoes:__DED.map(it=>({item:it,valor:0,descricao:""}))} };
+    efm_regulado:Object.fromEntries(__VERT.map(v=>[v,0])) };
   for(let i=start;i<rows.length;i++){
     const r=rows[i]; const sec=__norm(r[0]), campo=__norm(r[1]), subm=__norm(r[2]);
     const vals=__VERT.map((_,k)=> __pnum(r[3+k]));
     if(sec==="pla"){
+      // Compatibilidade: so mexe no PLA se o CSV trouxer essas linhas
+      if(!emp.pla) emp.pla={pl_bruto:0, deducoes:__DED.map(it=>({item:it,valor:0,descricao:""}))};
       if(campo==="pl bruto") emp.pla.pl_bruto=vals[0];
       else { const m=campo.match(/deducao\s+([ivx]+)/); if(m){ const it=m[1].toUpperCase(); const idx=__DED.indexOf(it); if(idx>=0) emp.pla.deducoes[idx].valor=vals[0]; } }
       continue;
