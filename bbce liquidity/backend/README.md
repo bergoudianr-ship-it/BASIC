@@ -41,6 +41,17 @@ cp .env.example .env      # preencha os valores no .env
 python3 server.py
 ```
 
+### Testar só o acesso (login)
+
+Antes de subir o serviço, dá para confirmar que suas credenciais funcionam:
+
+```bash
+python3 server.py --check-login
+```
+
+Ele só faz o login e diz `LOGIN OK` (a API aceitou) ou aponta o que faltou/errou.
+Não busca dados — é só para provar o acesso.
+
 O serviço sobe em `http://127.0.0.1:8787`:
 
 - `GET /health` → `{"status":"ok","mode":"mock"}`

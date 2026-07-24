@@ -14,6 +14,7 @@ Rodar:
 """
 import json
 import os
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import config
@@ -94,7 +95,38 @@ class Handler(BaseHTTPRequestHandler):
         pass  # silencioso
 
 
+def check_login():
+    """Teste rápido de acesso: só faz login e diz se a BBCE aceitou as credenciais."""
+    missing = [name for name, val in (
+        ("BBCE_API_KEY", config.API_KEY),
+        ("BBCE_COMPANY_CODE", config.COMPANY_CODE),
+        ("BBCE_EMAIL", config.EMAIL),
+        ("BBCE_PASSWORD", config.PASSWORD),
+    ) if not val]
+    if missing:
+        print("Faltam variáveis no .env:", ", ".join(missing))
+        print("Preencha o .env (copie de .env.example) e rode de novo.")
+        return
+    import bbce_client
+    client = bbce_client.BBCEClient()
+    print(f"Tentando login em {config.BASE_URL} como {config.EMAIL} (empresa {config.COMPANY_CODE})…")
+    try:
+        client.login()
+    except Exception as exc:  # noqa: BLE001
+        print("LOGIN FALHOU:", exc)
+        print("Verifique apiKey, e-mail, senha e companyExternalCode.")
+        return
+    print("LOGIN OK — a API aceitou suas credenciais e devolveu um token.")
+    print("Agora rode 'python3 server.py' e use a aba 'Dados BBCE' na ferramenta.")
+    try:
+        client.logout()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main():
+    if "--check-login" in sys.argv:
+        return check_login()
     srv = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
     print(f"BBCE bridge em http://{config.HOST}:{config.PORT}  (modo: {config.MODE})")
     print("  GET /health")
