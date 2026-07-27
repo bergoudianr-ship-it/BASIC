@@ -1,0 +1,4 @@
+
+# Ambiente Python / Streamlit
+__pycache__/
+*.pyc
