@@ -290,6 +290,22 @@ def run(port=8765):
         print("\nServidor encerrado.")
 
 
+def _running_in_streamlit():
+    """Detecta se este arquivo foi carregado como app do Streamlit."""
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        return get_script_run_ctx() is not None
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    run(port)
+    # Proteção: se por engano o Streamlit apontar para main.py em vez de
+    # streamlit_app.py, delega para o app Streamlit em vez de tentar abrir
+    # um servidor HTTP (o que causa OSError no Streamlit Cloud).
+    if _running_in_streamlit():
+        import runpy
+        runpy.run_path(os.path.join(BASE, "streamlit_app.py"), run_name="__main__")
+    else:
+        port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("PORT", 8765))
+        run(port)
