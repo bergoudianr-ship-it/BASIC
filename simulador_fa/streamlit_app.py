@@ -165,11 +165,150 @@ st.caption("Fator de Alavancagem — Manual CCEE v2023.2.0 · Período sombra (K
 # para refletir as edições feitas nesta mesma execução.
 header_ph = st.container()
 
-tab_prem, tab_pla, tab_port, tab_extra, tab_calc, tab_hist = st.tabs(
-    ["📋 Premissas", "🏦 PLA", "📊 Portfólio", "➕ Portfólio Extra", "🧮 Cálculo", "📅 Histórico"])
+tab_guia, tab_prem, tab_pla, tab_port, tab_extra, tab_calc, tab_hist = st.tabs(
+    ["📖 Como usar", "📋 Premissas", "🏦 PLA", "📊 Portfólio", "➕ Portfólio Extra", "🧮 Cálculo", "📅 Histórico"])
+
+# ---- GUIA / COMO USAR ----
+with tab_guia:
+    st.header("📖 Como usar o Simulador FA CCEE")
+    st.markdown(
+        """
+Esta ferramenta simula o **Fator de Alavancagem (FA)** de um portfólio de energia
+segundo o **Manual CCEE v2023.2.0** (período sombra, com **K = 0** e **θ = 0**).
+O objetivo é responder: *dado o portfólio e as premissas de mercado, qual o nível
+de risco (RWA) frente ao capital (PLA)?*
+
+> **A regra central:** &nbsp; **FA = RWA / PLA**
+> - **FA Risco** = RWA ÷ PLA
+> - **FA Divulgado** = (RWA − Resultado Financeiro) ÷ PLA (nunca negativo)
+> - Interpretação de cor: 🟢 abaixo de 1 · 🟡 de 1 a 3 · 🔴 acima de 3
+> - Se o **PLA ≤ 0**, o FA não é calculável (aparece "PLA ≤ 0").
+        """
+    )
+
+    st.subheader("Conceitos que valem para todas as abas")
+    st.markdown(
+        """
+- **Vértices (M+0 … M+6):** os 7 meses à frente. Toda tabela tem uma coluna por vértice.
+- **Submercados:** SE/CO (Sudeste/Centro-Oeste), SUL, NE (Nordeste) e N (Norte).
+- **MWm (MW médio):** unidade de volume de energia. **R$/MWh:** preço.
+- **Convenção de sinal (exposição líquida):** posição **comprada = positiva**,
+  posição **vendida = negativa**.
+- **Salvamento:** os dados valem para a **sua sessão** no navegador. Ao recarregar a
+  página, tudo volta aos valores iniciais. Para guardar, use os botões de
+  **download CSV** (Portfólio e Histórico).
+        """
+    )
+
+    st.subheader("Passo a passo recomendado")
+    st.markdown(
+        """
+1. **📋 Premissas** — confira/ajuste mercado e parâmetros de risco (Forward, volatilidade, etc.).
+2. **🏦 PLA** — informe o Patrimônio Líquido Ajustado (é o denominador do FA).
+3. **📊 Portfólio** — lance as exposições e os contratos (é o que gera o risco).
+4. **➕ Portfólio Extra** *(opcional)* — simule um negócio novo e veja o impacto no FA.
+5. **🧮 Cálculo** — leia os resultados: VaR, MtM, RWA e o FA final.
+6. **📅 Histórico** — registre o resultado do dia e acompanhe a evolução.
+        """
+    )
+
+    with st.expander("📋 Aba Premissas — detalhes"):
+        st.markdown(
+            """
+Parâmetros de **mercado e de risco** usados no cálculo:
+- **Data de referência** — data da apuração.
+- **Intervalo de Confiança (φ)** — fator da distribuição normal do VaR (ex.: −1,6449 ≈ 95%).
+- **Dias para Liquidação (D)** — horizonte do VaR (o VaR escala com √D).
+- **PLD mín / máx** — limites regulatórios do PLD (referência).
+- **Curva Forward DCIDE (R$/MWh)** — preço a termo por vértice. `SECO/CONV` é a base;
+  `SUL`, `NE`, `N` são **spreads** somados à base para formar o preço de cada submercado.
+- **Volatilidade σ, Estresse Long/Short e Horas/Mês** — uma linha para cada, por vértice.
+  Volatilidade alimenta o **VaR**; os preços de estresse alimentam o **Teste de Estresse**;
+  Horas/Mês converte MWm em MWh.
+
+👉 *Edite as células diretamente na tabela. Tudo recalcula automaticamente.*
+            """
+        )
+
+    with st.expander("🏦 Aba PLA — detalhes"):
+        st.markdown(
+            """
+O **PLA (Patrimônio Líquido Ajustado)** é o **denominador do FA**.
+- **PL Bruto (R$)** — patrimônio líquido contábil.
+- **Deduções I a VIII** — os 8 itens do Anexo I do Manual CCEE (prejuízos acumulados,
+  intangível, créditos tributários, etc.). Preencha o valor de cada um (a descrição é opcional).
+- **PLA Calculado = PL Bruto − Σ(Deduções)** — exibido ao final.
+
+⚠️ Se o **PLA ficar ≤ 0**, o FA não é calculável.
+            """
+        )
+
+    with st.expander("📊 Aba Portfólio — detalhes"):
+        st.markdown(
+            """
+É onde você lança as posições. São 4 seções, cada uma por vértice:
+- **Seção 1 — Preço Fixo, Consumo e Geração:** contratos a preço fixo.
+- **Seção 2 — Preço Variável (PLD+):** contratos indexados (PLD + prêmio).
+- **Seção 3 — Derivativos de Energia:** posições em derivativos.
+- **Seção 4 — EFM:** Efeitos Financeiros do Mercado Regulado (ACR, etc.), em R$.
+
+Em cada seção você preenche:
+- **Exposição líquida por submercado** (SE/CO, SUL, NE, NORTE) — em MWm.
+  *Lembre: vendido = negativo, comprado = positivo.*
+- **Recurso / Requisito** (MWm) e seus **Preços Médios** (R$/MWh).
+
+Botões:
+- **💾 Registrar no Histórico** — grava o resultado atual na aba Histórico.
+- **⬇ Baixar Modelo CSV** — exporta o portfólio atual em CSV (para guardar/editar no Excel).
+
+👉 *Edite as células diretamente; o FA no topo recalcula na hora.*
+            """
+        )
+
+    with st.expander("➕ Aba Portfólio Extra — detalhes"):
+        st.markdown(
+            """
+Serve para **simular um negócio novo** sem alterar o portfólio real.
+- Preencha as seções do portfólio extra (mesma lógica da aba Portfólio).
+- **Ative o toggle** "Ativar Portfólio Extra no cálculo do FA" para que o FA passe a
+  considerar **Real + Extra**. Desativado, o FA usa só o real.
+- A tabela **Comparativo Real × Real + Extra** mostra lado a lado o efeito no
+  FA, RWA, VaR, MtM e Stress — ideal para avaliar se vale a pena fechar o negócio.
+            """
+        )
+
+    with st.expander("🧮 Aba Cálculo — detalhes"):
+        st.markdown(
+            """
+Mostra os resultados (somente leitura):
+- **VaR Paramétrico por vértice** — perda potencial: `φ × |exposição| × σ × √D`.
+- **Exposição NET por submercado** — gráfico das posições líquidas.
+- **MtM (Marcação a Mercado)** — valor da posição na curva forward atual.
+- **Teste de Estresse** — perda sob os preços de estresse (long/short).
+- **Totais consolidados** — Resultado Contratual, PLD+, EFM, MtM, PnL,
+  Resultado Financeiro, VaR, Stress, **RWA** e **PLA**.
+- **FA Risco (RWA/PLA)** e **FA Divulgado** — os indicadores finais.
+            """
+        )
+
+    with st.expander("📅 Aba Histórico — detalhes"):
+        st.markdown(
+            """
+Acompanha a **evolução ao longo do tempo**:
+- Cada registro (feito na aba Portfólio) vira uma linha: data, FA Risco, FA Divulgado,
+  RWA, PnL, Resultado Financeiro, PLA, VaR e Stress.
+- Gráficos: **FA Risco × FA Divulgado** e **RWA × PLA**.
+- **⬇ Exportar histórico (CSV)** — baixa toda a série para Excel.
+            """
+        )
+
+    st.info("As edições valem para a sua sessão. Para não perder, use os botões de "
+            "**download CSV** nas abas Portfólio e Histórico antes de fechar.")
 
 # ---- PREMISSAS ----
 with tab_prem:
+    st.info("Ajuste o **mercado e o risco**: Forward (preço a termo), volatilidade, "
+            "estresse, horas e os fatores do VaR (φ e D). Edite as células — recalcula sozinho.")
     p = st.session_state.premissas
     st.subheader("Parâmetros gerais")
     a, b, c, d = st.columns(4)
@@ -212,6 +351,8 @@ with tab_prem:
 
 # ---- PLA ----
 with tab_pla:
+    st.info("Informe o **PL Bruto** e as **8 deduções**. O **PLA = PL Bruto − deduções** "
+            "é o denominador do FA. Se PLA ≤ 0, o FA não é calculável.")
     st.subheader("Patrimônio Líquido Ajustado (Anexo I do Manual CCEE)")
     pla = st.session_state.empresa.setdefault("pla", {"pl_bruto": 0.0, "deducoes": []})
     pla["pl_bruto"] = st.number_input("PL Bruto (R$)", value=float(pla.get("pl_bruto", 0) or 0), step=1000.0, format="%.2f")
@@ -232,6 +373,9 @@ with tab_pla:
 
 # ---- PORTFÓLIO ----
 with tab_port:
+    st.info("Lance suas **posições** por vértice e submercado (vendido = negativo). "
+            "Preencha exposição, recurso/requisito e preços médios. Use **Registrar no "
+            "Histórico** e **Baixar Modelo CSV** para guardar.")
     emp = st.session_state.empresa
     st.subheader("Seção 1 — Preço Fixo, Consumo e Geração")
     emp["preco_fixo"] = _section_editor("Preço Fixo", emp.get("preco_fixo", _empty_section()), "pf_ed")
@@ -288,6 +432,9 @@ with tab_port:
 
 # ---- PORTFÓLIO EXTRA ----
 with tab_extra:
+    st.info("Simule um **negócio novo** sem mexer no portfólio real. Preencha as seções "
+            "abaixo e **ative o toggle** para ver o efeito no FA (Real + Extra) na tabela "
+            "comparativa. Desativado, o Extra fica só de referência, sem entrar no cálculo.")
     extra = st.session_state.extra
     extra["ativo"] = st.toggle("Ativar Portfólio Extra no cálculo do FA (Real + Extra)", value=bool(extra.get("ativo")))
     st.caption("Ative para somar este portfólio ao real no cálculo do Fator de Alavancagem.")
@@ -322,6 +469,8 @@ with tab_extra:
 
 # ---- CÁLCULO ----
 with tab_calc:
+    st.info("Somente leitura: aqui você vê o **resultado** do que foi preenchido nas abas "
+            "Premissas, PLA e Portfólio — VaR, MtM, Stress, RWA, PLA e o **FA final**.")
     res = calcular_atual()
     pv = res["por_vertice"]
     t = res["totais"]
@@ -366,6 +515,8 @@ with tab_calc:
 
 # ---- HISTÓRICO ----
 with tab_hist:
+    st.info("Série temporal dos registros feitos em **Registrar no Histórico** (aba "
+            "Portfólio). Acompanhe a evolução do FA e exporte em CSV.")
     hist = st.session_state.historico
     if not hist:
         st.info("Nenhum registro ainda. Use **Registrar no Histórico** na aba Portfólio.")
