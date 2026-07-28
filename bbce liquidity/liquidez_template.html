@@ -1,4 +1,4 @@
-<title>Calculadora de Liquidez · BBCE</title>
+<title>Análise de Preços · BBCE</title>
 <style>
   :root{
     --bg:#eef1f4;
@@ -450,8 +450,8 @@
         <img class="logo-equatorial" src="data:image/png;base64,__EQUATORIAL_LOGO_B64__" alt="Grupo Equatorial Energia" />
       </div>
       <span class="mark">BBCE · Mercado Livre</span>
-      <h1>Calculadora de Liquidez</h1>
-      <span class="sub">FEN Preço Fixo — M+N · A+N · T+N · S+N · B+N</span>
+      <h1>Análise de Preços</h1>
+      <span class="sub">Mercado Livre de Energia — Preços, volatilidade e curva a termo</span>
     </div>
 
     <section class="panel" id="panel-upload">
@@ -531,8 +531,8 @@
 
   <main class="content">
     <div class="content-header">
-      <h2>Calculadora de Liquidez — Mercado Livre de Energia</h2>
-      <p>Cole a mesma base de negócios da BBCE que você já usa e a ferramenta reproduz, para qualquer período, a metodologia completa da sua planilha de liquidez — mensal (M+N), anual (A+N), trimestral (T+N), semestral (S+N), bimestral (B+N) e demais famílias — com filtro de outliers intradiário, dias úteis do calendário nacional, volume, giro, frequência, profundidade e preços.</p>
+      <h2>Análise de Preços — Mercado Livre de Energia</h2>
+      <p>A partir dos negócios da BBCE (colados, importados ou puxados ao vivo pela aba Dados BBCE), a ferramenta faz a análise econométrica dos produtos: preço médio ponderado por volume (VWAP), volatilidade, curva a termo por período de entrega e comparação de séries de preço entre produtos e submercados — com exclusão de cancelados e filtro de outliers intradiários.</p>
     </div>
 
     <section id="empty-state" class="empty-state" hidden>
@@ -541,7 +541,7 @@
     </section>
 
     <div id="tabbar" class="tabbar" hidden role="tablist">
-      <button class="tab-btn" data-tab="analise" role="tab" aria-selected="true">Análise</button>
+      <button class="tab-btn" data-tab="analise" role="tab" aria-selected="true">Preços</button>
       <button class="tab-btn" data-tab="comparador" role="tab" aria-selected="false">Comparador</button>
       <button class="tab-btn" data-tab="bbce" role="tab" aria-selected="false">Dados BBCE</button>
     </div>
@@ -1180,6 +1180,7 @@ function computeAndRender(){
     intradayExcluded: excluded.length,
     intradayIncluded: included.length,
     byFamily: byFamily, familyOrder: familyOrder, familyTables: familyTables,
+    cleanRecords: included,
     outros: outros, anomalos: anomalos,
     totalBiz: totalBiz,
     monthly: buildMonthly(byFamily, familyOrder, start, end),
@@ -1439,94 +1440,132 @@ function famTag(fam){
   return '<span class="fam-tag" style="background:color-mix(in srgb, '+c+' 16%, transparent); color:'+c+';"><span class="dot"></span>'+escapeHtml(fam)+'</span>';
 }
 
+var MES_ABBR = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+
+/* Estatísticas de preço (R$/MWh) de um conjunto de negócios.
+   vwap = média ponderada por volume; std = desvio-padrão dos preços observados. */
+function priceStats(recs){
+  var n=recs.length, sw=0, swp=0, s=0, s2=0, mn=Infinity, mx=-Infinity;
+  for(var i=0;i<n;i++){
+    var p=recs[i].preco, q=recs[i].qn;
+    sw+=q; swp+=p*q; s+=p; s2+=p*p;
+    if(p<mn) mn=p; if(p>mx) mx=p;
+  }
+  var mean = n? s/n : 0;
+  var variance = n? Math.max(0, s2/n - mean*mean) : 0;
+  return {n:n, vol:sw, vwap: sw? swp/sw : 0, mean:mean, std:Math.sqrt(variance), min:n?mn:0, max:n?mx:0};
+}
+
+/* Curva a termo: VWAP por período de início de fornecimento (datas[0]). */
+function forwardCurveTable(recs){
+  if(!recs.length) return '<div class="note-box">Sem negócios no período/filtros selecionados.</div>';
+  var subs = Array.from(new Set(recs.map(function(r){return r.pp.submercado;})));
+  subs.sort(function(a,b){ var ia=SUB_ORDER.indexOf(a), ib=SUB_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); });
+  var multi = subs.length>1;
+  var per = new Map();
+  recs.forEach(function(r){
+    var d = r.pp.datas[0]; if(!d) return;
+    var key = d.ano*100 + d.mes;
+    var o = per.get(key);
+    if(!o){ o={ano:d.ano, mes:d.mes, n:0, vol:0, swp:0, sw:0, bySub:{}}; per.set(key,o); }
+    o.n++; o.vol+=r.qn; o.swp+=r.preco*r.qn; o.sw+=r.qn;
+    if(multi){ var b=o.bySub[r.pp.submercado]||(o.bySub[r.pp.submercado]={swp:0,sw:0}); b.swp+=r.preco*r.qn; b.sw+=r.qn; }
+  });
+  var rows = Array.from(per.values()).sort(function(a,b){ return (a.ano-b.ano)||(a.mes-b.mes); });
+  var maxV = Math.max.apply(null, rows.map(function(r){ return r.sw? r.swp/r.sw : 0; }).concat([0]));
+  var head = '<tr><th>Entrega</th><th>Nº neg.</th><th>Volume (MWm)</th><th>VWAP (R$/MWh)</th>';
+  if(multi) subs.forEach(function(s){ head += '<th>VWAP '+escapeHtml(s)+'</th>'; });
+  head += '<th>Preço relativo</th></tr>';
+  var body = rows.map(function(r){
+    var vwap = r.sw? r.swp/r.sw : 0;
+    var pct = maxV>0 ? vwap/maxV : 0;
+    var tr = '<tr><td class="rowhead">'+MES_ABBR[r.mes-1]+'/'+String(r.ano).slice(-2)+'</td>'
+      + '<td>'+fmtInt(r.n)+'</td><td>'+fmt(r.vol,1)+'</td><td>'+fmt(vwap,2)+'</td>';
+    if(multi) subs.forEach(function(s){ var b=r.bySub[s]; tr += '<td>'+(b&&b.sw? fmt(b.swp/b.sw,2):'—')+'</td>'; });
+    tr += '<td><div class="barcell"><div class="track"><div class="fill" style="width:'+(pct*100).toFixed(1)+'%;background:var(--accent);"></div></div></div></td></tr>';
+    return tr;
+  }).join('');
+  return '<div class="table-wrap"><table><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
+
+/* Estatísticas de preço por família de produto. */
+function priceByFamilyTable(recs){
+  if(!recs.length) return '<div class="note-box">Sem negócios no período/filtros selecionados.</div>';
+  var byFam = {};
+  recs.forEach(function(r){ (byFam[r.pp.familia]||(byFam[r.pp.familia]=[])).push(r); });
+  var fams = Object.keys(byFam).sort(function(a,b){ return familySlot(a)-familySlot(b) || a.localeCompare(b); });
+  var head = '<tr><th>Família</th><th>Nº neg.</th><th>Volume (MWm)</th><th>VWAP (R$/MWh)</th><th>Médio</th><th>Volatilidade (dp)</th><th>CV %</th><th>Mín</th><th>Máx</th></tr>';
+  var body = fams.map(function(f){
+    var s = priceStats(byFam[f]);
+    var cv = s.mean? 100*s.std/s.mean : 0;
+    return '<tr><td class="rowhead">'+famTag(f)+'</td>'
+      + '<td>'+fmtInt(s.n)+'</td><td>'+fmt(s.vol,1)+'</td><td>'+fmt(s.vwap,2)+'</td>'
+      + '<td>'+fmt(s.mean,2)+'</td><td>'+fmt(s.std,2)+'</td><td>'+fmt(cv,1)+'</td>'
+      + '<td>'+fmt(s.min,2)+'</td><td>'+fmt(s.max,2)+'</td></tr>';
+  }).join('');
+  return '<div class="table-wrap"><table><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
+
+function exportPrices(result){
+  var recs = result.cleanRecords||[];
+  var lines = ['CURVA A TERMO (VWAP por entrega)', 'Entrega;N negocios;Volume MWm;VWAP R$/MWh'];
+  var per = {};
+  recs.forEach(function(r){ var d=r.pp.datas[0]; if(!d) return; var k=d.ano*100+d.mes; var o=per[k]||(per[k]={ano:d.ano,mes:d.mes,n:0,vol:0,swp:0,sw:0}); o.n++;o.vol+=r.qn;o.swp+=r.preco*r.qn;o.sw+=r.qn; });
+  Object.keys(per).sort().forEach(function(k){ var o=per[k]; lines.push(MES_ABBR[o.mes-1]+'/'+o.ano+';'+o.n+';'+fmt(o.vol,1)+';'+(o.sw?fmt(o.swp/o.sw,2):'')); });
+  lines.push('', 'ESTATISTICAS DE PRECO POR FAMILIA', 'Familia;N negocios;Volume MWm;VWAP;Medio;Volatilidade;CV%;Min;Max');
+  var byFam={}; recs.forEach(function(r){ (byFam[r.pp.familia]||(byFam[r.pp.familia]=[])).push(r); });
+  Object.keys(byFam).sort().forEach(function(f){ var s=priceStats(byFam[f]); var cv=s.mean?100*s.std/s.mean:0;
+    lines.push(f+';'+s.n+';'+fmt(s.vol,1)+';'+fmt(s.vwap,2)+';'+fmt(s.mean,2)+';'+fmt(s.std,2)+';'+fmt(cv,1)+';'+fmt(s.min,2)+';'+fmt(s.max,2)); });
+  var blob = new Blob(['﻿'+lines.join('\n')], {type:'text/csv;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href=url; a.download='analise_precos_bbce_'+isoDate(result.start)+'_a_'+isoDate(result.end)+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
 function render(result){
   var prevActive = 'analise';
   var activeBtn = document.querySelector('#tabbar .tab-btn[aria-selected="true"]');
   if(activeBtn) prevActive = activeBtn.dataset.tab;
   document.getElementById('tab-analise').hidden = false;
+
+  var recs = result.cleanRecords || [];
+  var g = priceStats(recs);
+  var prods = new Set(recs.map(function(r){ return r.produto; }));
+  var pctExcluded = result.rawIncludedForFilter>0 ? result.intradayExcluded/result.rawIncludedForFilter : 0;
   var html = '';
 
-  /* KPI strip */
-  var totalVolAll = sum(result.familyOrder.map(function(f){return result.familyTables[f].totals.vol;}));
-  var totalNAll = sum(result.familyOrder.map(function(f){return result.familyTables[f].totals.n;}));
-  var pctExcluded = result.rawIncludedForFilter>0 ? result.intradayExcluded/result.rawIncludedForFilter : 0;
+  /* KPI strip — preços */
   html += '<div class="kpi-grid">'
-    + kpi('Dias úteis no período', fmtInt(result.totalBiz), fmtDateRange(result.start,result.end))
-    + kpi('Volume total (todas famílias)', fmt(totalVolAll,1)+' MWm', fmt(result.totalBiz>0?totalVolAll/result.totalBiz:0,2)+' MWm/dia útil')
-    + kpi('Nº de negócios', fmtInt(totalNAll), fmt(result.totalBiz>0?totalNAll/result.totalBiz:0,1)+' /dia útil')
-    + kpi('Registros considerados', fmtInt(result.rawIncludedForFilter), 'após filtros de status/período/produto')
-    + kpi('Cancelados (sempre excluídos)', fmtInt(result.canceladoCount), 'independente dos filtros')
-    + kpi('Excluídos (intradiário ±'+fmt(result.threshold*100,0)+'%)', fmtInt(result.intradayExcluded), fmtPct(pctExcluded,2)+' da base filtrada', pctExcluded>0.03?'warn':'')
-    + kpi('Ticket médio geral', fmt(totalNAll>0?totalVolAll/totalNAll:0,2)+' MWm', 'volume ÷ nº de negócios')
+    + kpi('Período', fmtDateRange(result.start,result.end), fmtInt(result.totalBiz)+' dias úteis')
+    + kpi('Produtos negociados', fmtInt(prods.size), fmtInt(recs.length)+' negócios (pós-filtros)')
+    + kpi('Preço médio ponderado (VWAP)', g.n? fmt(g.vwap,2):'—', 'R$/MWh · ponderado por volume')
+    + kpi('Preço médio simples', g.n? fmt(g.mean,2):'—', 'R$/MWh · média dos negócios')
+    + kpi('Volatilidade (desvio-padrão)', g.n? fmt(g.std,2):'—', 'R$/MWh · CV '+(g.mean? fmt(100*g.std/g.mean,1):'—')+'%')
+    + kpi('Faixa de preço', g.n? fmt(g.min,2)+' – '+fmt(g.max,2):'—', 'mín – máx R$/MWh')
     + '</div>';
 
-  html += '<div class="note-box" style="margin-top:14px;"><strong>Como ler os horizontes:</strong> a antecedência é medida a partir da DATA/HORA (criação) de cada negócio. <strong>M+0 = mês vigente</strong> (entrega no próprio mês da criação), M+1 = mês seguinte, e assim por diante — o enquadramento desliza automaticamente conforme os meses passam, pois cada negócio é classificado pela sua própria data de criação. O mesmo vale para A+N (anos), T+N (trimestres), S+N (semestres) e B+N (bimestres).</div>';
+  html += '<div class="note-box" style="margin-top:14px;"><strong>Leitura:</strong> os preços são de negócios reais (R$/MWh), após excluir cancelados, aplicar os filtros à esquerda e remover outliers intradiários (±'+fmt(result.threshold*100,0)+'% da mediana do dia/produto). O <strong>VWAP</strong> pondera cada negócio pelo volume; a <strong>volatilidade</strong> é o desvio-padrão dos preços; a <strong>curva a termo</strong> mostra o preço por período de entrega.</div>';
 
-  /* Per-family liquidez tables */
-  result.familyOrder.forEach(function(fam){
-    var cfg = familyConfig(fam);
-    html += liquidezBlock(fam, cfg, result.familyTables[fam]);
-  });
+  /* Curva a termo */
+  html += '<section class="block"><div class="block-head"><h3>Curva a termo</h3><span class="note">VWAP por período de início de fornecimento</span></div>'
+    + forwardCurveTable(recs) + '</section>';
 
-  /* Charts */
-  if(result.familyOrder.length){
-    html += '<section class="block"><div class="block-head"><h3>Volume por horizonte</h3><span class="note">Volume total e MWm por dia útil, pós-filtro</span></div>'
-      + '<div class="chart-row">'
-      + result.familyOrder.map(function(fam){ return chartCard('chart-'+fam, fam, fam); }).join('')
-      + '</div></section>';
-  }
+  /* Estatísticas por família */
+  html += '<section class="block"><div class="block-head"><h3>Estatísticas de preço por família</h3><span class="note">R$/MWh, no período e filtros selecionados</span></div>'
+    + priceByFamilyTable(recs) + '</section>';
 
-  /* Monthly evolution */
-  if(result.familyOrder.length){
-    html += '<section class="block"><div class="block-head"><h3>Evolução mensal por horizonte</h3>'
-      + '<select id="evo-select" style="width:auto;"></select></div>'
-      + '<div class="chart-card"><div class="chart-card-head"><h4 id="evo-title">—</h4>'
-      + '<div class="toggle-group" id="evo-toggle">'
-      + '<button data-metric="vol" aria-pressed="true">Volume</button>'
-      + '<button data-metric="perbiz" aria-pressed="false">MWm/dia útil</button>'
-      + '<button data-metric="n" aria-pressed="false">Nº negócios</button>'
-      + '</div></div><div id="evo-chart"></div></div></section>';
-  }
-
-  /* Média por dia útil */
-  html += '<section class="block"><div class="block-head"><h3>Média por dia útil (mensal)</h3><span class="note">Volume do mês ÷ dias úteis do mês, dentro do período selecionado</span></div>'
-    + mediaDiaUtilTable(result) + '</section>';
-
-  /* Grade tables (collapsible), one per family */
-  result.familyOrder.forEach(function(fam){
-    var cfg = familyConfig(fam);
-    html += '<section class="block">'
-      + '<details class="collapse"><summary>Grade '+cfg.prefix+'+N por dia útil (mensal) '+famTag(fam)+'</summary>'
-      + '<div class="collapse-body">' + gradeTable(result.monthly, fam, cfg) + '</div></details>'
-      + '</section>';
-  });
-
-  /* Outras famílias / anomalias */
-  if(result.outros.length){
-    html += '<section class="block"><div class="note-box warn"><strong>'+fmtInt(result.outros.length)+' registro(s)</strong> com formato de datas inesperado para a família de produto (ex.: nº de datas diferente do esperado) somando '
-      + fmt(sum(result.outrosBreakdown.map(function(x){return x.vol;})),1) + ' MWm não entram nas tabelas de liquidez acima.<br><br>'
-      + result.outrosBreakdown.map(function(o){ return '<strong>'+escapeHtml(o.familia)+'</strong>: '+fmt(o.vol,1)+' MWm em '+fmtInt(o.n)+' negócios'; }).join(' · ')
-      + '</div></section>';
-  }
-  if(result.anomalos.length){
-    html += '<section class="block"><div class="note-box warn">'+fmtInt(result.anomalos.length)+' negócio(s) com horizonte negativo (criação posterior ao início da entrega) foram desconsiderados por inconsistência de datas.</div></section>';
-  }
   if(result.stats.unparsed){
-    html += '<section class="block"><div class="note-box">'+fmtInt(result.stats.unparsed)+' linha(s) com o campo PRODUTO em um formato não reconhecido foram ignoradas.</div></section>';
+    html += '<section class="block"><div class="note-box">'+fmtInt(result.stats.unparsed)+' linha(s) com o campo PRODUTO em formato não reconhecido foram ignoradas.</div></section>';
+  }
+  if(result.intradayExcluded){
+    html += '<section class="block"><div class="note-box">'+fmtInt(result.intradayExcluded)+' negócio(s) ('+fmtPct(pctExcluded,2)+' da base filtrada) removidos como outliers intradiários (±'+fmt(result.threshold*100,0)+'%). '+fmtInt(result.canceladoCount)+' cancelado(s) sempre excluídos.</div></section>';
   }
 
-  /* Methodology recap */
-  html += '<section class="block"><details class="collapse"><summary>Metodologia aplicada nesta rodada</summary><div class="collapse-body methodology">'+methodologyRecap(result)+'</div></details></section>';
-
-  html += '<div class="footer-actions"><button class="btn-ghost" id="btn-export">Baixar tabelas (CSV)</button><button class="btn-ghost" id="btn-print">Imprimir / salvar PDF</button></div>';
+  html += '<div class="footer-actions"><button class="btn-ghost" id="btn-export">Baixar análise (CSV)</button><button class="btn-ghost" id="btn-print">Imprimir / salvar PDF</button></div>';
 
   document.getElementById('tab-analise').innerHTML = html;
 
-  result.familyOrder.forEach(function(fam){
-    drawHorizonChart('chart-'+fam, result.familyTables[fam], fam, familyConfig(fam).prefix);
-  });
-  if(result.familyOrder.length) wireEvolution(result);
-  document.getElementById('btn-export').addEventListener('click', function(){ exportCSV(result); });
+  document.getElementById('btn-export').addEventListener('click', function(){ exportPrices(result); });
   document.getElementById('btn-print').addEventListener('click', function(){ window.print(); });
 
   renderComparador(result);
