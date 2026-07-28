@@ -325,7 +325,7 @@ function parseContracts(raw){
     var fim=parseDate(g(r0,['Fim do fornecimento']))||(fimAll?new Date(fimAll.getFullYear(),fimAll.getMonth()+1,0):null);
     var volMWmRep=repr('volMWm'); if(volMWmRep==='') volMWmRep=(meses.length?meses[0].volMWm:num(g(r0,['Volume previsto (MWm)'])));
     return {
-      _id:'op_'+gi,
+      _id:'bol_'+String(neg).replace(/[^A-Za-z0-9_-]/g,'_'),
       negocio: neg,
       boleta: neg,
       entrega: g(r0,['Entrega']),
