@@ -1572,6 +1572,32 @@ function renderPrecos(result){
   document.getElementById('btn-export-precos').addEventListener('click', function(){ exportPrices(result); });
 }
 
+/* Atividade agrupada pela DATA/HORA de criação (referência do horizonte M+N).
+   Reagrupa a cada base carregada, então a referência acompanha os dados novos. */
+function creationActivityTable(recs){
+  if(!recs.length) return '<div class="note-box">Sem negócios no período/filtros selecionados.</div>';
+  var per = {};
+  recs.forEach(function(r){
+    var o = per[r.month] || (per[r.month] = {n:0, vol:0, swp:0, sw:0, prods:{}});
+    o.n++; o.vol += r.qn; o.swp += r.preco*r.qn; o.sw += r.qn; o.prods[r.produto] = 1;
+  });
+  var keys = Object.keys(per).sort();
+  var maxVol = Math.max.apply(null, keys.map(function(k){ return per[k].vol; }).concat([0]));
+  var head = '<tr><th>Mês de criação</th><th>Nº negócios</th><th>Produtos</th><th>Volume (MWm)</th><th>VWAP (R$/MWh)</th><th>Volume relativo</th></tr>';
+  var body = keys.map(function(k){
+    var o = per[k];
+    var pct = maxVol>0 ? o.vol/maxVol : 0;
+    return '<tr><td class="rowhead">'+monthLabel(k)+'</td>'
+      + '<td>'+fmtInt(o.n)+'</td><td>'+fmtInt(Object.keys(o.prods).length)+'</td>'
+      + '<td>'+fmt(o.vol,1)+'</td><td>'+(o.sw? fmt(o.swp/o.sw,2):'—')+'</td>'
+      + '<td><div class="barcell"><div class="track"><div class="fill" style="width:'+(pct*100).toFixed(1)+'%;background:var(--accent);"></div></div></div></td></tr>';
+  }).join('');
+  return '<div class="table-wrap"><table><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
+function fmtDateTime(d){
+  return pad2(d.getDate())+'/'+pad2(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+}
+
 function render(result){
   var prevActive = 'analise';
   var activeBtn = document.querySelector('#tabbar .tab-btn[aria-selected="true"]');
@@ -1596,6 +1622,20 @@ function render(result){
     + '</div>';
 
   html += '<div class="note-box" style="margin-top:14px;"><strong>Como ler os horizontes:</strong> a antecedência é medida a partir da DATA/HORA (criação) de cada negócio. <strong>M+0 = mês vigente</strong> (entrega no próprio mês da criação), M+1 = mês seguinte, e assim por diante — o enquadramento desliza automaticamente conforme os meses passam, pois cada negócio é classificado pela sua própria data de criação. O mesmo vale para A+N (anos), T+N (trimestres), S+N (semestres) e B+N (bimestres).</div>';
+
+  /* Atividade por data de criação — referência dinâmica do M+N */
+  var recsC = result.cleanRecords || [];
+  var maxCreate = null, minCreate = null;
+  recsC.forEach(function(r){
+    if(!maxCreate || r.dt > maxCreate) maxCreate = r.dt;
+    if(!minCreate || r.dt < minCreate) minCreate = r.dt;
+  });
+  var refNote = maxCreate
+    ? 'Base criada entre '+fmtDateTime(minCreate)+' e '+fmtDateTime(maxCreate)+' · referência mais recente (M+0): '+fmtDateTime(maxCreate)
+    : 'Agrupa pela DATA/HORA de criação de cada negócio';
+  html += '<section class="block"><div class="block-head"><h3>Atividade por data de criação</h3><span class="note">'+refNote+'</span></div>'
+    + '<div class="note-box" style="margin-bottom:10px;">A análise é ancorada na <strong>DATA/HORA de criação</strong> de cada negócio. Sempre que você atualiza a base (colar CSV ou puxar da BBCE), esta referência e todos os horizontes M+N são recalculados automaticamente a partir das novas datas de criação.</div>'
+    + creationActivityTable(recsC) + '</section>';
 
   /* Per-family liquidez tables */
   result.familyOrder.forEach(function(fam){
