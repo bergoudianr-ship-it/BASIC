@@ -23,6 +23,9 @@ try {
 // após excluir cancelados e filtrar outliers intradiários (±20%). Valores
 // conferidos por recálculo independente em Python a partir do CSV.
 const EXPECTED = {
+  // Aba Análise (horizontes) — volume total por família.
+  liquidez: { MEN: "36.551,068", ANU: "4.448,366", TRI: "5.056,977", SEM: "2.581,138" },
+  // Aba Preços — estatísticas de preço.
   produtos: 87,
   incluidos: "21.364",
   vwap: 284.62,
@@ -50,7 +53,7 @@ function numBR(s) {
 
   const file = "file://" + path.resolve(__dirname, "..", "liquidez.html");
   await page.goto(file);
-  await page.waitForSelector("#tab-analise .kpi", { timeout: 8000 });
+  await page.waitForSelector("#tbl-MEN", { timeout: 8000 });
   await page.waitForTimeout(400);
 
   let failures = 0;
@@ -59,8 +62,17 @@ function numBR(s) {
     if (!ok) failures++;
   };
 
-  // KPIs de preço
-  const kpis = await page.$$eval("#tab-analise .kpi", (els) =>
+  // Aba Análise (horizontes): totais de volume por família
+  for (const [fam, expected] of Object.entries(EXPECTED.liquidez)) {
+    const total = await page.textContent(`#tbl-${fam} tbody tr.total`).catch(() => "");
+    check(`${fam}: volume ${expected}`, total && total.includes(expected), `obtido: ${total}`);
+  }
+
+  // Aba Preços: estatísticas de preço
+  await page.click('.tab-btn[data-tab="precos"]');
+  await page.waitForSelector("#tab-precos .kpi", { timeout: 5000 });
+  await page.waitForTimeout(200);
+  const kpis = await page.$$eval("#tab-precos .kpi", (els) =>
     els.map((e) => ({
       label: e.querySelector(".label").textContent.trim(),
       value: e.querySelector(".value").textContent.trim(),
@@ -79,13 +91,11 @@ function numBR(s) {
   const vol = numBR(find("volatilidade").value);
   check(`volatilidade ≈ ${EXPECTED.volatilidade}`, Math.abs(vol - EXPECTED.volatilidade) < TOL, `obtido ${vol}`);
 
-  // Curva a termo: tem linhas
-  const fwdRows = await page.$$eval("#tab-analise .block table tbody tr", (t) => t.length).catch(() => 0);
+  const fwdRows = await page.$$eval("#tab-precos .block table tbody tr", (t) => t.length).catch(() => 0);
   check("curva a termo tem linhas", fwdRows > 0, `linhas: ${fwdRows}`);
 
-  // Tabela por família: VWAP de MEN
   const menVwap = await page.evaluate(() => {
-    const rows = Array.from(document.querySelectorAll("#tab-analise table tbody tr"));
+    const rows = Array.from(document.querySelectorAll("#tab-precos table tbody tr"));
     for (const r of rows) {
       const head = r.querySelector(".rowhead");
       if (head && head.textContent.trim() === "MEN" && r.children.length >= 4) {
