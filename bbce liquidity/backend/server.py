@@ -13,6 +13,7 @@ Rodar:
 
 As credenciais ficam só aqui (via .env); o navegador nunca as vê.
 """
+import csv as _csv
 import json
 import os
 import sys
@@ -83,12 +84,39 @@ def _fetch_live():
     return transform.to_csv(all_deals), len(all_deals)
 
 
+def _read_local_csv():
+    """Modo 'csv': lê o CSV local (SharePoint sincronizado) e converte para o
+    formato da ferramenta. Aceita tanto o CSV do pipeline (colunas produto_nome,
+    createdAt, unitPrice…) quanto um CSV já no formato "Todos os Negócios"."""
+    path = config.CSV_PATH
+    if not path or not os.path.exists(path):
+        raise FileNotFoundError(f"CSV não encontrado: {path}")
+    with open(path, "r", encoding=config.CSV_ENCODING, newline="") as f:
+        head = f.readline()
+        delim = ";" if head.count(";") >= head.count(",") else ","
+        f.seek(0)
+        rows = list(_csv.DictReader(f, delimiter=delim))
+    if not rows:
+        return transform.CSV_HEADER + "\r\n", 0
+    cols = set(rows[0].keys())
+    if "produto_nome" in cols or "createdAt" in cols:
+        # formato do pipeline -> converte (to_csv já lê essas chaves)
+        return transform.to_csv(rows), len(rows)
+    if "PRODUTO" in cols:
+        # já está no formato da ferramenta -> serve o texto como veio
+        with open(path, "r", encoding=config.CSV_ENCODING) as f:
+            return f.read(), len(rows)
+    raise ValueError("Cabeçalho do CSV não reconhecido (nem pipeline, nem 'Todos os Negócios').")
+
+
 def refresh():
     try:
         if config.MODE == "mock":
             with open(_SAMPLE, "rb") as f:
                 csv = f.read().decode("latin-1")
             count = max(0, csv.count("\n") - 1)
+        elif config.MODE == "csv":
+            csv, count = _read_local_csv()
         else:
             csv, count = _fetch_live()
         with _lock:

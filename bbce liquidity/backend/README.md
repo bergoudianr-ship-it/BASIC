@@ -23,16 +23,29 @@ http://127.0.0.1:8787/  (a ferramenta, que recarrega a cada 10 min)
 - A BBCE permite **uma sessão ativa por usuário**: se a mesma conta logar em
   outro lugar, o serviço refaz o login sozinho (e vice-versa).
 
+## Dois jeitos de alimentar a ferramenta
+
+- **Modo `csv` (recomendado, sem API/credenciais):** o backend lê o CSV que o seu
+  pipeline já grava no SharePoint (sincronizado pelo OneDrive como pasta local),
+  converte e serve. Nenhuma credencial no backend. Configure `BBCE_MODE=csv` e
+  `BBCE_CSV_PATH`.
+- **Modo `live` (direto da API):** o backend autentica na BBCE e puxa os negócios.
+  Precisa das credenciais no `.env` (ou lê do seu `pega_negociacoes_bbce.py`).
+
 ## Como rodar
 
 ```bash
 cd "bbce liquidity/backend"
 
-# 1) Modo demonstração (base de exemplo, sem credenciais):
+# 1) Demonstração (base de exemplo, sem configurar nada):
 python3 server.py
 
-# 2) Modo ao vivo:
-cp .env.example .env          # preencha BBCE_MODE=live + credenciais
+# 2) Modo CSV (lê o CSV do SharePoint sincronizado):
+cp .env.example .env          # BBCE_MODE=csv + BBCE_CSV_PATH=...
+python3 server.py
+
+# 3) Modo ao vivo (direto da API):
+cp .env.example .env          # BBCE_MODE=live + credenciais
 python3 server.py             # abre http://127.0.0.1:8787/ e atualiza a cada 10 min
 ```
 

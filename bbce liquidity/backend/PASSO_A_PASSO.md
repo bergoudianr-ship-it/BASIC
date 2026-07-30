@@ -27,7 +27,25 @@ direto no código.
 3. Botão verde **Code → Download ZIP** e **extraia** (ex.: na Área de Trabalho).
 4. Entre na pasta `bbce liquidity` → `backend`.
 
-## Fase 3 — Configurar as credenciais (uma vez só)
+## Fase 3 — Configurar (uma vez só)
+
+### Modo recomendado: ler o CSV do SharePoint (sem API, sem credenciais)
+
+Se o seu pipeline já grava o `todas_negociacoes_bbce.csv` numa pasta do
+SharePoint sincronizada pelo OneDrive, o backend só precisa ler esse arquivo:
+
+1. Dê duplo-clique em `run.bat` uma vez (cria o `.env`); pode fechar.
+2. Abra o `.env` no Bloco de Notas e deixe assim (ajuste o caminho para o seu):
+   ```
+   BBCE_MODE=csv
+   BBCE_CSV_PATH=C:\Users\voce\GRUPO EQUATORIAL ENERGIA\Research & Middle - Documents\3. Dados\3_processados\automatico\todas_negociacoes_bbce.csv
+   ```
+   Salve e feche. **Pronto — sem apiKey, sem senha.** Pule para a Fase 5.
+
+   > A pasta precisa estar **sincronizada localmente** (não "somente online" no
+   > OneDrive). O backend relê o CSV a cada 10 min automaticamente.
+
+### Modo alternativo: puxar direto da API (precisa das credenciais)
 
 Você já tem as credenciais no seu `pega_negociacoes_bbce.py`. Escolha **uma** das
 opções (as credenciais ficam só na sua máquina — nunca sobem para o repositório):

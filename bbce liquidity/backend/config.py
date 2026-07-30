@@ -64,8 +64,16 @@ def _get(name, default=""):
     return os.environ.get(name, default)
 
 
-# 'mock' serve a base de exemplo embutida; 'live' puxa da API BBCE de produção.
+# Modos:
+#   'mock' -> base de exemplo embutida (sem nada configurado)
+#   'csv'  -> lê um CSV local (ex.: o todas_negociacoes_bbce.csv sincronizado do
+#             SharePoint pelo OneDrive). Sem API, sem credenciais. RECOMENDADO.
+#   'live' -> puxa direto da API BBCE de produção (precisa de credenciais).
 MODE = _get("BBCE_MODE", "mock").strip().lower()
+
+# usado no modo 'csv': caminho do CSV local (pasta do OneDrive/SharePoint sincronizada).
+CSV_PATH = _get("BBCE_CSV_PATH")
+CSV_ENCODING = _get("BBCE_CSV_ENCODING", "utf-8-sig")
 
 BASE_URL = _get("BBCE_BASE_URL", "https://api-ehub.bbce.com.br/bus").rstrip("/")
 API_KEY = _get("BBCE_API_KEY")
@@ -87,6 +95,12 @@ CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache_neg
 CORS_ORIGIN = _get("BBCE_CORS_ORIGIN", "*")
 HOST = _get("BBCE_HOST", "127.0.0.1")
 PORT = int(_get("BBCE_PORT", "8787") or "8787")
+
+
+def require_csv_path():
+    if not CSV_PATH:
+        raise SystemExit("Modo 'csv' exige BBCE_CSV_PATH (o caminho do CSV local "
+                         "sincronizado do SharePoint pelo OneDrive).")
 
 
 def require_live_credentials():
