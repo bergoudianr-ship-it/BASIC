@@ -29,17 +29,35 @@ direto no código.
 
 ## Fase 3 — Configurar as credenciais (uma vez só)
 
-1. Na pasta `backend`, dê **duplo-clique em `run.bat`** uma vez. Ele cria o
-   arquivo **`.env`** automaticamente (e sobe em modo demonstração — pode fechar).
-2. Abra o `.env` com o **Bloco de Notas** e preencha com as credenciais **novas**:
+Você já tem as credenciais no seu `pega_negociacoes_bbce.py`. Escolha **uma** das
+opções (as credenciais ficam só na sua máquina — nunca sobem para o repositório):
+
+**Opção A (mais fácil) — usar o seu próprio arquivo:**
+1. Copie o seu **`pega_negociacoes_bbce.py`** para dentro da pasta `backend`.
+2. O backend lê as credenciais (API_KEY, USERNAME, PASSWORD, COMPANY_ID)
+   direto dele — **não precisa preencher nada**.
+3. Só falta ligar o modo ao vivo: dê duplo-clique em `run.bat` uma vez (cria o
+   `.env`), abra o `.env` no Bloco de Notas e deixe só:
    ```
    BBCE_MODE=live
-   BBCE_API_KEY=sua_apikey_nova
-   BBCE_USERNAME=seu_email@echoenergia.com.br
-   BBCE_PASSWORD=sua_senha_nova
+   ```
+
+**Opção B — preencher o `.env`:**
+1. Duplo-clique em `run.bat` uma vez (cria o `.env`); pode fechar.
+2. Abra o `.env` no Bloco de Notas, copie os 4 valores do seu
+   `pega_negociacoes_bbce.py` (linhas `API_KEY`, `USERNAME`, `PASSWORD`,
+   `COMPANY_ID`) e cole:
+   ```
+   BBCE_MODE=live
+   BBCE_API_KEY=<o API_KEY do seu script>
+   BBCE_USERNAME=<o USERNAME do seu script>
+   BBCE_PASSWORD=<o PASSWORD do seu script>
    BBCE_COMPANY_ID=1266
    ```
-   Salve e feche. (O `.env` fica só na sua máquina — não sobe para lugar nenhum.)
+   Salve e feche.
+
+> Recomendação de segurança: como essas credenciais já circularam em texto puro,
+> o ideal é **trocar a senha e regenerar a apiKey** na BBCE e usar as novas aqui.
 
 ## Fase 4 — Testar o acesso
 

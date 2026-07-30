@@ -22,6 +22,44 @@ def _load_dotenv():
 _load_dotenv()
 
 
+def _load_from_script():
+    """Conveniência: se as credenciais não vierem do .env, lê-as de um
+    pega_negociacoes_bbce.py existente (o mesmo arquivo que você já usa).
+
+    Basta colocar esse arquivo na pasta backend (ou apontar BBCE_SCRIPT_PATH).
+    Só faz leitura de texto (regex) — não importa nem executa o script.
+    """
+    import re
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.environ.get("BBCE_SCRIPT_PATH"),
+        os.path.join(here, "pega_negociacoes_bbce.py"),
+        os.path.join(os.path.dirname(here), "pega_negociacoes_bbce.py"),
+    ]
+    for path in candidates:
+        if not path or not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                txt = f.read()
+        except OSError:
+            continue
+
+        def grab(name):
+            m = re.search(r'^\s*' + name + r'\s*(?::\s*str)?\s*=\s*["\']([^"\']+)["\']', txt, re.M)
+            return m.group(1) if m else None
+
+        for env_key, const in (("BBCE_API_KEY", "API_KEY"), ("BBCE_USERNAME", "USERNAME"),
+                               ("BBCE_PASSWORD", "PASSWORD"), ("BBCE_COMPANY_ID", "COMPANY_ID")):
+            val = grab(const)
+            if val:
+                os.environ.setdefault(env_key, val)  # .env tem prioridade
+        return
+
+
+_load_from_script()
+
+
 def _get(name, default=""):
     return os.environ.get(name, default)
 

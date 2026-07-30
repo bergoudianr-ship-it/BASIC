@@ -35,3 +35,5 @@ cache_negocios.json
 negociacoes_ferramenta.csv
 log_coleta.txt
 log_conversao.txt
+# Script de coleta do usuário (contém credenciais) — nunca versionar
+pega_negociacoes_bbce.py
