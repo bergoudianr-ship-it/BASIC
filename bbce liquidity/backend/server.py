@@ -84,13 +84,45 @@ def _fetch_live():
     return transform.to_csv(all_deals), len(all_deals)
 
 
+_csv_source = None
+
+
+def _resolve_csv_path():
+    """Aceita um arquivo OU uma pasta. Se for pasta, procura CSV_FILENAME dentro
+    (recursivo); se não achar, usa o .csv mais recente (ignorando *_outliers.csv)."""
+    global _csv_source
+    path = config.CSV_PATH
+    if not path:
+        raise FileNotFoundError("BBCE_CSV_PATH não configurado.")
+    if os.path.isfile(path):
+        _csv_source = path
+        return path
+    if os.path.isdir(path):
+        target = (config.CSV_FILENAME or "").lower()
+        candidates = []
+        for root, _dirs, files in os.walk(path):
+            for fn in files:
+                if not fn.lower().endswith(".csv"):
+                    continue
+                full = os.path.join(root, fn)
+                if target and fn.lower() == target:
+                    _csv_source = full
+                    return full
+                if not fn.lower().endswith("_outliers.csv"):
+                    candidates.append(full)
+        if candidates:
+            newest = max(candidates, key=lambda p: os.path.getmtime(p))
+            _csv_source = newest
+            return newest
+        raise FileNotFoundError(f"Nenhum .csv encontrado em {path}")
+    raise FileNotFoundError(f"Caminho não encontrado: {path}")
+
+
 def _read_local_csv():
     """Modo 'csv': lê o CSV local (SharePoint sincronizado) e converte para o
     formato da ferramenta. Aceita tanto o CSV do pipeline (colunas produto_nome,
     createdAt, unitPrice…) quanto um CSV já no formato "Todos os Negócios"."""
-    path = config.CSV_PATH
-    if not path or not os.path.exists(path):
-        raise FileNotFoundError(f"CSV não encontrado: {path}")
+    path = _resolve_csv_path()
     with open(path, "r", encoding=config.CSV_ENCODING, newline="") as f:
         head = f.readline()
         delim = ";" if head.count(";") >= head.count(",") else ","
@@ -178,6 +210,7 @@ class Handler(BaseHTTPRequestHandler):
                     "count": _state["count"],
                     "error": _state["error"],
                     "refreshSeconds": config.REFRESH_SECONDS,
+                    "source": os.path.basename(_csv_source) if _csv_source else None,
                 })
             return
         if path in ("/api/negocios", "/api/negocios.csv"):

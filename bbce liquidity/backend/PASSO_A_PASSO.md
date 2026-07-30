@@ -44,6 +44,11 @@ SharePoint sincronizada pelo OneDrive, o backend só precisa ler esse arquivo:
 
    > A pasta precisa estar **sincronizada localmente** (não "somente online" no
    > OneDrive). O backend relê o CSV a cada 10 min automaticamente.
+   >
+   > Pode apontar `BBCE_CSV_PATH` para o **arquivo** ou para a **pasta** — se for
+   > pasta, o backend procura o `todas_negociacoes_bbce.csv` dentro dela (inclusive
+   > em subpastas). Confira em `http://127.0.0.1:8787/health` o campo `source`
+   > para ver qual arquivo ele está lendo.
 
 ### Modo alternativo: puxar direto da API (precisa das credenciais)
 

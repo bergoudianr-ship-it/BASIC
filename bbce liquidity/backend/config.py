@@ -71,8 +71,10 @@ def _get(name, default=""):
 #   'live' -> puxa direto da API BBCE de produção (precisa de credenciais).
 MODE = _get("BBCE_MODE", "mock").strip().lower()
 
-# usado no modo 'csv': caminho do CSV local (pasta do OneDrive/SharePoint sincronizada).
+# usado no modo 'csv': caminho do CSV local (arquivo OU pasta do OneDrive/SharePoint
+# sincronizada). Se for uma pasta, o backend procura o arquivo CSV_FILENAME dentro dela.
 CSV_PATH = _get("BBCE_CSV_PATH")
+CSV_FILENAME = _get("BBCE_CSV_FILENAME", "todas_negociacoes_bbce.csv")
 CSV_ENCODING = _get("BBCE_CSV_ENCODING", "utf-8-sig")
 
 BASE_URL = _get("BBCE_BASE_URL", "https://api-ehub.bbce.com.br/bus").rstrip("/")
