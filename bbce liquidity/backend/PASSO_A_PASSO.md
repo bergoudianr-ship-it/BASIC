@@ -88,6 +88,23 @@ opções (as credenciais ficam só na sua máquina — nunca sobem para o reposi
 - Se aparecer **`LOGIN OK`** → está tudo certo, siga para a Fase 5.
 - Se der erro → ele diz o que faltou (apiKey, usuário ou senha). Corrija o `.env`.
 
+## Rodar pelo VSCode (se o `.bat`/CMD der "Python não reconhecido")
+
+Esse erro quer dizer que o Python não está no PATH. O VSCode acha o Python
+mesmo assim:
+
+1. No VSCode, instale a extensão **Python** (da Microsoft), se ainda não tiver.
+2. **Arquivo → Abrir Pasta** e abra a pasta `bbce liquidity` (ou a `backend`).
+3. `Ctrl+Shift+P` → digite **"Python: Select Interpreter"** → escolha o Python
+   instalado. (Se **não aparecer nenhum**, o Python não está instalado — baixe em
+   python.org e repita.)
+4. Abra o arquivo `backend/server.py` e clique no botão **▶ (Run Python File)** no
+   canto superior direito. (Ou, no terminal do VSCode: `py server.py`.)
+5. No terminal do VSCode vai aparecer `Abra no navegador: http://127.0.0.1:8787/`.
+   Abra esse endereço. Pronto — os dados carregam e atualizam a cada 10 min.
+
+Para parar: clique na lixeira do terminal do VSCode (ou `Ctrl+C` nele).
+
 ## Fase 5 — Rodar (uso do dia a dia)
 
 1. Duplo-clique em **`run.bat`**.
