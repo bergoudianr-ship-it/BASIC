@@ -471,7 +471,6 @@
         </select>
       </label>
       <div class="status-line" id="load-status">Carregando base padrão…</div>
-      <div class="bbce-hint-sidebar" style="font-size:11px;color:var(--text-muted);margin-top:2px;">Para puxar direto da BBCE, use a aba <strong>Dados BBCE</strong>.</div>
     </section>
 
     <section class="panel" id="panel-filters" hidden>
@@ -532,7 +531,7 @@
   <main class="content">
     <div class="content-header">
       <h2>Análise de Produtos — Mercado Livre de Energia</h2>
-      <p>A partir dos negócios da BBCE (colados, importados ou puxados ao vivo pela aba Dados BBCE), a ferramenta avalia os produtos pela DATA/HORA de criação, classificando por horizonte (M+N, A+N, T+N, S+N, B+N) com volume, giro e frequência, e traz a análise quantitativa de preços — VWAP, volatilidade, curva a termo e comparação de séries — com exclusão de cancelados e filtro de outliers intradiários.</p>
+      <p>A partir dos negócios da BBCE (colados ou importados como CSV), a ferramenta avalia os produtos pela DATA/HORA de criação, classificando por horizonte (M+N, A+N, T+N, S+N, B+N) com volume, giro e frequência, e traz a análise quantitativa de preços — VWAP, volatilidade e curva a termo — com exclusão de cancelados e filtro de outliers intradiários.</p>
     </div>
 
     <section id="empty-state" class="empty-state" hidden>
@@ -543,43 +542,9 @@
     <div id="tabbar" class="tabbar" hidden role="tablist">
       <button class="tab-btn" data-tab="analise" role="tab" aria-selected="true">Análise</button>
       <button class="tab-btn" data-tab="precos" role="tab" aria-selected="false">Preços</button>
-      <button class="tab-btn" data-tab="comparador" role="tab" aria-selected="false">Comparador</button>
-      <button class="tab-btn" data-tab="bbce" role="tab" aria-selected="false">Dados BBCE</button>
     </div>
     <section id="tab-analise" hidden></section>
     <section id="tab-precos" hidden></section>
-    <section id="tab-comparador" hidden></section>
-    <section id="tab-bbce" hidden>
-      <div class="bbce-tab">
-        <h2 style="font-size:18px;margin:0 0 4px;">Dados da BBCE — carga ao vivo</h2>
-        <p>Puxa os negócios direto da API da BBCE através do backend local (pasta <code>backend/</code>).
-          A carga manual por CSV continua disponível no painel à esquerda, sem alteração.</p>
-
-        <div class="bbce-card">
-          <label class="field">URL do backend
-            <input type="url" id="bbce-url" placeholder="http://127.0.0.1:8787" value="http://127.0.0.1:8787" aria-label="URL do backend BBCE" />
-          </label>
-          <div class="bbce-actions">
-            <button type="button" id="bbce-test-btn" class="btn-ghost">Testar conexão</button>
-            <button type="button" id="bbce-load-btn" class="btn-primary">Carregar todos os negócios</button>
-          </div>
-          <div class="status-line" id="bbce-status">Pronto. Rode o backend e clique em “Testar conexão”.</div>
-        </div>
-
-        <div class="bbce-steps">
-          <h3>Como usar</h3>
-          <ol>
-            <li>Em <code>bbce liquidity/backend/</code>, copie <code>.env.example</code> para <code>.env</code> e preencha
-              <code>BBCE_MODE=live</code>, <code>BBCE_API_KEY</code>, <code>BBCE_COMPANY_CODE</code>,
-              <code>BBCE_EMAIL</code>, <code>BBCE_PASSWORD</code> e <code>BBCE_WALLET_IDS</code>.</li>
-            <li>Rode <code>python3 server.py</code> e abra a ferramenta em <code>http://127.0.0.1:8787/</code>.</li>
-            <li>Clique em <strong>Carregar todos os negócios</strong>. Os dados entram nas abas Análise e Comparador.</li>
-          </ol>
-          <p class="bbce-note">No modo <code>mock</code> (padrão), o backend serve a base de exemplo — dá para testar sem credenciais.
-            Pelo link do artifact (claude.ai) a carga ao vivo não funciona: o navegador bloqueia conexões externas; use o backend local.</p>
-        </div>
-      </div>
-    </section>
   </main>
 </div>
 
@@ -865,61 +830,6 @@ pasteArea.addEventListener('change', function(){
   if(pasteArea.value.trim().length>20) ingestText(pasteArea.value, 'colado');
 });
 
-/* ---- aba Dados BBCE: teste de conexão + carga ao vivo ---- */
-var bbceUrlEl = document.getElementById('bbce-url');
-// se a página já vier servida pelo backend local, usa a mesma origem (sem CORS/CSP).
-if((location.protocol==='http:'||location.protocol==='https:') && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)){
-  bbceUrlEl.value = location.origin;
-}
-function bbceBase(){ return (bbceUrlEl.value || '').trim().replace(/\/+$/, ''); }
-function bbceStatus(cls, msg){
-  var e = document.getElementById('bbce-status');
-  if(e){ e.className = 'status-line ' + (cls||''); e.textContent = msg; }
-}
-function bbceHint(err){
-  var base = 'Falha: ' + err.message + '. ';
-  if(/claude\.ai|artifact|usercontent/i.test(location.host))
-    return base + 'Pelo link do artifact o navegador bloqueia conexões externas. Rode o backend e abra a ferramenta em http://127.0.0.1:8787/.';
-  if(location.protocol==='file:')
-    return base + 'Confira se o backend está rodando (python3 server.py na pasta backend). Dica: abrir a ferramenta em http://127.0.0.1:8787/ evita esse bloqueio.';
-  return base + 'Confira se o backend está no ar nessa URL.';
-}
-function bbceTest(){
-  var base = bbceBase();
-  if(!base){ bbceStatus('err', 'Informe a URL do backend (ex.: http://127.0.0.1:8787).'); return; }
-  bbceStatus('', 'Testando conexão…');
-  fetch(base + '/health').then(function(r){ return r.json(); })
-    .then(function(j){ bbceStatus('ok', 'Conectado. Backend em modo "' + (j.mode||'?') + '".'
-      + (j.mode==='mock' ? ' (base de exemplo — configure BBCE_MODE=live para dados reais.)' : '')); })
-    .catch(function(err){ bbceStatus('err', bbceHint(err)); });
-}
-function bbceLoad(){
-  var base = bbceBase();
-  if(!base){ bbceStatus('err', 'Informe a URL do backend (ex.: http://127.0.0.1:8787).'); return; }
-  var btn = document.getElementById('bbce-load-btn');
-  bbceStatus('', 'Buscando negócios na BBCE… pode levar um tempo conforme o nº de tickers.');
-  btn.disabled = true;
-  fetch(base + '/api/negocios', {headers:{'Accept':'text/csv'}})
-    .then(function(resp){
-      if(!resp.ok){
-        return resp.text().then(function(t){
-          var msg = t; try{ msg = JSON.parse(t).error || t; }catch(e){}
-          throw new Error('HTTP ' + resp.status + ' — ' + msg);
-        });
-      }
-      return resp.text();
-    })
-    .then(function(text){
-      ingestText(text, 'BBCE ao vivo');
-      var n = state.rawRows ? state.rawRows.length : 0;
-      bbceStatus('ok', n + ' registros carregados da BBCE. Exibindo em Análise.');
-      if(state.result) activateTab('analise');
-    })
-    .catch(function(err){ bbceStatus('err', bbceHint(err)); })
-    .finally(function(){ btn.disabled = false; });
-}
-document.getElementById('bbce-test-btn').addEventListener('click', bbceTest);
-document.getElementById('bbce-load-btn').addEventListener('click', bbceLoad);
 
 function decodeBuffer(buf){
   var mode = encodingSelect.value;
@@ -1705,7 +1615,6 @@ function render(result){
   document.getElementById('btn-print').addEventListener('click', function(){ window.print(); });
 
   renderPrecos(result);
-  renderComparador(result);
   wireTabs();
   activateTab(prevActive);
 }
@@ -2002,11 +1911,8 @@ function activateTab(tab){
   bar.querySelectorAll('.tab-btn').forEach(function(b){ b.setAttribute('aria-selected', String(b.dataset.tab===tab)); });
   document.getElementById('tab-analise').hidden = (tab!=='analise') || !hasData;
   document.getElementById('tab-precos').hidden = (tab!=='precos') || !hasData;
-  document.getElementById('tab-comparador').hidden = (tab!=='comparador') || !hasData;
-  document.getElementById('tab-bbce').hidden = (tab!=='bbce');
   var es = document.getElementById('empty-state');
-  if(es) es.hidden = !((tab==='analise'||tab==='precos'||tab==='comparador') && !hasData);
-  if(tab==='comparador' && hasData) drawCompare();
+  if(es) es.hidden = !((tab==='analise'||tab==='precos') && !hasData);
 }
 
 /* ============================== COMPARADOR ============================== */

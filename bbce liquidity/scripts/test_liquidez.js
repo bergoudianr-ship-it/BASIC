@@ -106,12 +106,9 @@ function numBR(s) {
   });
   check(`MEN VWAP ≈ ${EXPECTED.menVwap}`, Math.abs(numBR(menVwap) - EXPECTED.menVwap) < TOL, `obtido ${menVwap}`);
 
-  // Comparador
-  await page.click('.tab-btn[data-tab="comparador"]');
-  await page.waitForTimeout(300);
-  const chips = await page.$$eval("#cmp-chips .cmp-chip", (els) => els.length);
-  const prods = await page.$$eval("#cmp-prod-list option", (o) => o.length);
-  check(`comparador: ${chips} séries, ${prods} produtos`, chips > 0 && prods > 100, `chips ${chips}, prods ${prods}`);
+  // Abas: apenas Análise e Preços (Comparador e Dados BBCE removidos)
+  const tabs = await page.$$eval("#tabbar .tab-btn", (els) => els.map((e) => e.dataset.tab));
+  check(`abas = Análise + Preços`, tabs.length === 2 && tabs.includes("analise") && tabs.includes("precos"), `abas: ${tabs.join(",")}`);
 
   if (errors.length) {
     console.log("ERROS DE CONSOLE:", errors);
