@@ -29,3 +29,9 @@ historico_analises.json
 simulacao_semanal.xlsx
 BASIC/
 uploads_portfolio/
+
+# Backend BBCE — cache local de negócios (não versionar)
+cache_negocios.json
+negociacoes_ferramenta.csv
+log_coleta.txt
+log_conversao.txt

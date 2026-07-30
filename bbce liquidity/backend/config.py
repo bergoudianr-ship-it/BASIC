@@ -1,14 +1,12 @@
-"""Configuração do backend BBCE, lida exclusivamente de variáveis de ambiente.
+"""Configuração do backend BBCE (produção), lida só de variáveis de ambiente / .env.
 
-NUNCA coloque credenciais neste arquivo nem no repositório. Preencha um arquivo
-`.env` local (veja `.env.example`) ou exporte as variáveis no ambiente antes de
-rodar. O `.env` está no `.gitignore` — não faça commit dele com valores reais.
+NUNCA coloque credenciais neste arquivo nem no repositório. Preencha o backend/.env
+(veja .env.example). O .env está no .gitignore.
 """
 import os
 
 
 def _load_dotenv():
-    """Carrega backend/.env se existir, sem sobrescrever variáveis já definidas."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if not os.path.exists(path):
         return
@@ -28,47 +26,37 @@ def _get(name, default=""):
     return os.environ.get(name, default)
 
 
-# 'mock' serve a base de exemplo embutida (sem credenciais); 'live' chama a API BBCE.
+# 'mock' serve a base de exemplo embutida; 'live' puxa da API BBCE de produção.
 MODE = _get("BBCE_MODE", "mock").strip().lower()
 
-BASE_URL = _get("BBCE_BASE_URL", "https://api-beta.qa.bbce.tech/bus").rstrip("/")
+BASE_URL = _get("BBCE_BASE_URL", "https://api-ehub.bbce.com.br/bus").rstrip("/")
 API_KEY = _get("BBCE_API_KEY")
-COMPANY_CODE = _get("BBCE_COMPANY_CODE")
-EMAIL = _get("BBCE_EMAIL")
+EMAIL = _get("BBCE_EMAIL") or _get("BBCE_USERNAME")
 PASSWORD = _get("BBCE_PASSWORD")
+COMPANY_ID = _get("BBCE_COMPANY_ID") or _get("BBCE_COMPANY_CODE") or "1266"
 
-# --- de onde vêm os negócios ---
-# (a) endpoint único que já devolve TODOS os negócios de uma vez (se existir):
-TRADES_PATH = _get("BBCE_TRADES_PATH")
-# (b) enumerar tickers (wallet -> negotiable-tickers) e buscar negotiation-data de cada:
-WALLETS_PATH = _get("BBCE_WALLETS_PATH", "/wallets")
-WALLET_IDS = [w.strip() for w in _get("BBCE_WALLET_IDS").split(",") if w.strip()]
-TICKERS_PATH = _get("BBCE_TICKERS_PATH", "/v1/negotiable-tickers")
-NEGOTIATION_PATH = _get("BBCE_NEGOTIATION_PATH", "/v1/negotiation-data/{tickerId}")
-# opcional: restringir a estes tickers em vez de enumerar todos:
-TICKER_IDS = [t.strip() for t in _get("BBCE_TICKER_IDS").split(",") if t.strip()]
-# pausa (segundos) entre chamadas por ticker, para respeitar o rate limit da BBCE:
-REQUEST_DELAY = float(_get("BBCE_REQUEST_DELAY", "0") or "0")
+# opcional: filtrar por tipo de operação (ex.: "Negócio/Balcão"). Vazio = todos.
+ORIGIN_OPERATION_TYPE = _get("BBCE_ORIGIN_OPERATION_TYPE")
 
-# CORS: origem permitida para o front. '*' é aceitável pois o endpoint só devolve
-# negócios agregados (sem credenciais). Restrinja se hospedar o front num domínio fixo.
+# Janela de histórico: no 1º arranque puxa BACKFILL_DAYS; a cada refresh, os
+# últimos REFRESH_DAYS. Os negócios são acumulados por 'id' (dedup) e persistidos.
+BACKFILL_DAYS = int(_get("BBCE_BACKFILL_DAYS", "180") or "180")
+REFRESH_DAYS = int(_get("BBCE_REFRESH_DAYS", "3") or "3")
+REFRESH_SECONDS = int(_get("BBCE_REFRESH_SECONDS", "600") or "600")  # 10 min
+
+CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache_negocios.json")
+
 CORS_ORIGIN = _get("BBCE_CORS_ORIGIN", "*")
-
 HOST = _get("BBCE_HOST", "127.0.0.1")
 PORT = int(_get("BBCE_PORT", "8787") or "8787")
 
 
 def require_live_credentials():
-    """Falha cedo, com mensagem clara, se faltar algo para o modo 'live'."""
     missing = [name for name, val in (
         ("BBCE_API_KEY", API_KEY),
-        ("BBCE_COMPANY_CODE", COMPANY_CODE),
-        ("BBCE_EMAIL", EMAIL),
+        ("BBCE_EMAIL (ou BBCE_USERNAME)", EMAIL),
         ("BBCE_PASSWORD", PASSWORD),
+        ("BBCE_COMPANY_ID", COMPANY_ID),
     ) if not val]
     if missing:
         raise SystemExit("Modo 'live' exige as variáveis: " + ", ".join(missing))
-    if not (TRADES_PATH or WALLET_IDS or TICKER_IDS):
-        raise SystemExit("Modo 'live' exige uma destas: BBCE_TRADES_PATH (endpoint único), "
-                         "BBCE_WALLET_IDS (enumera os tickers da carteira) ou BBCE_TICKER_IDS "
-                         "(lista fixa de tickers).")

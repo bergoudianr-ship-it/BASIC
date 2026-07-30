@@ -1,47 +1,114 @@
-"""Ponte HTTP (stdlib) que entrega os negócios da BBCE para a ferramenta de liquidez.
-
-As credenciais ficam só aqui no servidor; o navegador nunca as vê. O front consome
-um único endpoint que devolve o CSV "Todos os Negócios" já no formato esperado.
+"""Backend BBCE (produção): puxa os negócios direto da API, acumula por 'id',
+serve a ferramenta e mantém tudo fresco atualizando a cada 10 minutos.
 
 Endpoints:
-    GET /health         -> {"status":"ok","mode":...}
-    GET /api/negocios   -> CSV "Todos os Negócios" (text/csv; charset=utf-8)
+    GET /                -> a ferramenta (liquidez.html)
+    GET /health         -> {status, mode, updatedAt, count, error, refreshSeconds}
+    GET /api/negocios   -> CSV "Todos os Negócios" (sempre o estado mais recente)
 
 Rodar:
     cd "bbce liquidity/backend"
-    python3 server.py                 # modo demonstração (base de exemplo, sem credenciais)
-    BBCE_MODE=live python3 server.py  # modo ao vivo (após configurar o .env)
+    python3 server.py                 # modo demonstração (base de exemplo)
+    BBCE_MODE=live python3 server.py  # ao vivo (após configurar o .env)
+
+As credenciais ficam só aqui (via .env); o navegador nunca as vê.
 """
 import json
 import os
 import sys
+import threading
+import time
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import config
 import transform
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_SAMPLE_CSV = os.path.join(_ROOT, "data", "Todos_Negocios.csv")
-_HTML_PATH = os.path.join(_ROOT, "liquidez.html")
+_SAMPLE = os.path.join(_ROOT, "data", "Todos_Negocios.csv")
+_HTML = os.path.join(_ROOT, "liquidez.html")
 
-_client = None  # criado sob demanda no modo live
+_lock = threading.Lock()
+_state = {"csv": None, "updated_at": 0.0, "count": 0, "error": None}
+_client = None
+_deals_by_id = {}          # acumulado (live), deduplicado por 'id'
+_backfilled = False
 
 
-def get_negocios_csv():
-    """Devolve o CSV de negócios conforme o modo configurado."""
-    if config.MODE == "mock":
-        with open(_SAMPLE_CSV, "rb") as f:
-            return f.read().decode("latin-1")
-    global _client
+# ---- coleta (modo live) --------------------------------------------------
+def _load_cache():
+    global _deals_by_id, _backfilled
+    if os.path.exists(config.CACHE_FILE):
+        try:
+            with open(config.CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            _deals_by_id = {str(d.get("id")): d for d in data if d.get("id") is not None}
+            _backfilled = bool(_deals_by_id)
+        except (OSError, ValueError):
+            _deals_by_id = {}
+
+
+def _save_cache():
+    try:
+        with open(config.CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(_deals_by_id.values()), f, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+def _fetch_live():
+    """Puxa a janela apropriada, acumula por 'id' e devolve (csv, total)."""
+    global _client, _backfilled
     if _client is None:
         import bbce_client
         config.require_live_credentials()
         _client = bbce_client.BBCEClient()
-    return transform.to_csv(_client.fetch_negocios_raw())
+
+    end = date.today()
+    days = config.BACKFILL_DAYS if not _backfilled else config.REFRESH_DAYS
+    start = end - timedelta(days=max(0, days))
+
+    deals = _client.get_all_deals(
+        start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"),
+        config.ORIGIN_OPERATION_TYPE or None)
+    _client.enrich_products(deals)
+
+    for d in deals:
+        if d.get("id") is not None:
+            _deals_by_id[str(d["id"])] = d   # dedup/atualiza por id
+    _backfilled = True
+    _save_cache()
+
+    all_deals = list(_deals_by_id.values())
+    return transform.to_csv(all_deals), len(all_deals)
 
 
+def refresh():
+    try:
+        if config.MODE == "mock":
+            with open(_SAMPLE, "rb") as f:
+                csv = f.read().decode("latin-1")
+            count = max(0, csv.count("\n") - 1)
+        else:
+            csv, count = _fetch_live()
+        with _lock:
+            _state.update(csv=csv, updated_at=time.time(), count=count, error=None)
+        return True
+    except Exception as exc:  # noqa: BLE001 - reporta a falha no /health
+        with _lock:
+            _state["error"] = str(exc)
+        return False
+
+
+def _bg_loop():
+    while True:
+        refresh()
+        time.sleep(max(60, config.REFRESH_SECONDS))
+
+
+# ---- HTTP ----------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
-    server_version = "BBCEBridge/1.0"
+    server_version = "BBCEBridge/2.0"
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", config.CORS_ORIGIN)
@@ -68,64 +135,42 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path in ("/", "/index.html", "/liquidez.html"):
-            # serve a própria ferramenta: mesma origem do /api/negocios -> sem CORS,
-            # sem mixed-content, sem os limites de fetch de páginas file:// ou artifact.
             try:
-                with open(_HTML_PATH, "rb") as f:
+                with open(_HTML, "rb") as f:
                     self._send(200, f.read(), "text/html; charset=utf-8")
             except FileNotFoundError:
-                self._json(404, {"error": "liquidez.html não encontrado — rode scripts/build.py primeiro."})
+                self._json(404, {"error": "liquidez.html não encontrado — rode scripts/build.py."})
             return
         if path == "/health":
-            self._json(200, {"status": "ok", "mode": config.MODE})
+            with _lock:
+                self._json(200, {
+                    "status": "ok",
+                    "mode": config.MODE,
+                    "updatedAt": _state["updated_at"],
+                    "count": _state["count"],
+                    "error": _state["error"],
+                    "refreshSeconds": config.REFRESH_SECONDS,
+                })
             return
         if path in ("/api/negocios", "/api/negocios.csv"):
-            try:
-                csv_text = get_negocios_csv()
-            except SystemExit as exc:
-                self._json(500, {"error": str(exc)})
-            except Exception as exc:  # noqa: BLE001 - reporta a falha ao front
-                self._json(502, {"error": str(exc)})
-            else:
-                self._send(200, csv_text, "text/csv; charset=utf-8")
+            with _lock:
+                csv, err = _state["csv"], _state["error"]
+            if csv is None:
+                refresh()  # primeira requisição: busca síncrona
+                with _lock:
+                    csv, err = _state["csv"], _state["error"]
+            if csv is None:
+                self._json(502, {"error": err or "sem dados"})
+                return
+            self._send(200, csv, "text/csv; charset=utf-8")
             return
         self._json(404, {"error": "not found"})
 
     def log_message(self, fmt, *args):
-        pass  # silencioso
-
-
-def check_login():
-    """Teste rápido de acesso: só faz login e diz se a BBCE aceitou as credenciais."""
-    missing = [name for name, val in (
-        ("BBCE_API_KEY", config.API_KEY),
-        ("BBCE_COMPANY_CODE", config.COMPANY_CODE),
-        ("BBCE_EMAIL", config.EMAIL),
-        ("BBCE_PASSWORD", config.PASSWORD),
-    ) if not val]
-    if missing:
-        print("Faltam variáveis no .env:", ", ".join(missing))
-        print("Preencha o .env (copie de .env.example) e rode de novo.")
-        return
-    import bbce_client
-    client = bbce_client.BBCEClient()
-    print(f"Tentando login em {config.BASE_URL} como {config.EMAIL} (empresa {config.COMPANY_CODE})…")
-    try:
-        client.login()
-    except Exception as exc:  # noqa: BLE001
-        print("LOGIN FALHOU:", exc)
-        print("Verifique apiKey, e-mail, senha e companyExternalCode.")
-        return
-    print("LOGIN OK — a API aceitou suas credenciais e devolveu um token.")
-    print("Agora rode 'python3 server.py' e use a aba 'Dados BBCE' na ferramenta.")
-    try:
-        client.logout()
-    except Exception:  # noqa: BLE001
         pass
 
 
 def _ensure_env_file():
-    """Cria backend/.env a partir de .env.example na primeira execução."""
     base = os.path.dirname(os.path.abspath(__file__))
     env_path, example = os.path.join(base, ".env"), os.path.join(base, ".env.example")
     if os.path.exists(env_path) or not os.path.exists(example):
@@ -133,21 +178,42 @@ def _ensure_env_file():
     try:
         with open(example, "r", encoding="utf-8") as src, open(env_path, "w", encoding="utf-8") as dst:
             dst.write(src.read())
-        print(f"Criei {env_path} a partir de .env.example.")
-        print("Preencha suas credenciais nele e reinicie para o modo 'live'.\n")
+        print(f"Criei {env_path} a partir de .env.example. Preencha e reinicie para o modo live.\n")
     except OSError:
         pass
+
+
+def check_login():
+    missing = [n for n, v in (("BBCE_API_KEY", config.API_KEY), ("BBCE_EMAIL", config.EMAIL),
+                              ("BBCE_PASSWORD", config.PASSWORD)) if not v]
+    if missing:
+        print("Faltam variáveis no .env:", ", ".join(missing))
+        return
+    import bbce_client
+    client = bbce_client.BBCEClient()
+    print(f"Login em {config.BASE_URL} como {config.EMAIL}…")
+    try:
+        client.login()
+    except Exception as exc:  # noqa: BLE001
+        print("LOGIN FALHOU:", exc)
+        return
+    print("LOGIN OK — a API aceitou suas credenciais.")
 
 
 def main():
     if "--check-login" in sys.argv:
         return check_login()
     _ensure_env_file()
+    if config.MODE == "live":
+        _load_cache()
+    threading.Thread(target=_bg_loop, daemon=True).start()
+
     srv = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
     url = f"http://{config.HOST}:{config.PORT}/"
     print("=" * 60)
-    print(f"  Calculadora de Liquidez BBCE  —  modo: {config.MODE}")
+    print(f"  Análise de Produtos BBCE  —  modo: {config.MODE}")
     print(f"  Abra no navegador:  {url}")
+    print(f"  Atualiza sozinho a cada {config.REFRESH_SECONDS // 60} min.")
     if config.MODE == "mock":
         print("  (demonstração — preencha o .env e use BBCE_MODE=live para dados reais)")
     print("  Ctrl+C para parar.")
@@ -156,7 +222,7 @@ def main():
         try:
             import webbrowser
             webbrowser.open(url)
-        except Exception:  # noqa: BLE001 - abrir navegador é só conveniência
+        except Exception:  # noqa: BLE001
             pass
     try:
         srv.serve_forever()

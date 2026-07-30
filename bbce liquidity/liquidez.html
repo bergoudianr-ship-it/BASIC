@@ -2335,7 +2335,52 @@ window.addEventListener('resize', debounce(function(){
   if(state.result && tc && !tc.hidden) drawCompare();
 }, 150));
 
-loadEmbeddedDefault();
+/* ---- carga automática do backend (quando a página é servida por ele) ---- */
+function servedByBackend(){
+  return (location.protocol==='http:'||location.protocol==='https:')
+    && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+}
+function fetchFromBackend(){
+  return fetch(location.origin+'/api/negocios', {headers:{'Accept':'text/csv'}})
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); });
+}
+/* Reingesta preservando os filtros e o período escolhidos pelo usuário. */
+function autoIngest(text, label){
+  var had = !!state.parsedRows, savedOpts=null, savedDs=null, savedDe=null;
+  if(had){
+    savedOpts = {};
+    Object.keys(state.options).forEach(function(k){ savedOpts[k] = new Set(state.options[k]); });
+    savedDs = document.getElementById('date-start').value;
+    savedDe = document.getElementById('date-end').value;
+  }
+  ingestText(text, label);
+  if(had && savedOpts){
+    Object.keys(savedOpts).forEach(function(k){
+      var elId = 'chk-'+(k==='statusf'?'status':k);
+      var s = new Set();
+      document.querySelectorAll('#'+elId+' input[type=checkbox]').forEach(function(cb){
+        cb.checked = savedOpts[k].has(cb.value); if(cb.checked) s.add(cb.value);
+      });
+      state.options[k] = s;
+    });
+    if(savedDs) document.getElementById('date-start').value = savedDs;
+    if(savedDe) document.getElementById('date-end').value = savedDe;
+    computeAndRender();
+  }
+}
+
+if(servedByBackend()){
+  fetchFromBackend()
+    .then(function(t){ autoIngest(t, 'BBCE ao vivo'); })
+    .catch(function(){ loadEmbeddedDefault(); });
+  setInterval(function(){
+    fetchFromBackend()
+      .then(function(t){ autoIngest(t, 'BBCE ao vivo · '+new Date().toLocaleTimeString('pt-BR').slice(0,5)); })
+      .catch(function(){});
+  }, 5*60*1000);
+} else {
+  loadEmbeddedDefault();
+}
 
 })();
 </script>

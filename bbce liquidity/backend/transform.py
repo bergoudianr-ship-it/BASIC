@@ -1,103 +1,70 @@
-"""Converte os negócios retornados pela API BBCE para o CSV que a ferramenta lê.
+"""Converte os negócios da API de produção para o CSV que a ferramenta lê.
 
-Saída (separador ';', idêntica ao export "Todos os Negócios" da BBCE):
+Saída (export "Todos os Negócios", separador ';', números em pt-BR):
     PRODUTO;DATA/HORA;Q.N;U.N.;Q.M;U.M.;PREÇO;TIPO DE CONTRATO;TENDÊNCIA;STATUS
 
-O mapeamento de campos abaixo é uma HIPÓTESE documentada — precisa ser confirmado
-contra a resposta real do endpoint de negócios da BBCE. Está isolado de propósito:
-quando soubermos os nomes reais dos campos, só este arquivo muda.
+Campos de entrada (all-deals/report + produto_nome via tickers):
+    createdAt, produto_nome, quantity, tradingUnit, unitPrice,
+    originOperationType, tendency, status
 """
-import datetime
+import re
 
 CSV_HEADER = "PRODUTO;DATA/HORA;Q.N;U.N.;Q.M;U.M.;PREÇO;TIPO DE CONTRATO;TENDÊNCIA;STATUS"
-
-# coluna do CSV -> nomes candidatos no JSON da BBCE (o 1º presente vence).
-# Campos com prefixo "_" são injetados pelo cliente a partir do ticker negociável
-# (PRODUTO reconstruído no formato "FEN - ...", unidades de negociação/medida).
-FIELD_CANDIDATES = {
-    "PRODUTO": ["_product", "product", "productName", "produto", "instrument"],
-    "DATA/HORA": ["tradeDateTime", "createdAt", "dateTime", "dataHora", "date", "timestamp"],
-    "Q.N": ["quantity", "volume", "qN", "quantidade"],
-    "U.N.": ["_tradingUnit", "unit", "unidade", "uN"],
-    "Q.M": ["quantityMwh", "energyVolume", "qM"],
-    "U.M.": ["_measurementUnit", "energyUnit", "uM"],
-    "PREÇO": ["price", "preco", "valor", "avgPrice", "lastPrice"],
-    "TIPO DE CONTRATO": ["contractType", "tipoContrato", "type"],
-    "TENDÊNCIA": ["side", "trend", "tendencia", "direction"],
-    "STATUS": ["status", "situacao"],
-}
+_PREFIXO = re.compile(r"^[A-Z]{2,4}\s*-\s+")
 
 
-def _first(rec, candidates):
-    for key in candidates:
-        if key in rec and rec[key] not in (None, ""):
-            return rec[key]
-    return ""
-
-
-def _fmt_datetime(value):
-    """Normaliza para 'DD/MM/YYYY HH:MM:SS'. Aceita ISO 8601 ou já formatado."""
-    if not value:
+def _num_br(value):
+    if value is None or value == "":
         return ""
-    s = str(value)
-    if len(s) >= 10 and s[2] == "/" and s[5] == "/":  # já em formato BR
-        return s[:19]
     try:
-        return datetime.datetime.fromisoformat(
-            s.replace("Z", "+00:00")).strftime("%d/%m/%Y %H:%M:%S")
-    except ValueError:
-        return s
-
-
-def _fmt_num_br(value):
-    """Número no padrão brasileiro (vírgula decimal, sem casas se inteiro)."""
-    if value in (None, ""):
-        return ""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        value = int(value)
-    if isinstance(value, int):
+        f = float(value)
+    except (TypeError, ValueError):
         return str(value)
-    return ("%.4f" % value).rstrip("0").rstrip(".").replace(".", ",")
+    if f.is_integer():
+        return str(int(f))
+    return ("%.6f" % f).rstrip("0").rstrip(".").replace(".", ",")
 
 
-def _fmt_side(value):
-    s = str(value).strip().lower()
-    if s in ("buy", "compra", "bid", "c"):
-        return "Compra"
-    if s in ("sell", "venda", "ask", "v"):
-        return "Venda"
-    return "" if s in ("", "none", "null") else str(value)
+def _dt_br(value):
+    s = str(value or "").strip()
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})", s)
+    if m:
+        a, mo, d, h, mi, se = m.groups()
+        return f"{d}/{mo}/{a} {h}:{mi}:{se}"
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        a, mo, d = m.groups()
+        return f"{d}/{mo}/{a}"
+    return s
 
 
-def extract_records(raw):
-    """A lista de negócios pode vir na raiz ou embrulhada em várias chaves comuns."""
-    if isinstance(raw, list):
-        return raw
-    if isinstance(raw, dict):
-        for key in ("data", "content", "items", "results", "negocios", "trades"):
-            if isinstance(raw.get(key), list):
-                return raw[key]
-    return []
+def _produto(nome):
+    nome = str(nome or "").strip()
+    if not nome:
+        return nome
+    return nome if _PREFIXO.match(nome) else "FEN - " + nome
 
 
-def to_csv(raw):
-    records = extract_records(raw)
+def _is_spread(nome):
+    return str(nome or "").strip().lower().endswith("spread")
+
+
+def to_csv(deals):
     lines = [CSV_HEADER]
-    for rec in records:
-        if not isinstance(rec, dict):
+    for d in deals:
+        nome = d.get("produto_nome")
+        if _is_spread(nome):
             continue
         lines.append(";".join([
-            str(_first(rec, FIELD_CANDIDATES["PRODUTO"])),
-            _fmt_datetime(_first(rec, FIELD_CANDIDATES["DATA/HORA"])),
-            _fmt_num_br(_first(rec, FIELD_CANDIDATES["Q.N"])),
-            str(_first(rec, FIELD_CANDIDATES["U.N."]) or "MWm"),
-            _fmt_num_br(_first(rec, FIELD_CANDIDATES["Q.M"])),
-            str(_first(rec, FIELD_CANDIDATES["U.M."]) or "MWh"),
-            _fmt_num_br(_first(rec, FIELD_CANDIDATES["PREÇO"])),
-            str(_first(rec, FIELD_CANDIDATES["TIPO DE CONTRATO"])),
-            _fmt_side(_first(rec, FIELD_CANDIDATES["TENDÊNCIA"])),
-            str(_first(rec, FIELD_CANDIDATES["STATUS"]) or "Ativo"),
+            _produto(nome),
+            _dt_br(d.get("createdAt")),
+            _num_br(d.get("quantity")),
+            str(d.get("tradingUnit") or "MWm"),
+            "",
+            "MWh",
+            _num_br(d.get("unitPrice")),
+            str(d.get("originOperationType") or ""),
+            str(d.get("tendency") or ""),
+            str(d.get("status") or "Ativo"),
         ]))
     return "\r\n".join(lines) + "\r\n"
