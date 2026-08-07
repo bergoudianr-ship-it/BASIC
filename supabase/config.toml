@@ -1,0 +1,19 @@
+project_id = "pboizjwwxcnajeuteivp"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[functions.pld-ccee]
+verify_jwt = true
