@@ -2456,7 +2456,7 @@ var _saved=loadContracts(); if(_saved){ STATE.contracts=_saved; }
 
 // ── Acesso por e-mail (allowlist) — verificação em 2 etapas será adicionada depois ──
 // Sem autocadastro: só e-mails que o administrador cadastra conseguem entrar.
-var LOGIN_ENABLED = true; // login por e-mail + senha ativo (sem token). Troque para false para abrir sem login.
+var LOGIN_ENABLED = false; // login desativado — abre direto no app, sem tela de acesso inicial.
 var CURRENT_USER = null;   // {email, nome, role}
 var AUTH_MODE = 'login';   // 'login' | 'signup'
 function localSaveUser(u){ try{ if(u) localStorage.setItem('saas_local_user',JSON.stringify(u)); else localStorage.removeItem('saas_local_user'); }catch(e){} }
