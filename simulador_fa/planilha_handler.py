@@ -5,6 +5,13 @@ from openpyxl.utils import get_column_letter
 
 VERTICES = ["M+0", "M+1", "M+2", "M+3", "M+4", "M+5", "M+6"]
 SUBMERCADOS = ["SE/CO", "SUL", "NE", "N"]
+# Rótulos completos dos submercados, iguais aos exibidos nas abas de portfólio
+SUBM_LABELS = {
+    "SE/CO": "SUDESTE/CENTRO-OESTE",
+    "SUL": "SUL",
+    "NE": "NORDESTE",
+    "N": "NORTE",
+}
 FONTES = ["CONVENCIONAL", "I0", "I5", "I8", "I1"]
 
 # --- Upload: planilha semanal CCEE ---
@@ -340,17 +347,24 @@ import csv as _csv
 import unicodedata
 
 EXTRA_SECOES = [
-    ("Preco Fixo", "preco_fixo"),
-    ("Preco Variavel", "preco_variavel"),
+    ("Preço Fixo", "preco_fixo"),
+    ("Preço Variável", "preco_variavel"),
     ("Derivativos", "derivativos"),
 ]
+# Rótulos dos campos, iguais aos exibidos nas abas de portfólio
 EXTRA_CAMPOS = [
-    ("Exposicao Submercado", "subm"),
+    ("Exposição Líquida por Submercado", "subm"),
     ("Recurso", "recurso"),
-    ("PM Recurso", "pm_recurso"),
+    ("Preço Médio Recurso", "pm_recurso"),
     ("Requisito", "requisito"),
-    ("PM Requisito", "pm_requisito"),
+    ("Preço Médio Requisito", "pm_requisito"),
 ]
+# Aliases aceitos na leitura (compatibilidade com modelos antigos)
+EXTRA_CAMPOS_ALIASES = {
+    "exposicao submercado": "subm",
+    "pm recurso": "pm_recurso",
+    "pm requisito": "pm_requisito",
+}
 
 
 def _norm(s):
@@ -379,11 +393,11 @@ def gerar_modelo_extra_csv():
         for campo_label, campo_key in EXTRA_CAMPOS:
             if campo_key == "subm":
                 for s in SUBMERCADOS:
-                    w.writerow([sec_label, campo_label, s] + [0]*len(VERTICES))
+                    w.writerow([sec_label, campo_label, SUBM_LABELS[s]] + [0]*len(VERTICES))
             else:
                 w.writerow([sec_label, campo_label, ""] + [0]*len(VERTICES))
     # EFM
-    w.writerow(["EFM", "Efeitos Financeiros Mercado Regulado", ""] + [0]*len(VERTICES))
+    w.writerow(["EFM", "Efeitos Financeiros do Mercado Regulado", ""] + [0]*len(VERTICES))
     return out.getvalue()
 
 
@@ -424,7 +438,13 @@ def parse_extra_csv(file_bytes):
 
     sec_map = {_norm(lbl): key for lbl, key in EXTRA_SECOES}
     campo_map = {_norm(lbl): key for lbl, key in EXTRA_CAMPOS}
+    # aliases de compatibilidade com modelos antigos
+    for alias, key in EXTRA_CAMPOS_ALIASES.items():
+        campo_map[_norm(alias)] = key
+    # aceita código curto e rótulo completo dos submercados
     subm_map = {_norm(s): s for s in SUBMERCADOS}
+    for code, label in SUBM_LABELS.items():
+        subm_map[_norm(label)] = code
     subm_map[_norm("SUDESTE/CENTRO-OESTE")] = "SE/CO"
 
     try:
