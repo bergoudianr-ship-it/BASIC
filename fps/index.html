@@ -30,7 +30,8 @@
   canvas#scene{ display:block; position:fixed; inset:0; }
 
   /* ---------------- HUD ---------------- */
-  #hud{ position:fixed; inset:0; pointer-events:none; z-index:10; }
+  #hud{ position:fixed; inset:0; pointer-events:none; z-index:10;
+        text-shadow:0 1px 3px rgba(0,0,0,.9), 0 0 1px rgba(0,0,0,.6); }
   .hidden{ display:none !important; }
 
   /* Mira */
@@ -133,7 +134,7 @@
 
   /* Slots de armas */
   #weapons{ position:absolute; right:34px; bottom:152px; text-align:right; font-size:13px; }
-  .wslot{ opacity:.4; letter-spacing:2px; padding:2px 0; font-weight:600; }
+  .wslot{ opacity:.58; letter-spacing:2px; padding:2px 0; font-weight:600; }
   .wslot.active{ opacity:1; color:var(--accent); }
   .wslot b{ display:inline-block; width:16px; opacity:.7; }
 
@@ -221,7 +222,7 @@
   .note{ font-size:12px; opacity:.45; margin-top:26px; letter-spacing:2px; }
 
   /* Seletor de dificuldade */
-  #diff-pick{ margin-top:18px; }
+  #diff-pick, #map-pick{ margin-top:16px; }
   .diff-label{ font-size:11px; letter-spacing:4px; opacity:.5; margin-bottom:8px; font-weight:700; }
   .diff-row{ display:flex; gap:8px; justify-content:center; }
   .diff{
@@ -349,6 +350,12 @@
   <div class="tag">MODO SOBREVIVÊNCIA · ONDAS INFINITAS</div>
   <button class="btn" id="btn-play">INICIAR MISSÃO</button>
 
+  <div id="map-pick">
+    <div class="diff-label">MAPA</div>
+    <div class="diff-row" id="map-row"></div>
+    <div class="diff-desc" id="map-desc"></div>
+  </div>
+
   <div id="diff-pick">
     <div class="diff-label">DIFICULDADE DOS INIMIGOS</div>
     <div class="diff-row">
@@ -400,6 +407,7 @@
   <div class="tag">MISSÃO EM ANDAMENTO</div>
   <div class="card" style="min-width:330px">
     <h3>CONFIGURAÇÕES</h3>
+    <div class="setting"><span>Mapa</span><b id="pause-map">FERRO-VELHO</b></div>
     <div class="setting"><span>Dificuldade dos inimigos</span><b id="pause-diff">VETERANO</b></div>
     <div class="setting"><span>Sensibilidade do mouse</span><input type="range" id="set-sens" min="20" max="300" value="100"><b id="sens-val">1.00</b></div>
     <div class="setting"><span>Campo de visão (FOV)</span><input type="range" id="set-fov" min="65" max="110" value="82"><b id="fov-val">82</b></div>
@@ -465,7 +473,8 @@ const settings = {
   volume:  0.55,
   invertY: false,
   bob:     true,
-  difficulty: 'veterano'
+  difficulty: 'veterano',
+  map: 'ferrovelho'
 };
 
 /* Três níveis de dificuldade. Mexem em quanto o inimigo acerta, quanto dói,
@@ -674,7 +683,15 @@ const MAT = {
   gWoodL:   new THREE.MeshLambertMaterial({ color:0x855c33 }),
   gPoly:    new THREE.MeshLambertMaterial({ color:0x4c5145 }),
   gScope:   new THREE.MeshLambertMaterial({ color:0x141619 }),
-  gGlass:   new THREE.MeshLambertMaterial({ color:0x2f5a6b })
+  gGlass:   new THREE.MeshLambertMaterial({ color:0x2f5a6b }),
+  // superfícies e contêineres dos mapas
+  contA:    new THREE.MeshLambertMaterial({ color:0x8a4a3a }),
+  contB:    new THREE.MeshLambertMaterial({ color:0x3f6272 }),
+  contC:    new THREE.MeshLambertMaterial({ color:0x6d7a4a }),
+  groundDry:new THREE.MeshLambertMaterial({ color:0x8a7b5c }),
+  roadDust: new THREE.MeshLambertMaterial({ color:0x9a8c6b }),
+  floorTile:new THREE.MeshLambertMaterial({ color:0x585d63 }),
+  floorHall:new THREE.MeshLambertMaterial({ color:0x71777e })
 };
 const BOX = new THREE.BoxGeometry(1,1,1);
 const CYL = new THREE.CylinderGeometry(1,1,1,10);   // unitário no eixo Y
@@ -761,95 +778,334 @@ function addCrateStack(x, z, levels){
   }
 }
 
-function buildWorld(){
-  const S = 100;                              // lado do mapa
+/* --- utilitários de construção ------------------------------------------ */
 
-  // chão
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(S, S), MAT.ground);
-  ground.rotation.x = -Math.PI/2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-  worldMeshes.push(ground);
+/** Escada de degraus baixos (sobe andando, graças ao STEP_UP). */
+function addStairs(x, z, largura, alvo, dir, mat){
+  const passo = 0.62;
+  const n = Math.max(1, Math.round(alvo / 0.42));
+  const h = alvo / n;
+  for (let i = 0; i < n; i++){
+    const alt = (i + 1) * h, off = (i + 0.5) * passo;
+    if      (dir === 'n') addBox(x, 0, z - off, largura, alt, passo, mat);
+    else if (dir === 's') addBox(x, 0, z + off, largura, alt, passo, mat);
+    else if (dir === 'e') addBox(x + off, 0, z, passo, alt, largura, mat);
+    else                  addBox(x - off, 0, z, passo, alt, largura, mat);
+  }
+}
 
-  // avenida central (só visual)
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(13, S), MAT.road);
-  road.rotation.x = -Math.PI/2;
-  road.position.y = 0.012;
-  road.receiveShadow = true;
-  scene.add(road);
-  worldMeshes.push(road);
+/** Contêiner marítimo (6,0 × 2,6 × 2,44), alinhado em X ou Z. */
+function addContainer(x, z, eixo, mat, y){
+  const m = mat || pick([MAT.contA, MAT.contB, MAT.contC]);
+  if (eixo === 'z') addBox(x, y||0, z, 2.44, 2.6, 6.0, m);
+  else              addBox(x, y||0, z, 6.0, 2.6, 2.44, m);
+}
 
-  const road2 = new THREE.Mesh(new THREE.PlaneGeometry(S, 11), MAT.road);
-  road2.rotation.x = -Math.PI/2;
-  road2.position.y = 0.014;
-  road2.receiveShadow = true;
-  scene.add(road2);
-  worldMeshes.push(road2);
+/** Plataforma elevada com guarda-corpo nos lados pedidos ('nsew'). */
+function addPlatform(cx, cz, w, d, y, lados, mat){
+  addBox(cx, y, cz, w, 0.3, d, mat || MAT.metal);
+  const py = y + 0.3, hr = 0.95, t = 0.16, L = lados || '';
+  if (L.includes('n')) addBox(cx, py, cz - d/2, w, hr, t, MAT.metal);
+  if (L.includes('s')) addBox(cx, py, cz + d/2, w, hr, t, MAT.metal);
+  if (L.includes('w')) addBox(cx - w/2, py, cz, t, hr, d, MAT.metal);
+  if (L.includes('e')) addBox(cx + w/2, py, cz, t, hr, d, MAT.metal);
+}
 
-  // muro perimetral
-  const H = 9, T = 1.4, half = S/2;
-  addBox(0,0,-half, S, H, T, MAT.concrete);
-  addBox(0,0, half, S, H, T, MAT.concrete);
-  addBox(-half,0,0, T, H, S, MAT.concrete);
-  addBox( half,0,0, T, H, S, MAT.concrete);
-
-  // ----- prédios -----
-  addBuilding(-27, -26, 17, 15, 6.5, 'e');
-  addBuilding( 26, -28, 15, 13, 5.5, 'w');
-  addBuilding(-30,  27, 16, 16, 7.5, 'n');
-  addBuilding( 29,  26, 14, 14, 5.5, 'n');
-  addBuilding(  0, -42, 20,  9, 5.0, 's');
-  addBuilding(-44,   0,  9, 18, 6.0, 'e');
-  addBuilding( 44,   2,  9, 20, 6.0, 'w');
-
-  // ----- bunker central -----
-  addBox(0, 0, 0, 15, 3.4, 15, MAT.concrete);          // plataforma
-  addBox(0, 3.4, 0, 15, 0.9, 1.0, MAT.wallDark);       // parapeitos
-  addBox(0, 3.4, 0, 1.0, 0.9, 15, MAT.wallDark);
-  addBox(-7.0, 3.4, 0, 1.0, 0.9, 15, MAT.wallDark);
-  addBox( 7.0, 3.4, 0, 1.0, 0.9, 15, MAT.wallDark);
-  addBox(0, 3.4, -7.0, 15, 0.9, 1.0, MAT.wallDark);
-  addBox(0, 3.4,  7.0, 15, 0.9, 1.0, MAT.wallDark);
-  addCrateStack(-11.5, 3, 3);                          // rampa de engradados p/ subir
-  addCrateStack( 11.5, -3, 3);
-
-  // ----- coberturas espalhadas -----
-  const covers = [
-    [-14, -8], [15, 9], [-9, 17], [12, -17], [-20, 8], [21, -6],
-    [-36, -13], [35, 14], [-16, -34], [17, 35], [-38, 34], [37, -35],
-    [4, 22], [-5, -22], [24, 0], [-24, 2]
-  ];
-  covers.forEach((c,i) => {
-    const [x,z] = c;
-    if (i % 3 === 0){
-      addCrateStack(x, z, randInt(1,2));
-      addBox(x-1.6, 0, z+1.4, 1.25,1.25,1.25, MAT.crate);
-    } else if (i % 3 === 1){
-      // muro de sacos de areia
-      addBox(x, 0, z, 4.2, 1.15, 0.9, MAT.sandbag, { rotY: (i%2? 0.35 : -0.5) });
-      addBox(x+1.2, 0, z+1.6, 2.6, 1.15, 0.9, MAT.sandbag, { rotY: 1.1 });
-    } else {
-      // barris + contentor
-      for (let k=0;k<3;k++){
-        const bx = x + rand(-1.4,1.4), bz = z + rand(-1.4,1.4);
-        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,1.15,10), MAT.barrel);
-        b.position.set(bx, 0.575, bz);
-        b.castShadow = b.receiveShadow = true;
-        scene.add(b); worldMeshes.push(b);
-        addCollider(bx, 0, bz, 0.84, 1.15, 0.84);
+/** Sala fechada com vãos de porta nos lados listados. */
+function addRoom(cx, cz, w, d, h, portas, mat, comTeto){
+  const t = 0.5, vao = 3.6, M = mat || MAT.wall;
+  const tem = c => (portas || '').includes(c);
+  const parede = (lado, px, pz, pw, pd, horiz) => {
+    if (!tem(lado)){ addBox(px, 0, pz, pw, h, pd, M); return; }
+    const total = horiz ? pw : pd;
+    const seg = (total - vao) / 2;
+    if (horiz){
+      if (seg > 0.3){
+        addBox(px - (vao/2 + seg/2), 0, pz, seg, h, pd, M);
+        addBox(px + (vao/2 + seg/2), 0, pz, seg, h, pd, M);
       }
-      addBox(x+2.6, 0, z-1.2, 5.0, 2.5, 2.3, MAT.metal, { rotY: rand(-0.4,0.4) });
+      if (h > 2.7) addBox(px, 2.7, pz, vao, h - 2.7, pd, MAT.wallDark);
+    } else {
+      if (seg > 0.3){
+        addBox(px, 0, pz - (vao/2 + seg/2), pw, h, seg, M);
+        addBox(px, 0, pz + (vao/2 + seg/2), pw, h, seg, M);
+      }
+      if (h > 2.7) addBox(px, 2.7, pz, pw, h - 2.7, vao, MAT.wallDark);
     }
+  };
+  parede('n', cx, cz - d/2, w, t, true);
+  parede('s', cx, cz + d/2, w, t, true);
+  parede('w', cx - w/2, cz, t, d, false);
+  parede('e', cx + w/2, cz, t, d, false);
+  if (comTeto) addBox(cx, h, cz, w + t, 0.35, d + t, MAT.wallDark);
+}
+
+/** Parede longa com vãos de passagem em posições dadas. */
+function addWallWithGaps(fixo, de, ate, h, eixo, vaos, mat, esp){
+  const t = esp || 0.5, M = mat || MAT.wall, largVao = 3.8;
+  const cortes = (vaos || []).slice().sort((a,b) => a-b);
+  let cursor = de;
+  const trechos = [];
+  for (const v of cortes){
+    if (v - largVao/2 > cursor) trechos.push([cursor, v - largVao/2]);
+    cursor = v + largVao/2;
+  }
+  if (ate > cursor) trechos.push([cursor, ate]);
+  for (const [a, b] of trechos){
+    const meio = (a + b) / 2, comp = b - a;
+    if (comp < 0.2) continue;
+    if (eixo === 'x') addBox(meio, 0, fixo, comp, h, t, M);
+    else              addBox(fixo, 0, meio, t, h, comp, M);
+  }
+  // vergas sobre os vãos, para a parede ler como parede
+  for (const v of cortes){
+    if (h <= 2.9) continue;
+    if (eixo === 'x') addBox(v, 2.9, fixo, largVao, h - 2.9, t, MAT.wallDark);
+    else              addBox(fixo, 2.9, v, t, h - 2.9, largVao, MAT.wallDark);
+  }
+}
+
+function addGround(w, d, matChao){
+  const g = new THREE.Mesh(new THREE.PlaneGeometry(w, d), matChao || MAT.ground);
+  g.rotation.x = -Math.PI/2;
+  g.receiveShadow = true;
+  g.userData.ownGeo = true;
+  scene.add(g); worldMeshes.push(g);
+  return g;
+}
+
+function addPaved(w, d, x, z, mat){
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat || MAT.road);
+  p.rotation.x = -Math.PI/2;
+  p.position.set(x, 0.013, z);
+  p.receiveShadow = true;
+  p.userData.ownGeo = true;
+  scene.add(p); worldMeshes.push(p);
+  return p;
+}
+
+function addPerimeter(w, d, h, mat){
+  const t = 1.4, M = mat || MAT.concrete;
+  addBox(0, 0, -d/2, w, h, t, M);
+  addBox(0, 0,  d/2, w, h, t, M);
+  addBox(-w/2, 0, 0, t, h, d, M);
+  addBox( w/2, 0, 0, t, h, d, M);
+}
+
+function addBarrels(x, z, n, raio){
+  for (let k = 0; k < n; k++){
+    const bx = x + rand(-raio, raio), bz = z + rand(-raio, raio);
+    const b = new THREE.Mesh(CYL, MAT.barrel);
+    b.scale.set(0.42, 1.15, 0.42);
+    b.position.set(bx, 0.575, bz);
+    b.castShadow = b.receiveShadow = true;
+    scene.add(b); worldMeshes.push(b);
+    addCollider(bx, 0, bz, 0.84, 1.15, 0.84);
+  }
+}
+
+/** Muro de sacos de areia: cobertura baixa, dá para atirar por cima agachando. */
+function addSandbags(x, z, comp, rotY){
+  addBox(x, 0, z, comp, 1.15, 0.9, MAT.sandbag, { rotY: rotY || 0 });
+}
+
+/* --- MAPAS ---------------------------------------------------------------
+   Layouts originais construídos com a gramática de mapa do Modern Warfare 2/3:
+   três corredores paralelos ligados por travessas, uma posição de poder
+   elevada que pode ser flanqueada, uma linha longa de tiro e muita cobertura
+   baixa quebrando as linhas de visão.
+   ------------------------------------------------------------------------ */
+
+/* 1. FERRO-VELHO — pátio industrial, médio alcance, três faixas em Z. */
+function mapaFerroVelho(){
+  const S = 90;
+  addGround(S, S, MAT.ground);
+  addPaved(16, S, 0, 0);                       // faixa central pavimentada
+  addPaved(S, 12, 0, 0);                       // travessa central
+  addPerimeter(S, S, 9);
+
+  // --- FAIXA CENTRAL: armazém, a posição de poder ---
+  addRoom(0, 0, 24, 16, 5.4, 'nsew', MAT.wall, true);
+  addPlatform(7, -2, 8, 10, 2.7, 'ws');        // mezanino interno
+  addStairs(7, 7.3, 3, 3.0, 'n', MAT.metal);
+  addSandbags(-6, -3, 4.5, 0.4);
+  addSandbags(-5, 4, 4.0, -0.3);
+
+  // fuselagem abandonada ao norte: marco visual e cobertura longa
+  addBox(0, 0, -30, 4.6, 4.2, 20, MAT.metal);
+  addBox(0, 1.2, -21, 15, 0.7, 3.2, MAT.metal, { rotY: 0.06 });
+  addBox(0, 0, -41, 3.0, 2.4, 5.0, MAT.metal);
+
+  // --- FAIXA OESTE: corredor de contêineres (a linha longa de tiro) ---
+  const filaW = [-38, -30, -22, 4, 12, 20, 28, 36];
+  filaW.forEach(z => { addContainer(-34, z, 'z'); addContainer(-23, z, 'z'); });
+  addContainer(-28.5, -14, 'x');               // tampão parcial no meio
+  addCrateStack(-23, -6, 2);
+  addBarrels(-28, 16, 3, 1.5);
+  addSandbags(-28, -6, 5, 1.55);
+
+  // --- FAIXA LESTE: escritório e pilhas de sucata ---
+  addRoom(27, -16, 14, 12, 4.6, 'ws', MAT.wall, true);
+  addContainer(30, 8, 'x'); addContainer(30, 8, 'x', null, 2.6);
+  addContainer(24, 14, 'z');
+  addCrateStack(21, 2, 3);                     // rampa de engradados para subir
+  addBox(33, 0, 22, 6, 2.5, 5, MAT.metal, { rotY: 0.5 });
+  addBarrels(26, 30, 4, 2.0);
+  addSandbags(22, -30, 5, 0.2);
+  addContainer(34, -32, 'x');
+
+  // --- travessas entre faixas ---
+  addSandbags(-14, 20, 4, 0.9);
+  addSandbags(14, -20, 4, -0.9);
+  addCrateStack(-12, -20, 2);
+  addBarrels(13, 22, 3, 1.6);
+}
+
+/* 2. TORRE — mapa pequeno e frenético, tudo gira em volta do centro. */
+function mapaTorre(){
+  const S = 56;
+  addGround(S, S, MAT.groundDry);
+  addPaved(S, S, 0, 0, MAT.roadDust);
+  addPerimeter(S, S, 8, MAT.wallDark);
+
+  // torre central: sobe por escada, domina o mapa, exposta por todos os lados
+  addBox(0, 0, 0, 7, 3.4, 7, MAT.concrete);
+  addBox(0, 3.7, -3.2, 7, 0.95, 0.3, MAT.metal);
+  addBox(-2.4, 3.7, 3.2, 2.2, 0.95, 0.3, MAT.metal);   // vão no meio: chegada da escada
+  addBox( 2.4, 3.7, 3.2, 2.2, 0.95, 0.3, MAT.metal);
+  addBox(-3.2, 3.7, 0, 0.3, 0.95, 7, MAT.metal);
+  addStairs(0, 8.5, 3, 3.4, 'n', MAT.metal);   // sobe rumo à face sul da torre
+  addBox(0, 3.7, 0, 2.2, 7.0, 2.2, MAT.metal);      // mastro central
+  addPlatform(0, 0, 4.4, 4.4, 7.4, 'nsew');         // ninho no topo do mastro
+  addCrateStack(4.6, 1.5, 3);                       // segunda subida, pelo leste
+
+  // quatro barracões nos cantos, portas voltadas para o centro
+  addRoom(-15, -15, 6, 6, 3.0, 'se', MAT.wall, true);
+  addRoom( 15, -15, 6, 6, 3.0, 'sw', MAT.wall, true);
+  addRoom(-15,  15, 6, 6, 3.0, 'ne', MAT.wall, true);
+  addRoom( 15,  15, 6, 6, 3.0, 'nw', MAT.wall, true);
+
+  // muros de contêiner formando os flancos
+  addContainer(-21, -4, 'z'); addContainer(-21, 4, 'z');
+  addContainer( 21, -4, 'z'); addContainer( 21, 4, 'z');
+  addContainer(-6, -21, 'x'); addContainer(6, -21, 'x');
+  addContainer(-6,  21, 'x'); addContainer(6,  21, 'x');
+
+  // cobertura baixa
+  addBarrels(-9, -8, 4, 1.6); addBarrels(9, 8, 4, 1.6);
+  addBarrels(10, -9, 3, 1.4); addBarrels(-10, 9, 3, 1.4);
+  addSandbags(-8, 0, 4, 1.55); addSandbags(8, 0, 4, 1.55);
+  addSandbags(0, -9, 4, 0);
+  addSandbags(-7, 9, 4, 0); addSandbags(7, 9, 4, 0);   // livram a base da escada
+  addCrateStack(-18, 8, 2); addCrateStack(18, -8, 2);
+}
+
+/* 3. SAGUÃO — terminal coberto: salão longo (linha de tiro), salas laterais
+      (combate curto) e mezanino sobre o salão (posição de poder flanqueável). */
+function mapaSaguao(){
+  const W = 96, D = 72;
+  addGround(W, D, MAT.floorTile);
+  addPaved(80, 18, 0, 0, MAT.floorHall);
+  addPerimeter(W, D, 10, MAT.wall);
+
+  // paredes do salão, com portas para as salas laterais
+  // uma porta por sala lateral (as divisórias ficam em -24, -8, 8 e 24)
+  addWallWithGaps(-9, -40, 40, 5.4, 'x', [-32, -16, 0, 16, 32], MAT.wall);
+  addWallWithGaps( 9, -40, 40, 5.4, 'x', [-32, -16, 0, 16, 32], MAT.wall);
+
+  // pilares do salão: quebram a linha de tiro sem fechá-la
+  [-30, -18, -6, 6, 18, 30].forEach(x => {
+    addBox(x, 0, -5.4, 1.4, 5.4, 1.4, MAT.concrete);
+    addBox(x, 0,  5.4, 1.4, 5.4, 1.4, MAT.concrete);
   });
 
-  // ----- pontos de nascimento dos inimigos -----
-  const sp = [
-    [-40,-40],[40,-40],[-40,40],[40,40],
-    [0,-45],[0,45],[-45,0],[45,0],
-    [-22,-40],[22,-40],[-22,40],[22,40],
-    [-40,-18],[40,-18],[-40,18],[40,18]
-  ];
-  sp.forEach(p => spawnPoints.push(new THREE.Vector3(p[0], 0, p[1])));
+  // balcões e bancos: cobertura baixa dentro do salão
+  [-34, -20, -2, 16, 32].forEach((x, i) => {
+    addBox(x, 0, i % 2 ? -1.6 : 1.6, 5.0, 1.15, 1.1, MAT.concrete);
+  });
+  addBox(0, 0, 0, 4.0, 1.3, 4.0, MAT.metal);
+
+  // divisórias das salas laterais (norte e sul)
+  [-24, -8, 8, 24].forEach(x => {
+    addBox(x, 0, -17, 0.5, 4.4, 16, MAT.wall);
+    addBox(x, 0,  17, 0.5, 4.4, 16, MAT.wall);
+  });
+  // paredes externas das salas, com saída para os corredores de flanco
+  // e uma saída por sala para o corredor de flanco
+  addWallWithGaps(-25, -40, 40, 4.4, 'x', [-32, -16, 0, 16, 32], MAT.wall);
+  addWallWithGaps( 25, -40, 40, 4.4, 'x', [-32, -16, 0, 16, 32], MAT.wall);
+  // tetos das salas laterais
+  addBox(0, 4.4, -17, 80, 0.35, 16, MAT.wallDark);
+  addBox(0, 4.4,  17, 80, 0.35, 16, MAT.wallDark);
+
+  // mezanino sobre o salão, com escada nas duas pontas
+  addPlatform(0, -6.4, 68, 5, 3.2, 's');
+  addStairs(-39, -6.4, 3, 3.5, 'e', MAT.metal);   // param na borda, não sob a laje
+  addStairs( 39, -6.4, 3, 3.5, 'w', MAT.metal);
+
+  // mobília das salas laterais
+  [-36, -20, -4, 12, 28].forEach(x => {
+    addBox(x, 0, -20, 3.0, 1.2, 1.6, MAT.crate);
+    addBox(x, 0,  20, 3.0, 1.2, 1.6, MAT.crate);
+  });
+  addBarrels(-36, -30, 3, 1.6); addBarrels(36, 30, 3, 1.6);
+  addSandbags(-43, -5, 5, 0); addSandbags(-43, 5, 5, 0);
+  addSandbags( 43, -5, 5, 0); addSandbags( 43, 5, 5, 0);
+}
+
+/* --- catálogo de mapas --------------------------------------------------- */
+const MAPS = [
+  {
+    id:'ferrovelho', name:'FERRO-VELHO', build: mapaFerroVelho,
+    desc:'Pátio industrial. Corredor de contêineres a oeste, armazém no centro.',
+    player:{ x:0, z:36, yaw:0 }, mm:46, minDist:20,
+    sky:0x9dafbd, fog:[55,165],
+    spawns:[[8,-42],[-20,-40],[20,-40],[-38,-34],[38,-34],[-38,-8],[38,-8],
+            [-38,26],[38,26],[-12,-34],[12,-34],[28,34],[-28,34]]
+  },
+  {
+    id:'torre', name:'TORRE', build: mapaTorre,
+    desc:'Pequeno e frenético. A torre central domina, mas fica exposta.',
+    player:{ x:0, z:20, yaw:0 }, mm:30, minDist:14,
+    sky:0xc2b394, fog:[35,110],
+    spawns:[[-22,-22],[22,-22],[-22,22],[22,22],[0,-24],[-24,0],[24,0],
+            [-14,-24],[14,-24],[24,-14],[24,14]]
+  },
+  {
+    id:'saguao', name:'SAGUÃO', build: mapaSaguao,
+    desc:'Terminal coberto. Salão longo para tiro à distância, salas para o curto.',
+    player:{ x:-41, z:0, yaw:-Math.PI/2 }, mm:44, minDist:18,
+    sky:0x6f7681, fog:[40,130],
+    spawns:[[41,0],[41,-17],[41,17],[30,-30],[30,30],[0,-30],[0,30],
+            [-30,-30],[-30,30],[16,-20],[16,20],[41,-30],[41,30]]
+  }
+];
+const MAPDEF = () => MAPS.find(m => m.id === settings.map) || MAPS[0];
+let mapaCarregado = null;   // qual mapa está montado na cena agora
+
+/** Remove o mapa atual da cena antes de montar outro. */
+function clearWorld(){
+  for (const m of worldMeshes){
+    scene.remove(m);
+    if (m.userData.ownGeo && m.geometry) m.geometry.dispose();
+  }
+  worldMeshes.length = 0;
+  colliders.length  = 0;
+  spawnPoints.length = 0;
+}
+
+function loadMap(id){
+  settings.map = MAPS.some(m => m.id === id) ? id : MAPS[0].id;
+  const def = MAPDEF();
+  clearWorld();
+  def.build();
+  def.spawns.forEach(p => spawnPoints.push(new THREE.Vector3(p[0], 0, p[1])));
+  MM_RANGE = def.mm;
+  scene.background.setHex(def.sky);
+  scene.fog.color.setHex(def.sky);
+  scene.fog.near = def.fog[0];
+  scene.fog.far  = def.fog[1];
+  mapaCarregado = def.id;
 }
 
 /* ---------------------------------------------------------------
@@ -1292,7 +1548,22 @@ function setupTouch(){
 /* ---------------------------------------------------------------
    9. Colisão do jogador contra o mundo
    --------------------------------------------------------------- */
-function resolveCollisions(p, radius, height, vel){
+/* Há espaço para o corpo caber em pé sobre `topo`? Só conta o que está ACIMA
+   do novo piso — laje, teto, viga. Caixas na altura dos pés são o degrau
+   seguinte, que se sobe na sequência; tratá-las como obstáculo travaria a
+   subida inteira. */
+function temEspacoAcima(p, radius, height, topo){
+  for (const b of colliders){
+    if (p.x - radius >= b.maxx || p.x + radius <= b.minx) continue;
+    if (p.z - radius >= b.maxz || p.z + radius <= b.minz) continue;
+    if (b.miny > topo + 0.06 && b.miny < topo + height) return false;
+  }
+  return true;
+}
+
+const STEP_UP = 0.58;   // altura máxima de degrau que se sobe andando
+
+function resolveCollisions(p, radius, height, vel, canStep){
   let grounded = false;
   for (const b of colliders){
     const pminx = p.x - radius, pmaxx = p.x + radius;
@@ -1302,6 +1573,18 @@ function resolveCollisions(p, radius, height, vel){
     if (pmaxx <= b.minx || pminx >= b.maxx) continue;
     if (pmaxz <= b.minz || pminz >= b.maxz) continue;
     if (pmaxy <= b.miny || pminy >= b.maxy) continue;
+
+    // Degrau: se o topo do obstáculo está logo acima dos pés e há espaço livre
+    // para o corpo, sobe em vez de barrar. É o que faz escada e mezanino
+    // funcionarem sem precisar pular a cada passo.
+    const subida = b.maxy - p.y;
+    if (canStep && subida > 0.02 && subida <= STEP_UP && vel.y <= 0.2 &&
+        temEspacoAcima(p, radius, height, b.maxy)){
+      p.y = b.maxy;
+      if (vel.y < 0) vel.y = 0;
+      grounded = true;
+      continue;
+    }
 
     const dx = Math.min(pmaxx - b.minx, b.maxx - pminx);
     const dz = Math.min(pmaxz - b.minz, b.maxz - pminz);
@@ -1518,7 +1801,7 @@ function pickSpawn(){
   // começar rápido: escolhe entre os pontos válidos MAIS PRÓXIMOS.
   const cands = spawnPoints
     .map(p => ({ p, d: p.distanceTo(player.pos) }))
-    .filter(o => o.d >= 20)
+    .filter(o => o.d >= MAPDEF().minDist)
     .sort((a,b) => a.d - b.d)
     .slice(0, 5);
   const chosen = cands.length ? pick(cands).p : pick(spawnPoints);
@@ -2020,7 +2303,7 @@ function updateHUD(){
   });
   wl.innerHTML = html;
 
-  $('wave-txt').textContent = 'ONDA ' + stats.wave + ' · ' + DIFF().name;
+  $('wave-txt').textContent = MAPDEF().name + ' · ONDA ' + stats.wave + ' · ' + DIFF().name;
   const left = enemies.filter(e => !e.dead).length + wave.toSpawn;
   $('enemies-left').textContent = left;
   $('score-val').textContent = stats.score.toLocaleString('pt-BR');
@@ -2133,7 +2416,7 @@ function updateCrosshair(){
 
 /* --- minimapa --- */
 const mm = $('minimap'), mmx = mm.getContext('2d');
-const MM_RANGE = 46;
+let MM_RANGE = 46;   // definido por loadMap(), varia com o tamanho do mapa
 function drawMinimap(){
   const W = mm.width, H = mm.height, cx = W/2, cy = H/2;
   const sc = (W/2) / MM_RANGE;
@@ -2327,7 +2610,7 @@ function updateEnemy(e, dt){
   e.pos.y += e.vel.y * dt;
   e.pos.z += e.vel.z * dt;
 
-  e.grounded = resolveCollisions(e.pos, e.radius, e.height, e.vel);
+  e.grounded = resolveCollisions(e.pos, e.radius, e.height, e.vel, e.grounded);
 
   // mantém dentro do mapa
   e.pos.x = clamp(e.pos.x, -47.5, 47.5);
@@ -2470,7 +2753,7 @@ function updatePlayer(dt){
   player.pos.y += player.vel.y * dt;
   player.pos.z += player.vel.z * dt;
 
-  player.grounded = resolveCollisions(player.pos, player.radius, player.height, player.vel);
+  player.grounded = resolveCollisions(player.pos, player.radius, player.height, player.vel, player.grounded);
   player.pos.x = clamp(player.pos.x, -48.2, 48.2);
   player.pos.z = clamp(player.pos.z, -48.2, 48.2);
 
@@ -2755,6 +3038,8 @@ window.__blackout = {
   get fov(){ return camera.fov; },
   get weapon(){ const w = weapons[curW]; return w && { id:w.id, name:w.name, mag:w.mag, scope:!!w.scope }; },
   get difficulty(){ return settings.difficulty; },
+  get map(){ return settings.map; },
+  get colliders(){ return colliders.length; },
   get aim(){ return { yaw:player.yaw, pitch:player.pitch,
                       x:player.pos.x, y:player.pos.y, z:player.pos.z }; },
   get enemyInfo(){
@@ -2825,13 +3110,17 @@ function resetGame(){
   $('killfeed').innerHTML = '';
   document.querySelectorAll('.float, .dmg-arc').forEach(e => e.remove());
 
+  // o mapa pode ter mudado no menu
+  if (settings.map !== mapaCarregado) loadMap(settings.map);
+
   // estado
   Object.assign(stats, { score:0, kills:0, headshots:0, shots:0, hits:0, wave:0, streak:0, bestStreak:0 });
   resetWeapons();
 
-  player.pos.set(0, 0, 40);
+  const md = MAPDEF();
+  player.pos.set(md.player.x, 0, md.player.z);
   player.vel.set(0,0,0);
-  player.yaw = 0; player.pitch = 0;   // encara o centro do mapa
+  player.yaw = md.player.yaw; player.pitch = 0;
   player.hp = player.maxHp; player.armor = 25;
   player.alive = true;
   player.reloading = false; player.switching = 0;
@@ -2919,6 +3208,7 @@ function loadSettings(){
     Object.assign(settings, s);
   }catch(e){ /* ignora config corrompida */ }
   if (!DIFFICULTIES.some(d => d.id === settings.difficulty)) settings.difficulty = 'veterano';
+  if (!MAPS.some(m => m.id === settings.map)) settings.map = MAPS[0].id;
   $('set-sens').value   = Math.round(settings.sens * 100);
   $('set-fov').value    = settings.fov;
   $('set-vol').value    = Math.round(settings.volume * 100);
@@ -2934,14 +3224,38 @@ function reflectSettings(){
   $('fov-val').textContent  = settings.fov;
   $('vol-val').textContent  = Math.round(settings.volume * 100);
   const d = DIFF();
-  document.querySelectorAll('.diff').forEach(b => {
+  document.querySelectorAll('.diff:not(.mapa)').forEach(b => {
     b.classList.toggle('on', b.dataset.diff === settings.difficulty);
   });
+  document.querySelectorAll('.mapa').forEach(b => {
+    b.classList.toggle('on', b.dataset.map === settings.map);
+  });
+  $('map-desc').textContent = MAPDEF().desc;
+  $('pause-map').textContent = MAPDEF().name;
   $('diff-desc').textContent = d.desc;
   $('pause-diff').textContent = d.name;
 }
 
-document.querySelectorAll('.diff').forEach(b => {
+// botões de mapa (gerados a partir do catálogo)
+$('map-row').innerHTML = MAPS.map(m =>
+  '<button class="diff mapa" data-map="' + m.id + '">' + m.name + '</button>').join('');
+
+document.querySelectorAll('.mapa').forEach(b => {
+  b.addEventListener('click', () => {
+    settings.map = b.dataset.map;
+    loadMap(settings.map);        // troca de cenário na hora, atrás do menu
+    reflectSettings();
+    saveSettings();
+    Audio_.init(); Audio_.switchW();
+  });
+  b.addEventListener('mouseenter', () => {
+    const m = MAPS.find(x => x.id === b.dataset.map);
+    if (m) $('map-desc').textContent = m.desc;
+  });
+  b.addEventListener('mouseleave', () => { $('map-desc').textContent = MAPDEF().desc; });
+});
+
+document.querySelectorAll('.diff:not(.mapa)').forEach(b => {
   b.addEventListener('click', () => {
     settings.difficulty = b.dataset.diff;
     reflectSettings();
@@ -2982,8 +3296,8 @@ function enemyLabel(t){
    21. Inicialização
    --------------------------------------------------------------- */
 function init(){
-  buildWorld();
   loadSettings();
+  loadMap(settings.map);
   if (isTouch) setupTouch();
   resetWeapons();
   camera.fov = settings.fov;

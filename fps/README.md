@@ -15,8 +15,8 @@ Abra `fps/index.html` no navegador. Duas formas:
   # depois acesse http://localhost:8080/fps/
   ```
 
-Escolha a dificuldade, clique em **INICIAR MISSÃO** e depois na tela para capturar o
-mouse. `ESC` libera o mouse e pausa.
+Escolha o mapa e a dificuldade, clique em **INICIAR MISSÃO** e depois na tela para
+capturar o mouse. `ESC` libera o mouse e pausa.
 
 ## Controles
 
@@ -35,6 +35,28 @@ mouse. `ESC` libera o mouse e pausa.
 
 Em celular/tablet aparecem controles de toque: analógico à esquerda, botões à direita,
 e arrastar na tela move a mira.
+
+## Mapas
+
+Três mapas, escolhidos no menu. Os layouts são **originais**, construídos com a
+gramática de mapa do *Modern Warfare 2/3* — não são recriações dos mapas oficiais.
+O que foi copiado é o método, não o desenho:
+
+- **Três corredores paralelos** ligados por travessas, para o combate nunca virar
+  uma linha reta só.
+- **Uma posição de poder elevada** que domina o mapa mas pode ser flanqueada.
+- **Uma linha longa de tiro** para o fuzil de precisão, cortada por pilares ou vãos.
+- **Cobertura baixa densa**, quebrando as linhas de visão a cada poucos metros.
+- **Marcos visuais** distintos, para você saber onde está sem olhar o minimapa.
+
+| Mapa | Tamanho | Caráter | Posição de poder | Linha longa |
+|---|---|---|---|---|
+| **Ferro-Velho** | 90×90 m | Pátio industrial, médio alcance | Mezanino do armazém central | Corredor de contêineres a oeste |
+| **Torre** | 56×56 m | Pequeno e frenético, tudo é perto | Topo da torre central | Nenhuma: é tudo curto |
+| **Saguão** | 96×72 m | Terminal coberto, interior | Mezanino sobre o salão | O salão inteiro, 80 m |
+
+Dá para subir escadas e mezaninos andando — degraus de até 58 cm são vencidos sem
+pular, então a verticalidade é usável de verdade.
 
 ## Dificuldade
 
@@ -113,8 +135,14 @@ como reserva.
   partir de caixas e cilindros, em metros aproximados, e `normalizeGun()` centra e
   escala para o comprimento pedido. O mesmo construtor serve ao modelo em primeira
   pessoa e à arma na mão do inimigo — só muda o comprimento final.
-- Colisão por AABB contra uma lista de caixas do cenário; dá para subir em engradados
-  e caixotes para ganhar altura.
+- **Mapas montados por código**, a partir de utilitários (`addRoom`, `addStairs`,
+  `addContainer`, `addPlatform`, `addWallWithGaps`). Trocar de mapa desmonta a cena
+  anterior e monta a nova; céu, névoa, alcance do minimapa e pontos de nascimento
+  vêm da definição de cada mapa.
+- Colisão por AABB contra uma lista de caixas do cenário, com **subida de degrau**:
+  obstáculos de até 58 cm são vencidos andando, o que faz escadas e mezaninos
+  funcionarem. A checagem de espaço livre só considera o que está acima do novo
+  piso — tratar o degrau seguinte como teto travaria a subida inteira.
 - Tiro por *raycast* com dispersão dependente de estado (movimento, mira, agachado, no
   ar) e queda de dano por distância. A escopeta dispara 9 chumbos e o dano é somado por
   alvo, para virar um número só na tela.
@@ -124,4 +152,8 @@ como reserva.
   balanceamento previsível e ajustável por nível de dificuldade. O traçante e o clarão
   saem da boca do cano da arma que o inimigo carrega, e cada arma tem seu próprio som.
 - `window.__blackout` expõe uma sonda somente-leitura (tempo, quadros, inimigos, arma
-  atual, campo de visão, estatísticas) usada para diagnóstico e testes automatizados.
+  atual, campo de visão, mapa, estatísticas) usada para diagnóstico e testes
+  automatizados.
+- Os mapas são validados por um teste de **alcançabilidade**: um flood-fill em grade
+  de 1 m confirma que todo ponto de nascimento de inimigo é acessível a pé desde o
+  nascimento do jogador e que não existe sala fechada sem porta.
