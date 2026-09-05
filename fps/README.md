@@ -15,7 +15,8 @@ Abra `fps/index.html` no navegador. Duas formas:
   # depois acesse http://localhost:8080/fps/
   ```
 
-Clique em **INICIAR MISSÃO** e depois na tela para capturar o mouse. `ESC` libera o mouse e pausa.
+Escolha a dificuldade, clique em **INICIAR MISSÃO** e depois na tela para capturar o
+mouse. `ESC` libera o mouse e pausa.
 
 ## Controles
 
@@ -26,41 +27,68 @@ Clique em **INICIAR MISSÃO** e depois na tela para capturar o mouse. `ESC` libe
 | Pular | `Espaço` |
 | Agachar | `Ctrl` ou `C` |
 | Atirar | Botão esquerdo |
-| Mirar (ADS) | Botão direito |
+| Mirar / luneta | Botão direito |
 | Recarregar | `R` |
-| Trocar de arma | `1` `2` `3` ou `Q` (arma anterior) |
+| Trocar de arma | `1` `2` `3` `4` ou `Q` (arma anterior) |
 | Granada | `G` |
 | Pausar | `ESC` |
 
 Em celular/tablet aparecem controles de toque: analógico à esquerda, botões à direita,
 e arrastar na tela move a mira.
 
-## O jogo
+## Dificuldade
 
-Ondas infinitas de inimigos, cada uma maior e mais letal que a anterior. Ao limpar uma
-onda você ganha bônus de pontos, vida, munição, colete e uma granada.
+Três níveis, escolhidos no menu. Mexem em quanto o inimigo acerta, quanto o tiro dele
+dói, quanto ele aguenta, quantos aparecem ao mesmo tempo e em quanto tempo ele reage
+depois de te ver. Dificuldade maior também paga mais pontos.
 
-**Arsenal**
+| Nível | Pontaria | Dano | Vida | Simultâneos | Reação | Pontos |
+|---|---|---|---|---|---|---|
+| **Recruta** | 58% | 70% | 85% | −1 | 0,45–1,3 s | ×0,8 |
+| **Veterano** | 100% | 100% | 100% | normal | 0,15–0,7 s | ×1,0 |
+| **Elite** | 145% | 132% | 130% | +2 | 0,04–0,3 s | ×1,4 |
 
-| Arma | Modo | Dano | Cadência | Pente |
-|---|---|---|---|---|
-| M4 Carbine | Automático | 26 | 720 RPM | 30 |
-| MP7 SMG | Automático | 18 | 1000 RPM | 40 |
-| Escopeta 870 | Bomba | 17 × 9 chumbos | 78 RPM | 7 |
+Medido em teste, parado e sem revidar na onda 1: no Recruta você termina 45 s inteiro,
+no Veterano termina com a vida cheia mas sem colete, e no Elite morre em ~21 s.
 
-**Inimigos**
+## Arsenal
 
-- **Soldado** — tropa padrão, equilibrado.
-- **Batedor** — rápido e agressivo, briga de perto.
-- **Blindado** — 260 de vida, lento, causa muito dano.
-- **Atirador** — preciso e de longo alcance, pouca vida.
+As armas são modeladas a partir de armas reais, tanto nas estatísticas quanto na
+silhueta.
 
-**Regras que valem a pena saber**
+| # | Arma | Calibre | Modo | Dano | Cadência | Pente |
+|---|---|---|---|---|---|---|
+| 1 | **M4A1** | 5,56×45mm | Automático | 26 | 720 RPM | 30 |
+| 2 | **MP7A1** | 4,6×30mm | Automático | 18 | 1000 RPM | 40 |
+| 3 | **Remington 870** | Cal. 12 | Bomba | 17 × 9 chumbos | 78 RPM | 7 |
+| 4 | **AWM** | .338 Lapua | Ferrolho | 120 | 48 RPM | 5 |
 
-- Tiro na cabeça causa **2,5× de dano** — dois acertos derrubam um soldado.
-- A vida **regenera** após ~4 s sem tomar dano; o colete absorve 60% do dano até acabar.
+**A AWM tem luneta.** Com o botão direito a mira ocupa a tela inteira, com retícula de
+mil-dots e zoom de 82° para 11° de campo de visão. A sensibilidade do mouse cai junto
+com o zoom, senão a mira ficaria incontrolável. Derruba tropa comum com um tiro só —
+mas fora da luneta a dispersão é enorme, e andar piora ainda mais: é arma de parar,
+respirar e mirar.
+
+## Inimigos
+
+Cada tipo carrega uma arma diferente, visível e reconhecível pela silhueta — dá para
+saber o que vem vindo antes de tomar o tiro.
+
+| Inimigo | Arma | Vida | Comportamento |
+|---|---|---|---|
+| **Soldado** | AKM | 100 | Tropa padrão, equilibrado |
+| **Batedor** | MP5A3 | 70 | Rápido e agressivo, briga de perto |
+| **Blindado** | RPK | 260 | Lento, aguenta muito e dói muito |
+| **Atirador** | SVD Dragunov | 85 | Preciso e de longo alcance, pouca vida |
+
+## Regras que valem a pena saber
+
+- Tiro na cabeça causa **2,5× de dano** — dois acertos derrubam um soldado com a M4A1,
+  um só com a AWM.
+- A vida **regenera** após ~4 s sem tomar dano; o colete absorve 60% do dano até acabar
+  e é reposto a cada onda.
 - **Mover-se reduz** a chance de o inimigo acertar; ficar parado é perigoso.
-- Mirar (ADS) reduz muito a dispersão; correr e pular aumentam.
+- Mirar reduz muito a dispersão; correr e pular aumentam.
 - A cada 5 abates seguidos você ganha bônus de pontos, vida e munição.
 - Granadas causam dano em área — **inclusive em você**.
 
@@ -81,13 +109,19 @@ como reserva.
 
 ## Notas técnicas
 
+- **Geometria de armas compartilhada**: `buildWeaponParts()` monta as oito armas a
+  partir de caixas e cilindros, em metros aproximados, e `normalizeGun()` centra e
+  escala para o comprimento pedido. O mesmo construtor serve ao modelo em primeira
+  pessoa e à arma na mão do inimigo — só muda o comprimento final.
 - Colisão por AABB contra uma lista de caixas do cenário; dá para subir em engradados
   e caixotes para ganhar altura.
-- Tiro por *raycast* com dispersão dependente de estado (movimento, ADS, agachado, no ar)
-  e queda de dano por distância. A escopeta dispara 9 chumbos e o dano é somado por alvo.
+- Tiro por *raycast* com dispersão dependente de estado (movimento, mira, agachado, no
+  ar) e queda de dano por distância. A escopeta dispara 9 chumbos e o dano é somado por
+  alvo, para virar um número só na tela.
 - A cadência de tiro usa um acumulador de tempo, então **não depende da taxa de quadros**.
 - IA com estados (procurar/engajar), checagem de linha de visão amostrada, desvio de
   paredes e de outros inimigos, e chance de acerto explícita — o que torna o
-  balanceamento previsível e ajustável.
-- `window.__blackout` expõe uma sonda somente-leitura (tempo, quadros, inimigos,
-  estatísticas) usada para diagnóstico e testes automatizados.
+  balanceamento previsível e ajustável por nível de dificuldade. O traçante e o clarão
+  saem da boca do cano da arma que o inimigo carrega, e cada arma tem seu próprio som.
+- `window.__blackout` expõe uma sonda somente-leitura (tempo, quadros, inimigos, arma
+  atual, campo de visão, estatísticas) usada para diagnóstico e testes automatizados.

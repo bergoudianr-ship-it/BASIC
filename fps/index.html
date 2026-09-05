@@ -68,6 +68,33 @@
   }
   #flash{ position:absolute; inset:0; background:#fff; opacity:0; }
 
+  /* Luneta: círculo transparente com todo o resto da tela preto. */
+  #scope{ position:absolute; inset:0; opacity:0; transition:opacity .07s linear; }
+  #scope .lens{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:min(88vh,88vw); height:min(88vh,88vw); border-radius:50%;
+    border:2px solid #0b0d10;
+    /* o spread gigante pinta tudo fora do círculo */
+    box-shadow:0 0 0 100vmax #05070a, inset 0 0 70px 26px rgba(0,0,0,.92);
+  }
+  #scope .lens i{ position:absolute; background:rgba(10,12,8,.95); }
+  #scope .rv{ left:50%; top:5%;  width:1.5px; height:90%; margin-left:-0.75px; }
+  #scope .rh{ top:50%;  left:5%; height:1.5px; width:90%;  margin-top:-0.75px; }
+  #scope .dot{
+    left:50%; top:50%; width:3px; height:3px; margin:-1.5px 0 0 -1.5px;
+    border-radius:50%; background:#0a0c08;
+  }
+  #scope .mil{ background:rgba(10,12,8,.95); }
+  #scope .v1,#scope .v2,#scope .v3{ width:9px; height:1.5px; left:50%; margin-left:-4.5px; }
+  #scope .v1{ top:58%; } #scope .v2{ top:64%; } #scope .v3{ top:70%; }
+  #scope .hl1,#scope .hl2,#scope .hr1,#scope .hr2{ width:1.5px; height:9px; top:50%; margin-top:-4.5px; }
+  #scope .hl1{ left:42%; } #scope .hl2{ left:36%; }
+  #scope .hr1{ left:58%; } #scope .hr2{ left:64%; }
+  #scope .tint{
+    position:absolute; inset:0; border-radius:50%; pointer-events:none;
+    background:radial-gradient(circle at 42% 38%, rgba(150,200,170,.07), rgba(0,0,0,0) 62%);
+  }
+
   /* Canto inferior esquerdo: vida */
   #health-wrap{ position:absolute; left:34px; bottom:34px; width:280px; }
   #health-label{ font-size:12px; letter-spacing:3px; opacity:.75; margin-bottom:5px; font-weight:700; }
@@ -192,6 +219,22 @@
   #gameover h1{ color:var(--danger); text-shadow:0 0 40px rgba(224,64,48,.4); }
   .stat-big{ font-size:40px; font-weight:700; color:var(--accent); }
   .note{ font-size:12px; opacity:.45; margin-top:26px; letter-spacing:2px; }
+
+  /* Seletor de dificuldade */
+  #diff-pick{ margin-top:18px; }
+  .diff-label{ font-size:11px; letter-spacing:4px; opacity:.5; margin-bottom:8px; font-weight:700; }
+  .diff-row{ display:flex; gap:8px; justify-content:center; }
+  .diff{
+    pointer-events:auto; cursor:pointer; font-family:inherit; font-weight:700;
+    font-size:13px; letter-spacing:3px; padding:9px 22px;
+    border:1px solid rgba(216,226,200,.28); background:rgba(216,226,200,.04);
+    color:var(--hud); opacity:.55; transition:.15s;
+  }
+  .diff:hover{ opacity:.9; border-color:rgba(216,226,200,.6); }
+  .diff.on{
+    opacity:1; background:var(--accent); color:#101208; border-color:var(--accent);
+  }
+  .diff-desc{ font-size:12px; opacity:.55; margin-top:9px; height:16px; letter-spacing:1px; }
   /* Em janelas baixas o menu encolhe para caber sem rolagem. */
   @media (max-height:620px){
     .cols{ gap:18px; margin-top:14px; }
@@ -234,6 +277,17 @@
 <div id="hud" class="hidden">
   <div id="vignette"></div>
   <div id="flash"></div>
+
+  <!-- Luneta do fuzil de precisão (só aparece com a AWM em ADS) -->
+  <div id="scope">
+    <div class="lens">
+      <i class="rv"></i><i class="rh"></i><i class="dot"></i>
+      <i class="mil v1"></i><i class="mil v2"></i><i class="mil v3"></i>
+      <i class="mil hl1"></i><i class="mil hl2"></i>
+      <i class="mil hr1"></i><i class="mil hr2"></i>
+      <span class="tint"></span>
+    </div>
+  </div>
 
   <canvas id="minimap" width="300" height="300"></canvas>
 
@@ -294,6 +348,17 @@
   <h1>OPERAÇÃO <em>BLACKOUT</em></h1>
   <div class="tag">MODO SOBREVIVÊNCIA · ONDAS INFINITAS</div>
   <button class="btn" id="btn-play">INICIAR MISSÃO</button>
+
+  <div id="diff-pick">
+    <div class="diff-label">DIFICULDADE DOS INIMIGOS</div>
+    <div class="diff-row">
+      <button class="diff" data-diff="recruta">RECRUTA</button>
+      <button class="diff" data-diff="veterano">VETERANO</button>
+      <button class="diff" data-diff="elite">ELITE</button>
+    </div>
+    <div class="diff-desc" id="diff-desc"></div>
+  </div>
+
   <div class="cols">
     <div class="card">
       <h3>MOVIMENTO</h3>
@@ -307,9 +372,17 @@
       <div class="row"><span>Atirar</span><b>BOTÃO ESQ.</b></div>
       <div class="row"><span>Mirar (ADS)</span><b>BOTÃO DIR.</b></div>
       <div class="row"><span>Recarregar</span><b><span class="k">R</span></b></div>
-      <div class="row"><span>Trocar arma</span><b><span class="k">1</span><span class="k">2</span><span class="k">3</span> / <span class="k">Q</span></b></div>
+      <div class="row"><span>Trocar arma</span><b><span class="k">1</span><span class="k">2</span><span class="k">3</span><span class="k">4</span> / <span class="k">Q</span></b></div>
       <div class="row"><span>Granada</span><b><span class="k">G</span></b></div>
       <div class="row"><span>Pausar</span><b><span class="k">ESC</span></b></div>
+    </div>
+    <div class="card">
+      <h3>ARSENAL</h3>
+      <div class="row"><span><span class="k">1</span> M4A1</span><b>5,56×45mm</b></div>
+      <div class="row"><span><span class="k">2</span> MP7A1</span><b>4,6×30mm</b></div>
+      <div class="row"><span><span class="k">3</span> Remington 870</span><b>Cal. 12</b></div>
+      <div class="row"><span><span class="k">4</span> AWM</span><b>.338 Lapua</b></div>
+      <div class="row" style="opacity:.6"><span>A AWM tem luneta: use o botão direito.</span></div>
     </div>
     <div class="card">
       <h3>OBJETIVO</h3>
@@ -327,6 +400,7 @@
   <div class="tag">MISSÃO EM ANDAMENTO</div>
   <div class="card" style="min-width:330px">
     <h3>CONFIGURAÇÕES</h3>
+    <div class="setting"><span>Dificuldade dos inimigos</span><b id="pause-diff">VETERANO</b></div>
     <div class="setting"><span>Sensibilidade do mouse</span><input type="range" id="set-sens" min="20" max="300" value="100"><b id="sens-val">1.00</b></div>
     <div class="setting"><span>Campo de visão (FOV)</span><input type="range" id="set-fov" min="65" max="110" value="82"><b id="fov-val">82</b></div>
     <div class="setting"><span>Volume</span><input type="range" id="set-vol" min="0" max="100" value="55"><b id="vol-val">55</b></div>
@@ -390,8 +464,21 @@ const settings = {
   fov:     82,
   volume:  0.55,
   invertY: false,
-  bob:     true
+  bob:     true,
+  difficulty: 'veterano'
 };
+
+/* Três níveis de dificuldade. Mexem em quanto o inimigo acerta, quanto dói,
+   quanto ele aguenta, quantos vêm de uma vez e em quanto tempo ele reage. */
+const DIFFICULTIES = [
+  { id:'recruta',  name:'RECRUTA',  hit:0.58, dmg:0.70, hp:0.85, conc:-1, alert:[0.45,1.30], score:0.8,
+    desc:'Reagem devagar e erram muito. Para aprender o mapa e as armas.' },
+  { id:'veterano', name:'VETERANO', hit:1.00, dmg:1.00, hp:1.00, conc: 0, alert:[0.15,0.70], score:1.0,
+    desc:'Equilibrado. Pressiona, mas dá espaço para revidar.' },
+  { id:'elite',    name:'ELITE',    hit:1.45, dmg:1.32, hp:1.30, conc: 2, alert:[0.04,0.28], score:1.4,
+    desc:'Reagem quase na hora, erram pouco e vêm em maior número.' }
+];
+const DIFF = () => DIFFICULTIES.find(d => d.id === settings.difficulty) || DIFFICULTIES[1];
 
 const stats = {
   score:0, kills:0, headshots:0, shots:0, hits:0,
@@ -579,9 +666,18 @@ const MAT = {
   gunDark:  new THREE.MeshLambertMaterial({ color:0x24262a }),
   gunMid:   new THREE.MeshLambertMaterial({ color:0x3a3d42 }),
   gunWood:  new THREE.MeshLambertMaterial({ color:0x5c3f24 }),
-  hands:    new THREE.MeshLambertMaterial({ color:0x6b5138 })
+  hands:    new THREE.MeshLambertMaterial({ color:0x6b5138 }),
+  // materiais de armamento
+  gBlack:   new THREE.MeshLambertMaterial({ color:0x1c1e22 }),
+  gSteel:   new THREE.MeshLambertMaterial({ color:0x44484e }),
+  gWood:    new THREE.MeshLambertMaterial({ color:0x6b4726 }),
+  gWoodL:   new THREE.MeshLambertMaterial({ color:0x855c33 }),
+  gPoly:    new THREE.MeshLambertMaterial({ color:0x4c5145 }),
+  gScope:   new THREE.MeshLambertMaterial({ color:0x141619 }),
+  gGlass:   new THREE.MeshLambertMaterial({ color:0x2f5a6b })
 };
 const BOX = new THREE.BoxGeometry(1,1,1);
+const CYL = new THREE.CylinderGeometry(1,1,1,10);   // unitário no eixo Y
 
 /* ---------------------------------------------------------------
    5. Mundo: colisores + geometria
@@ -757,38 +853,51 @@ function buildWorld(){
 }
 
 /* ---------------------------------------------------------------
-   6. Armas
+   6. Armas — modeladas a partir de armas reais
    --------------------------------------------------------------- */
 const WEAPONS = [
   {
-    id:'rifle', name:'M4 CARBINE', mode:'AUTOMÁTICO',
+    id:'m4a1', name:'M4A1', cal:'5,56×45mm', mode:'AUTOMÁTICO',
     damage:26, headMult:2.5, rpm:720, auto:true,
     mag:30, magMax:30, reserve:240, reserveMax:240,
     spread:0.0135, adsSpread:0.0035, moveSpreadMul:2.4,
     recoilV:0.0135, recoilH:0.0052, kick:0.036,
     reload:2.05, range:180, pellets:1, adsFov:56,
     sound:{ gain:0.40, cut:5200, low:160, dur:0.20, rate:1.0 },
-    switchTime:0.45
+    switchTime:0.45, realLen:0.84, vmLen:0.556
   },
   {
-    id:'smg', name:'MP7 SMG', mode:'AUTOMÁTICO',
+    id:'mp7', name:'MP7A1', cal:'4,6×30mm', mode:'AUTOMÁTICO',
     damage:18, headMult:2.5, rpm:1000, auto:true,
     mag:40, magMax:40, reserve:320, reserveMax:320,
     spread:0.021, adsSpread:0.0075, moveSpreadMul:2.0,
     recoilV:0.0092, recoilH:0.0060, kick:0.026,
     reload:1.75, range:120, pellets:1, adsFov:62,
     sound:{ gain:0.32, cut:6200, low:190, dur:0.15, rate:1.25 },
-    switchTime:0.36
+    switchTime:0.36, realLen:0.64, vmLen:0.500
   },
   {
-    id:'shotgun', name:'ESCOPETA 870', mode:'BOMBA',
+    id:'m870', name:'REMINGTON 870', cal:'Cal. 12', mode:'BOMBA',
     damage:17, headMult:1.8, rpm:78, auto:false,
     mag:7, magMax:7, reserve:56, reserveMax:56,
     spread:0.055, adsSpread:0.036, moveSpreadMul:1.25,
     recoilV:0.042, recoilH:0.012, kick:0.10,
     reload:2.9, range:42, pellets:9, adsFov:66,
     sound:{ gain:0.58, cut:4200, low:110, dur:0.34, rate:0.78 },
-    switchTime:0.55
+    switchTime:0.55, realLen:1.06, vmLen:0.618
+  },
+  {
+    // Ferrolho: cadência baixa, pente pequeno, mas derruba tropa comum
+    // com um tiro no tronco. Só é preciso de luneta e parado.
+    id:'awm', name:'AWM', cal:'.338 Lapua', mode:'FERROLHO',
+    damage:120, headMult:2.5, rpm:48, auto:false,
+    mag:5, magMax:5, reserve:40, reserveMax:40,
+    spread:0.062, adsSpread:0.0004, moveSpreadMul:3.4,
+    recoilV:0.072, recoilH:0.009, kick:0.155,
+    reload:3.4, range:320, pellets:1, adsFov:11,
+    sound:{ gain:0.66, cut:3600, low:92, dur:0.46, rate:0.66 },
+    switchTime:0.72, realLen:1.18, vmLen:0.652,
+    scope:true                      // usa a luneta em tela cheia
   }
 ];
 // cópia de trabalho (munição muda durante a partida)
@@ -800,69 +909,193 @@ function resetWeapons(){
   curW = 0; prevW = 1;
 }
 
-/* --- Construção dos modelos de arma (viewmodel) --- */
-const VM_LEN = 0.60;   // comprimento na tela, igual para as três armas
+/* --- Geometria das armas -----------------------------------------------
+   Um único construtor serve tanto ao modelo em primeira pessoa quanto à arma
+   que o inimigo carrega. As peças são montadas em metros aproximados (cano
+   apontando para -Z) e depois normalizadas para o comprimento desejado.
+   Silhuetas baseadas nas armas reais: carregador curvo na AKM, tubo de
+   engatilhamento da MP5, tambor e bipé da RPK, coronha vazada da SVD.
+   ---------------------------------------------------------------------- */
+const HAND_Z = {           // onde ficam as mãos em cada arma (coordenadas cruas)
+  m4a1:[0.06,-0.28], mp7:[0.03,-0.16], m870:[0.10,-0.26], awm:[0.14,-0.30]
+};
 
-function buildGunModel(id){
-  const g = new THREE.Group();
-  const B = (w,h,d,mat,x,y,z,rx,ry) => {
+function buildWeaponParts(id, g){
+  // caixa
+  const B = (w,h,d, mat, x,y,z, rx,rz) => {
     const m = new THREE.Mesh(BOX, mat);
-    m.scale.set(w,h,d);
-    m.position.set(x,y,z);
+    m.scale.set(w,h,d); m.position.set(x,y,z);
     if (rx) m.rotation.x = rx;
-    if (ry) m.rotation.y = ry;
-    g.add(m);
-    return m;
+    if (rz) m.rotation.z = rz;
+    g.add(m); return m;
   };
+  // cilindro deitado no eixo Z (cano, luneta); rz=true deita no eixo X (tambor)
+  const C = (r, len, mat, x,y,z, sideways) => {
+    const m = new THREE.Mesh(CYL, mat);
+    m.scale.set(r, len, r); m.position.set(x,y,z);
+    if (sideways) m.rotation.z = Math.PI/2; else m.rotation.x = Math.PI/2;
+    g.add(m); return m;
+  };
+  const M = MAT;
 
-  if (id === 'rifle'){
-    B(0.085,0.115,0.62, MAT.gunDark, 0,0,-0.14);        // corpo
-    B(0.055,0.055,0.72, MAT.gunMid,  0,0.078,-0.24);    // trilho superior
-    B(0.042,0.042,0.44, MAT.gunDark, 0,-0.012,-0.62);   // cano
-    B(0.062,0.062,0.13, MAT.gunMid,  0,-0.012,-0.87);   // freio de boca
-    B(0.075,0.20,0.10,  MAT.gunDark, 0,-0.145,-0.03, 0.28); // punho
-    B(0.075,0.115,0.30, MAT.gunMid,  0,0.005,0.33);     // coronha
-    B(0.055,0.155,0.075,MAT.gunDark, 0,-0.115,-0.40);   // carregador
-    B(0.05,0.05,0.05,   MAT.gunMid,  0,0.115,-0.42);    // alça de mira
-    B(0.10,0.10,0.16,   MAT.gunDark, 0,0.115,0.05);     // luneta
-  } else if (id === 'smg'){
-    B(0.082,0.105,0.40, MAT.gunDark, 0,0,-0.08);
-    B(0.05,0.05,0.30,   MAT.gunMid,  0,-0.008,-0.42);
-    B(0.062,0.062,0.09, MAT.gunDark, 0,-0.008,-0.60);
-    B(0.07,0.185,0.09,  MAT.gunDark, 0,-0.135,0.02, 0.22);
-    B(0.05,0.135,0.07,  MAT.gunMid,  0,-0.10,-0.22);
-    B(0.065,0.09,0.20,  MAT.gunMid,  0,0.005,0.22);
-    B(0.045,0.045,0.045,MAT.gunMid,  0,0.10,-0.30);
-  } else { // escopeta
-    B(0.10,0.13,0.52,   MAT.gunWood, 0,0,-0.10);
-    B(0.058,0.058,0.72, MAT.gunDark, 0,0.03,-0.52);     // cano longo
-    B(0.05,0.05,0.62,   MAT.gunMid,  0,-0.038,-0.48);   // tubo do carregador
-    B(0.09,0.09,0.18,   MAT.gunWood, 0,-0.038,-0.30);   // bomba
-    B(0.08,0.19,0.10,   MAT.gunWood, 0,-0.15,0.02, 0.30);
-    B(0.09,0.14,0.34,   MAT.gunWood, 0,-0.02,0.32);
+  switch (id){
+
+    case 'm4a1':                                    // carabina M4A1
+      B(0.055,0.075,0.30, M.gBlack, 0, 0.010,-0.06);      // caixa da culatra
+      B(0.036,0.022,0.34, M.gSteel, 0, 0.055,-0.12);      // trilho superior
+      B(0.056,0.058,0.24, M.gBlack, 0, 0.005,-0.28);      // guarda-mão
+      C(0.011,0.20, M.gSteel, 0, 0.005,-0.48);            // cano
+      C(0.017,0.06, M.gBlack, 0, 0.005,-0.60);            // apaga-chamas
+      B(0.026,0.050,0.030, M.gBlack, 0, 0.052,-0.40);     // massa de mira
+      B(0.028,0.140,0.055, M.gBlack, 0,-0.100,-0.02, 0.12);// carregador
+      B(0.050,0.060,0.16, M.gBlack, 0,-0.035, 0.00);      // caixa inferior
+      B(0.040,0.110,0.055, M.gBlack, 0,-0.085, 0.06, 0.35);// punho
+      C(0.018,0.16, M.gSteel, 0, 0.012, 0.16);            // tubo da coronha
+      B(0.050,0.075,0.15, M.gBlack, 0, 0.005, 0.20);      // coronha retrátil
+      B(0.045,0.045,0.10, M.gSteel, 0, 0.085,-0.02);      // óptica
+      break;
+
+    case 'mp7':                                     // submetralhadora MP7A1
+      B(0.050,0.070,0.24, M.gBlack, 0, 0.000,-0.04);
+      C(0.014,0.10, M.gSteel, 0, 0.005,-0.21);            // cano
+      C(0.011,0.04, M.gBlack, 0, 0.005,-0.28);
+      B(0.030,0.018,0.22, M.gSteel, 0, 0.045,-0.06);      // trilho
+      B(0.042,0.100,0.050, M.gBlack, 0,-0.060, 0.02);     // punho (aloja o pente)
+      B(0.028,0.130,0.045, M.gBlack, 0,-0.085, 0.02);
+      B(0.030,0.090,0.030, M.gBlack, 0,-0.060,-0.16);     // punho vertical
+      B(0.045,0.050,0.14, M.gBlack, 0, 0.010, 0.16);      // coronha
+      break;
+
+    case 'm870':                                    // espingarda Remington 870
+      B(0.050,0.075,0.20, M.gSteel, 0, 0.000,-0.02);      // caixa
+      C(0.013,0.42, M.gBlack, 0, 0.018,-0.34);            // cano
+      C(0.012,0.36, M.gSteel, 0,-0.018,-0.31);            // tubo do carregador
+      B(0.055,0.055,0.14, M.gWood,  0,-0.018,-0.24);      // bomba
+      B(0.010,0.012,0.012, M.gSteel, 0, 0.036,-0.54);     // ponto de mira
+      B(0.045,0.070,0.12, M.gWood,  0,-0.045, 0.12, 0.25);// colo
+      B(0.050,0.100,0.22, M.gWood,  0,-0.020, 0.24);      // coronha
+      B(0.052,0.115,0.02, M.gBlack, 0,-0.030, 0.35);      // soleira
+      break;
+
+    case 'awm':                                     // fuzil de precisão AWM
+      B(0.055,0.075,0.30, M.gSteel, 0, 0.000, 0.00);
+      C(0.017,0.52, M.gBlack, 0, 0.010,-0.42);            // cano pesado
+      C(0.024,0.07, M.gBlack, 0, 0.010,-0.71);            // freio de boca
+      B(0.050,0.050,0.30, M.gPoly,  0,-0.020,-0.30);      // chassi
+      C(0.022,0.30, M.gScope, 0, 0.086,-0.06);            // luneta
+      C(0.030,0.07, M.gScope, 0, 0.086,-0.20);            // objetiva
+      C(0.027,0.05, M.gScope, 0, 0.086, 0.08);            // ocular
+      C(0.026,0.012, M.gGlass, 0, 0.086,-0.235);          // lente
+      B(0.030,0.055,0.022, M.gBlack, 0, 0.058,-0.11);     // anéis
+      B(0.030,0.055,0.022, M.gBlack, 0, 0.058, 0.02);
+      B(0.055,0.014,0.014, M.gSteel, 0.045, 0.020, 0.06); // ferrolho
+      B(0.030,0.090,0.070, M.gBlack, 0,-0.075,-0.04);     // carregador
+      B(0.045,0.110,0.060, M.gPoly,  0,-0.075, 0.14, 0.20);// punho
+      B(0.050,0.090,0.26, M.gPoly,  0,-0.010, 0.26);      // coronha
+      B(0.045,0.030,0.14, M.gPoly,  0, 0.050, 0.22);      // apoio de face
+      B(0.012,0.110,0.012, M.gBlack, -0.035,-0.075,-0.50, 0, 0.35); // bipé
+      B(0.012,0.110,0.012, M.gBlack,  0.035,-0.075,-0.50, 0,-0.35);
+      break;
+
+    case 'akm':                                     // fuzil AKM (soldado)
+      B(0.050,0.085,0.26, M.gSteel, 0, 0.000,-0.02);
+      B(0.056,0.060,0.20, M.gWood,  0, 0.000,-0.25);      // guarda-mão de madeira
+      B(0.030,0.030,0.20, M.gSteel, 0, 0.045,-0.25);      // tubo de gás
+      C(0.012,0.20, M.gSteel, 0, 0.000,-0.44);
+      C(0.019,0.06, M.gBlack, 0, 0.000,-0.56);            // quebra-chamas inclinado
+      B(0.025,0.050,0.030, M.gSteel, 0, 0.045,-0.50);
+      // carregador curvo: a assinatura do AK, feita com três seções giradas
+      B(0.028,0.080,0.060, M.gWoodL, 0,-0.075,-0.060, 0.10);
+      B(0.028,0.070,0.055, M.gWoodL, 0,-0.135,-0.085, 0.35);
+      B(0.028,0.050,0.050, M.gWoodL, 0,-0.185,-0.130, 0.60);
+      B(0.040,0.100,0.050, M.gWood,  0,-0.080, 0.06, 0.32);
+      B(0.050,0.080,0.24, M.gWood,  0,-0.010, 0.22);
+      break;
+
+    case 'mp5':                                     // submetralhadora MP5A3 (batedor)
+      B(0.048,0.070,0.26, M.gBlack, 0, 0.000,-0.04);
+      B(0.050,0.055,0.16, M.gBlack, 0,-0.005,-0.25);      // guarda-mão
+      C(0.012,0.10, M.gSteel, 0, 0.005,-0.36);
+      C(0.013,0.22, M.gBlack, -0.028, 0.040,-0.22);       // tubo de engatilhamento
+      C(0.022,0.05, M.gBlack, 0, 0.055, 0.05);            // alça tambor
+      C(0.022,0.03, M.gBlack, 0, 0.050,-0.33);            // massa anelar
+      B(0.026,0.160,0.045, M.gBlack, 0,-0.110,-0.10, 0.06);
+      B(0.040,0.100,0.050, M.gBlack, 0,-0.070, 0.04, 0.30);
+      B(0.012,0.012,0.18, M.gSteel, -0.022, 0.000, 0.16); // hastes da coronha
+      B(0.012,0.012,0.18, M.gSteel,  0.022, 0.000, 0.16);
+      B(0.045,0.055,0.04, M.gBlack, 0, 0.000, 0.26);
+      break;
+
+    case 'rpk':                                     // metralhadora RPK (blindado)
+      B(0.055,0.090,0.28, M.gSteel, 0, 0.000,-0.02);
+      C(0.014,0.42, M.gSteel, 0, 0.000,-0.50);            // cano longo e pesado
+      B(0.060,0.065,0.22, M.gWood,  0, 0.000,-0.26);
+      B(0.028,0.055,0.030, M.gSteel, 0, 0.050,-0.62);
+      C(0.085,0.050, M.gBlack, 0,-0.115,-0.05, true);     // tambor
+      B(0.014,0.150,0.014, M.gBlack, -0.030,-0.090,-0.55, 0, 0.40); // bipé
+      B(0.014,0.150,0.014, M.gBlack,  0.030,-0.090,-0.55, 0,-0.40);
+      B(0.042,0.100,0.050, M.gWood,  0,-0.080, 0.08, 0.32);
+      B(0.052,0.090,0.26, M.gWood,  0,-0.010, 0.24);
+      break;
+
+    case 'svd':                                     // fuzil SVD Dragunov (atirador)
+      B(0.050,0.080,0.30, M.gSteel, 0, 0.000, 0.00);
+      C(0.012,0.52, M.gSteel, 0, 0.000,-0.46);            // cano muito longo
+      C(0.018,0.06, M.gBlack, 0, 0.000,-0.75);
+      B(0.055,0.060,0.26, M.gWood,  0, 0.000,-0.30);
+      C(0.021,0.26, M.gScope, 0, 0.086,-0.04);            // luneta PSO-1
+      C(0.028,0.06, M.gScope, 0, 0.086,-0.19);
+      C(0.024,0.012, M.gGlass, 0, 0.086,-0.223);
+      B(0.030,0.060,0.050, M.gBlack, -0.020, 0.050, 0.02);// suporte lateral
+      B(0.026,0.110,0.060, M.gBlack, 0,-0.090,-0.06, 0.18);
+      // coronha vazada (thumbhole)
+      B(0.045,0.070,0.14, M.gWood, 0,-0.050, 0.16, 0.10);
+      B(0.045,0.030,0.22, M.gWood, 0, 0.020, 0.24);
+      B(0.045,0.030,0.16, M.gWood, 0,-0.080, 0.26);
+      B(0.050,0.110,0.03, M.gWood, 0,-0.030, 0.36);
+      B(0.040,0.025,0.12, M.gBlack, 0, 0.048, 0.26);      // apoio de face
+      break;
   }
+  return g;
+}
 
-  // "mãos" estilizadas
-  const h1 = new THREE.Mesh(BOX, MAT.hands);
-  h1.scale.set(0.10,0.115,0.15);
-  h1.position.set(0.01,-0.16,0.02);
-  g.add(h1);
-  const h2 = new THREE.Mesh(BOX, MAT.hands);
-  h2.scale.set(0.10,0.10,0.16);
-  h2.position.set(0.0,-0.10, id==='shotgun' ? -0.30 : -0.36);
-  g.add(h2);
-
-  g.traverse(o => { if (o.isMesh){ o.castShadow = false; o.receiveShadow = false; } });
-
-  // Centraliza o modelo na origem e padroniza o comprimento na tela. Sem isso a
-  // coronha fica a poucos centímetros da câmera e a arma ocupa meia tela.
+/* Centraliza na origem e escala para o comprimento pedido (eixo Z). */
+function normalizeGun(g, targetLen){
   g.updateMatrixWorld(true);
   const box  = new THREE.Box3().setFromObject(g);
   const cen  = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   g.children.forEach(m => m.position.sub(cen));
-  g.scale.setScalar(VM_LEN / size.z);
+  g.scale.setScalar(targetLen / size.z);
+  g.userData.len = targetLen;
   return g;
+}
+
+/* Modelo em primeira pessoa: arma + mãos, normalizado para caber na tela. */
+function buildGunModel(w){
+  const g = new THREE.Group();
+  buildWeaponParts(w.id, g);
+
+  const hz = HAND_Z[w.id] || [0.06,-0.26];
+  const h1 = new THREE.Mesh(BOX, MAT.hands);      // mão do gatilho
+  h1.scale.set(0.055,0.075,0.085);
+  h1.position.set(0.005,-0.075, hz[0]);
+  g.add(h1);
+  const h2 = new THREE.Mesh(BOX, MAT.hands);      // mão de apoio
+  h2.scale.set(0.055,0.060,0.095);
+  h2.position.set(0.0,-0.048, hz[1]);
+  g.add(h2);
+
+  g.traverse(o => { if (o.isMesh){ o.castShadow = false; o.receiveShadow = false; } });
+  return normalizeGun(g, w.vmLen);
+}
+
+/* Arma que o inimigo carrega, em escala real de mundo. */
+function buildEnemyWeapon(id, realLen){
+  const g = new THREE.Group();
+  buildWeaponParts(id, g);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return normalizeGun(g, realLen);
 }
 
 const gunModels = {};
@@ -872,7 +1105,7 @@ gunSway.add(gunHolder);
 gunScene.add(gunSway);
 
 WEAPONS.forEach(w => {
-  const m = buildGunModel(w.id);
+  const m = buildGunModel(w);
   m.visible = false;
   gunModels[w.id] = m;
   gunHolder.add(m);
@@ -893,8 +1126,7 @@ const flashMat = new THREE.MeshBasicMaterial({
   color:0xffdd88, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide
 });
 const gunFlash = new THREE.Mesh(new THREE.PlaneGeometry(0.17,0.17), flashMat);
-gunFlash.position.set(0, 0.01, -(VM_LEN/2) - 0.03);   // na boca do cano
-gunHolder.add(gunFlash);
+gunHolder.add(gunFlash);   // o Z é reposicionado por arma (comprimentos diferentes)
 
 /* ---------------------------------------------------------------
    7. Jogador
@@ -954,6 +1186,7 @@ addEventListener('keydown', e => {
   if (k === 'Digit1') switchWeapon(0);
   if (k === 'Digit2') switchWeapon(1);
   if (k === 'Digit3') switchWeapon(2);
+  if (k === 'Digit4') switchWeapon(3);
   if (k === 'KeyQ')   switchWeapon(prevW);
   if (k === 'KeyG')   throwGrenade();
 });
@@ -970,9 +1203,13 @@ addEventListener('mouseup', e => {
 });
 addEventListener('contextmenu', e => e.preventDefault());
 
+/* Com a luneta em 11° de campo de visão, a sensibilidade normal torna a mira
+   incontrolável. Escala junto com o zoom, como em qualquer FPS. */
+function zoomSens(){ return clamp(camera.fov / settings.fov, 0.18, 1); }
+
 addEventListener('mousemove', e => {
   if (!pointerLocked || gameState !== STATE.PLAYING) return;
-  const s = settings.sens * 0.0022;
+  const s = settings.sens * 0.0022 * zoomSens();
   player.yaw   -= e.movementX * s;
   player.pitch -= e.movementY * s * (settings.invertY ? -1 : 1);
   player.pitch = clamp(player.pitch, -Math.PI/2 + 0.03, Math.PI/2 - 0.03);
@@ -1019,7 +1256,7 @@ function setupTouch(){
         touchMove.x = dx; touchMove.y = dy;
         setKnob(dx,dy);
       } else if (t.identifier === lookTouchId){
-        const s = settings.sens * 0.0038;
+        const s = settings.sens * 0.0038 * zoomSens();
         player.yaw   -= (t.clientX - lookLast.x) * s;
         player.pitch -= (t.clientY - lookLast.y) * s * (settings.invertY?-1:1);
         player.pitch = clamp(player.pitch, -Math.PI/2+0.03, Math.PI/2-0.03);
@@ -1097,11 +1334,20 @@ const enemies = [];
 const enemyHitMeshes = [];   // alvos de raycast dos inimigos
 
 // hitChance = probabilidade base de acerto por tiro (ajustada por distância/movimento)
+// weapon/wLen = arma real que o inimigo carrega e seu comprimento em metros
 const ENEMY_TYPES = {
-  grunt:   { hp:100, speed:3.5, dmg:8,  fireRate:0.42, burst:3, hitChance:0.30, range:44, color:0x4a5240, scale:1.00, score:100 },
-  runner:  { hp:70,  speed:5.9, dmg:6,  fireRate:0.24, burst:5, hitChance:0.24, range:26, color:0x5c4a2e, scale:0.94, score:130 },
-  heavy:   { hp:260, speed:2.3, dmg:14, fireRate:0.55, burst:2, hitChance:0.34, range:38, color:0x36402f, scale:1.16, score:250 },
-  sniper:  { hp:85,  speed:2.8, dmg:26, fireRate:1.55, burst:1, hitChance:0.55, range:85, color:0x2f3a44, scale:1.00, score:200 }
+  grunt:   { hp:100, speed:3.5, dmg:8,  fireRate:0.42, burst:3, hitChance:0.30, range:44,
+             color:0x4a5240, scale:1.00, score:100, weapon:'akm', wLen:0.88, wName:'AKM',
+             sound:{ gain:0.13, cut:3400, low:118, dur:0.18, rate:0.95 } },
+  runner:  { hp:70,  speed:5.9, dmg:6,  fireRate:0.24, burst:5, hitChance:0.24, range:26,
+             color:0x5c4a2e, scale:0.94, score:130, weapon:'mp5', wLen:0.68, wName:'MP5A3',
+             sound:{ gain:0.10, cut:4600, low:160, dur:0.13, rate:1.30 } },
+  heavy:   { hp:260, speed:2.3, dmg:14, fireRate:0.55, burst:2, hitChance:0.34, range:38,
+             color:0x36402f, scale:1.16, score:250, weapon:'rpk', wLen:1.04, wName:'RPK',
+             sound:{ gain:0.17, cut:2900, low:96,  dur:0.24, rate:0.80 } },
+  sniper:  { hp:85,  speed:2.8, dmg:26, fireRate:1.55, burst:1, hitChance:0.55, range:85,
+             color:0x2f3a44, scale:1.00, score:200, weapon:'svd', wLen:1.22, wName:'SVD',
+             sound:{ gain:0.22, cut:2500, low:88,  dur:0.32, rate:0.70 } }
 };
 
 function buildEnemyModel(type){
@@ -1125,17 +1371,27 @@ function buildEnemyModel(type){
   const armR  = mk(0.15,0.55,0.17, bodyMat,  0.33,1.12,0.02);
   const head  = mk(0.26,0.28,0.26, MAT.enemyHead, 0,1.61,0);
   const helm  = mk(0.31,0.14,0.31, MAT.enemyVest, 0,1.72,0);
-  const gun   = mk(0.09,0.10,0.62, MAT.gunDark, 0.28,1.13,-0.34);
+
+  // arma real nas mãos, em escala de mundo (não é alvo de raycast:
+  // o tiro atravessa a arma e atinge quem está atrás dela)
+  const gun = buildEnemyWeapon(t.weapon, t.wLen);
+  gun.position.set(0.20, 1.15, -t.wLen * 0.30);
+  gun.rotation.y = -0.06;
+  g.add(gun);
+
+  // ponto na boca do cano, usado para o traçante e o clarão do disparo
+  const muzzle = new THREE.Object3D();
+  muzzle.position.set(0.20, 1.15, -t.wLen * 0.30 - t.wLen / 2);
+  g.add(muzzle);
 
   // marcação para o raycast saber o que foi atingido
   [legL,legR,armL,armR].forEach(m => m.userData.part = 'limb');
   [torso,vest].forEach(m => m.userData.part = 'body');
   head.userData.part = 'head';
   helm.userData.part = 'head';
-  gun.userData.part  = null;
 
   g.scale.setScalar(t.scale);
-  return { group:g, bodyMat, parts:{ legL, legR, armL, armR, torso, head, helm, gun, vest } };
+  return { group:g, bodyMat, parts:{ legL, legR, armL, armR, torso, head, helm, vest }, gun, muzzle };
 }
 
 /* barra de vida flutuante */
@@ -1166,12 +1422,14 @@ function spawnEnemy(type, pos){
     type, cfg:t,
     group: built.group,
     parts: built.parts,
+    gun: built.gun,
+    muzzle: built.muzzle,
     bodyMat: built.bodyMat,
     hpBar: hb,
     pos: pos.clone(),
     vel: new THREE.Vector3(),
-    hp: t.hp * (1 + (stats.wave - 1) * 0.09),
-    maxHp: t.hp * (1 + (stats.wave - 1) * 0.09),
+    hp: t.hp * (1 + (stats.wave - 1) * 0.09) * DIFF().hp,
+    maxHp: t.hp * (1 + (stats.wave - 1) * 0.09) * DIFF().hp,
     radius: 0.42,
     height: 1.78 * t.scale,
     yaw: 0,
@@ -1190,7 +1448,7 @@ function spawnEnemy(type, pos){
     deathT: 0,
     walkT: rand(0, 6),
     damageFlash: 0,
-    alertDelay: rand(0.15, 0.7)
+    alertDelay: rand(DIFF().alert[0], DIFF().alert[1])
   };
 
   e.group.position.copy(pos);
@@ -1278,7 +1536,7 @@ function updateWave(dt){
 
   if (wave.toSpawn > 0){
     wave.spawnCd -= dt;
-    const concurrent = Math.min(3 + Math.floor(stats.wave * 0.7), 11);
+    const concurrent = clamp(3 + Math.floor(stats.wave * 0.7) + DIFF().conc, 2, 12);
     if (wave.spawnCd <= 0 && enemies.filter(e=>!e.dead).length < concurrent){
       spawnEnemy(waveComposition(stats.wave), pickSpawn());
       wave.toSpawn--;
@@ -1470,7 +1728,7 @@ function tryShoot(){
     gunFlash.rotation.z = Math.random() * TAU;
     gunFlash.scale.setScalar(rand(0.8, 1.35));
     Audio_.shot(w.sound);
-    shake(w.id === 'shotgun' ? 0.16 : 0.055, 0.09);
+    shake(w.id === 'm870' ? 0.16 : (w.id === 'awm' ? 0.24 : 0.055), 0.09);
     if (w.mag === 0) flashReloadHint();
     updateAmmoHUD();
   }
@@ -1523,7 +1781,7 @@ function fireBullet(w){
 
         // queda de dano com a distância
         const dist = h.distance;
-        if (w.id === 'shotgun') dmg *= clamp(1 - dist/38, 0.28, 1);
+        if (w.id === 'm870') dmg *= clamp(1 - dist/38, 0.28, 1);
         else if (dist > 45)     dmg *= clamp(1 - (dist-45)/220, 0.55, 1);
 
         let acc = hitMap.get(e);
@@ -1586,8 +1844,8 @@ function damageEnemy(e, dmg, isHead, point){
     if (stats.streak > stats.bestStreak) stats.bestStreak = stats.streak;
     if (isHead) stats.headshots++;
 
-    const base = e.cfg.score;
-    const pts  = isHead ? Math.round(base * 1.5) : base;
+    const base = e.cfg.score * DIFF().score;      // dificuldade maior paga mais
+    const pts  = Math.round(isHead ? base * 1.5 : base);
     stats.score += pts;
 
     addKillfeed((isHead ? 'HEADSHOT ' : '') + enemyLabel(e.type) + '  +' + pts, isHead);
@@ -1700,6 +1958,7 @@ function playerDeath(){
   player.alive = false;
   gameState = STATE.DEAD;
   mouseDown = false;
+  $('scope').style.opacity = '0';   // updateViewmodel para de rodar ao morrer
   if (document.pointerLockElement) document.exitPointerLock();
 
   const best = Math.max(Number(localStorage.getItem('blackout_best') || 0), stats.score);
@@ -1750,7 +2009,7 @@ function updateHUD(){
   magEl.classList.toggle('low', w.mag <= Math.ceil(w.magMax * 0.25));
   document.querySelector('#ammo .res').textContent = ' / ' + w.reserve;
   $('weapon-name').textContent = w.name;
-  $('fire-mode').textContent = w.mode + '   ✚ ' + player.grenades;
+  $('fire-mode').textContent = w.mode + ' · ' + w.cal + '   ✚ ' + player.grenades;
 
   // lista de armas
   const wl = $('weapons');
@@ -1761,7 +2020,7 @@ function updateHUD(){
   });
   wl.innerHTML = html;
 
-  $('wave-txt').textContent = 'ONDA ' + stats.wave;
+  $('wave-txt').textContent = 'ONDA ' + stats.wave + ' · ' + DIFF().name;
   const left = enemies.filter(e => !e.dead).length + wave.toSpawn;
   $('enemies-left').textContent = left;
   $('score-val').textContent = stats.score.toLocaleString('pt-BR');
@@ -1865,8 +2124,11 @@ function updateCrosshair(){
   chB.style.top    = ( gap) + 'px';
   chL.style.left   = (-gap - 9) + 'px';
   chR.style.left   = ( gap) + 'px';
-  const hide = player.adsAmount > 0.7 && w.id !== 'shotgun';
+  // com luneta a mira da tela some por completo (a retícula fica na óptica)
+  const scoped = !!w.scope && player.adsAmount > 0.55;
+  const hide = scoped || (player.adsAmount > 0.7 && w.id !== 'm870');
   [chT,chB,chL,chR].forEach(e => e.style.opacity = hide ? '0' : '1');
+  $('ch-dot').style.opacity = scoped ? '0' : '1';
 }
 
 /* --- minimapa --- */
@@ -1962,6 +2224,7 @@ function enemyShoot(e){
   if (!player.grounded) chance *= 0.85;
   // Rampa de dificuldade: as primeiras ondas ensinam, as últimas punem.
   chance *= 0.45 + Math.min(stats.wave, 10) * 0.055;
+  chance *= DIFF().hit;                                           // nível de dificuldade
   const willHit = Math.random() < clamp(chance, 0.03, 0.9);
 
   // traçante: mira certeira no acerto, desviada no erro
@@ -1971,14 +2234,18 @@ function enemyShoot(e){
     dir.x += rand(-miss, miss); dir.y += rand(-miss, miss); dir.z += rand(-miss, miss);
     dir.normalize();
   }
-  addTracer(_eyePos, _eyePos.clone().addScaledVector(dir, dist), 0xff8844);
-  Audio_.shot({ gain:0.11, cut:3600, low:120, dur:0.16, rate:1.05 });
+
+  // sai da boca do cano da arma que ele carrega, não do meio do peito
+  const from = e.muzzle ? e.muzzle.getWorldPosition(new THREE.Vector3()) : _eyePos.clone();
+  addTracer(from, from.clone().addScaledVector(dir, dist), 0xff8844);
+  addParticles(from, 0xffcc70, 2, 3.5, 2, 0.5);                   // clarão do disparo
+  Audio_.shot(e.cfg.sound);                                       // cada arma soa diferente
 
   if (willHit){
     const falloff = clamp(1 - Math.max(0, dist - e.cfg.range*0.6) / e.cfg.range, 0.45, 1);
-    damagePlayer(e.cfg.dmg * falloff * (1 + (stats.wave-1)*0.035), e.pos);
+    damagePlayer(e.cfg.dmg * falloff * (1 + (stats.wave-1)*0.035) * DIFF().dmg, e.pos);
   } else {
-    addParticles(_eyePos.clone().addScaledVector(dir, dist + 1.5), 0xbbbbaa, 2, 2.5, 8, 0.4);
+    addParticles(from.clone().addScaledVector(dir, dist + 1.5), 0xbbbbaa, 2, 2.5, 8, 0.4);
   }
 }
 
@@ -2313,8 +2580,13 @@ let swayX = 0, swayY = 0, lastYaw = 0, lastPitch = 0;
 function updateViewmodel(dt, hspeed){
   const w = weapons[curW];
 
-  // mostra só a arma atual
-  WEAPONS.forEach(ww => { gunModels[ww.id].visible = (ww.id === w.id); });
+  // Com a luneta aberta o modelo da arma some e a sobreposição toma a tela.
+  const scoped = !!w.scope && player.adsAmount > 0.55;
+  WEAPONS.forEach(ww => { gunModels[ww.id].visible = (ww.id === w.id) && !scoped; });
+  $('scope').style.opacity = scoped ? '1' : '0';
+
+  // o clarão fica na boca do cano da arma atual (elas têm comprimentos diferentes)
+  gunFlash.position.set(0, 0.01, -(gunModels[w.id].userData.len || 0.6) / 2 - 0.03);
 
   // sway pelo movimento do mouse
   const dYaw   = player.yaw - lastYaw;
@@ -2480,6 +2752,9 @@ window.__blackout = {
   get state(){ return gameState; },
   get enemies(){ return enemies.filter(e => !e.dead).length; },
   get fxCount(){ return fx.tracers.length + fx.decals.length + fx.particles.length; },
+  get fov(){ return camera.fov; },
+  get weapon(){ const w = weapons[curW]; return w && { id:w.id, name:w.name, mag:w.mag, scope:!!w.scope }; },
+  get difficulty(){ return settings.difficulty; },
   get aim(){ return { yaw:player.yaw, pitch:player.pitch,
                       x:player.pos.x, y:player.pos.y, z:player.pos.z }; },
   get enemyInfo(){
@@ -2571,6 +2846,7 @@ function resetGame(){
 
   Object.assign(wave, { active:false, toSpawn:0, alive:0, spawnCd:0, breakT:0, inBreak:false });
   $('vignette').style.opacity = '0';
+  $('scope').style.opacity = '0';
   clockT = 0;
   mouseDown = rightDown = false; shotLatch = false;
 }
@@ -2596,6 +2872,7 @@ function pauseGame(){
   if (gameState !== STATE.PLAYING) return;
   gameState = STATE.PAUSED;
   mouseDown = rightDown = false;
+  $('scope').style.opacity = '0';
   if (document.pointerLockElement) document.exitPointerLock();
   $('pause').classList.remove('hidden');
   $('touch').classList.add('hidden');
@@ -2641,6 +2918,7 @@ function loadSettings(){
     const s = JSON.parse(localStorage.getItem('blackout_settings') || '{}');
     Object.assign(settings, s);
   }catch(e){ /* ignora config corrompida */ }
+  if (!DIFFICULTIES.some(d => d.id === settings.difficulty)) settings.difficulty = 'veterano';
   $('set-sens').value   = Math.round(settings.sens * 100);
   $('set-fov').value    = settings.fov;
   $('set-vol').value    = Math.round(settings.volume * 100);
@@ -2655,7 +2933,28 @@ function reflectSettings(){
   $('sens-val').textContent = settings.sens.toFixed(2);
   $('fov-val').textContent  = settings.fov;
   $('vol-val').textContent  = Math.round(settings.volume * 100);
+  const d = DIFF();
+  document.querySelectorAll('.diff').forEach(b => {
+    b.classList.toggle('on', b.dataset.diff === settings.difficulty);
+  });
+  $('diff-desc').textContent = d.desc;
+  $('pause-diff').textContent = d.name;
 }
+
+document.querySelectorAll('.diff').forEach(b => {
+  b.addEventListener('click', () => {
+    settings.difficulty = b.dataset.diff;
+    reflectSettings();
+    saveSettings();
+    Audio_.init(); Audio_.switchW();
+  });
+  // mostra a descrição ao passar o mouse, sem trocar a seleção
+  b.addEventListener('mouseenter', () => {
+    const d = DIFFICULTIES.find(x => x.id === b.dataset.diff);
+    if (d) $('diff-desc').textContent = d.desc;
+  });
+  b.addEventListener('mouseleave', () => { $('diff-desc').textContent = DIFF().desc; });
+});
 $('set-sens').addEventListener('input', e => { settings.sens = e.target.value/100; reflectSettings(); saveSettings(); });
 $('set-fov').addEventListener('input',  e => { settings.fov = +e.target.value; reflectSettings(); saveSettings(); });
 $('set-vol').addEventListener('input',  e => { settings.volume = e.target.value/100; Audio_.setVolume(settings.volume); reflectSettings(); saveSettings(); });
@@ -2674,7 +2973,9 @@ addEventListener('resize', () => {
 addEventListener('blur', () => { if (gameState === STATE.PLAYING) pauseGame(); });
 
 function enemyLabel(t){
-  return { grunt:'SOLDADO', runner:'BATEDOR', heavy:'BLINDADO', sniper:'ATIRADOR' }[t] || 'INIMIGO';
+  const nome = { grunt:'SOLDADO', runner:'BATEDOR', heavy:'BLINDADO', sniper:'ATIRADOR' }[t] || 'INIMIGO';
+  const arma = ENEMY_TYPES[t] && ENEMY_TYPES[t].wName;
+  return arma ? nome + ' · ' + arma : nome;
 }
 
 /* ---------------------------------------------------------------
