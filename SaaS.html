@@ -350,7 +350,7 @@ function volMWh(c){ return c.volAjMWh||c.volPrevMWh; }
 // ── State ────────────────────────────────────────────────────────────────
 var STATE = { contracts: [], tab: 'dashboard' };
 var FIN_FILTER = '';
-var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['mtm','MtM Contrapartes'],['financeiro','Financeiro'],['config','Configurações']];
+var NAV = [['dashboard','Dashboard'],['alertas','Alertas & Recomendações'],['proposta','Criação de Proposta'],['contratos','Contratos'],['portfolio','Portfólio'],['forward','Curva Forward'],['mtm','MtM Contrapartes'],['financeiro','Financeiro'],['config','Configurações']];
 var MARKET_PRICE = null;
 function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\b(sa|ltda|me|epp|eireli|energia|comercializadora|geracao)\b/g,'').replace(/[^a-z0-9]/g,''); }
 function onlyDigits(s){ return (s||'').replace(/\D/g,''); }
@@ -955,6 +955,57 @@ function viewPortfolio(){
   h+='<div class="section-header"><span class="section-title">Posição Mensal por Fonte de Energia e Submercado</span></div>';
   h+=matrixTable('fonte','Fonte de Energia')+matrixTable('submercado','Submercado');
   return h;
+}
+
+var FW_FONTE=''; var FW_SUB=''; var FW_SEARCH='';
+function hoursInMonth(y,m){ return (new Date(y,m+1,0).getDate())*24; }
+function viewForward(){
+  var csAll=STATE.contracts;
+  var cs=csAll.filter(function(c){ return matchesSearch(c,FW_SEARCH)&&(!FW_FONTE||c.fonte===FW_FONTE)&&(!FW_SUB||c.submercado===FW_SUB); });
+  var fontes=[],subs=[]; csAll.forEach(function(c){ if(c.fonte&&fontes.indexOf(c.fonte)<0)fontes.push(c.fonte); if(c.submercado&&subs.indexOf(c.submercado)<0)subs.push(c.submercado); }); fontes.sort(); subs.sort();
+  var min=null,max=null; cs.forEach(function(c){ if(c.inicioForn&&(!min||c.inicioForn<min))min=c.inicioForn; if(c.fimForn&&(!max||c.fimForn>max))max=c.fimForn; });
+  var months=[]; if(min&&max){ var d=new Date(min.getFullYear(),min.getMonth(),1),end=new Date(max.getFullYear(),max.getMonth(),1),g=0; while(d<=end&&g<72){ months.push(new Date(d)); d.setMonth(d.getMonth()+1); g++; } }
+  var h='<div class="section-header"><span class="section-title">Curva Forward — Preço Médio Ponderado</span></div>';
+  h+='<div class="card" style="margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Fonte</span><select id="fwFonte" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px"><option value="">Todas</option>'+fontes.map(function(f){return '<option value="'+esc(f)+'"'+(FW_FONTE===f?' selected':'')+'>'+esc(f)+'</option>';}).join('')+'</select></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px"><span class="ficha-label">Submercado</span><select id="fwSub" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px"><option value="">Todos</option>'+subs.map(function(s){return '<option value="'+esc(s)+'"'+(FW_SUB===s?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select></label>'+
+    '<label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px"><span class="ficha-label">Buscar</span><input type="text" id="fwSearch" value="'+esc(FW_SEARCH)+'" placeholder="Pesquisa rápida" style="background:#0f1117;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:7px 9px;font-size:12px;width:100%"></label>'+
+    (FW_FONTE||FW_SUB||FW_SEARCH?'<button class="btn btn-ghost" id="fwClear">Limpar filtros</button>':'')+
+    '<span style="color:#64748b;font-size:11px">'+cs.length+' contrato(s)</span></div>';
+  if(!months.length){ return h+'<div class="card" style="padding:20px;color:#64748b;text-align:center">Sem contratos com datas de fornecimento.</div>'; }
+  function buildTable(groupAttr,groupLabel){
+    var keys=[]; cs.forEach(function(c){ var k=c[groupAttr]||'N/D'; if(keys.indexOf(k)<0)keys.push(k); }); keys.sort();
+    var th='<div class="card" style="margin-bottom:14px"><div class="card-title">Preço Médio Ponderado por '+groupLabel+' (R$/MWh) — Compra − Venda</div><div class="table-wrap"><table><thead><tr><th>Mês</th>';
+    keys.forEach(function(k){ th+='<th title="Compra">C: '+esc(k)+'</th><th title="Venda">V: '+esc(k)+'</th><th title="Líquido">Líq: '+esc(k)+'</th>'; });
+    th+='</tr></thead><tbody>';
+    months.forEach(function(m){
+      var y=m.getFullYear(),mo=m.getMonth(),st=new Date(y,mo,1),en=new Date(y,mo+1,0),hrs=hoursInMonth(y,mo);
+      th+='<tr><td>'+m.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'})+'</td>';
+      keys.forEach(function(k){
+        var act=cs.filter(function(c){return (c[groupAttr]||'N/D')===k&&c.inicioForn&&c.fimForn&&c.inicioForn<=en&&c.fimForn>=st;});
+        var cW=0,cS=0,vW=0,vS=0;
+        act.forEach(function(c){
+          var price=c.precAj||c.precPrev||0, mwh=volMWh(c)||0, w=mwh*hrs;
+          if(isCompra(c)){ cS+=price*w; cW+=w; }
+          if(isVenda(c)){ vS+=price*w; vW+=w; }
+        });
+        var cp=cW?cS/cW:0, vp=vW?vS/vW:0, liq=cp-vp;
+        th+='<td class="td-num">'+(cW?'R$ '+fmt(cp):'—')+'</td><td class="td-num">'+(vW?'R$ '+fmt(vp):'—')+'</td><td class="td-num '+(liq>0?'pos-long':liq<0?'pos-short':'pos-zero')+'">'+(cW||vW?'R$ '+fmt(liq):'—')+'</td>';
+      });
+      th+='</tr>';
+    });
+    return th+'</tbody></table></div></div>';
+  }
+  h+='<div class="section-header"><span class="section-title">Por Fonte de Energia</span></div>'+buildTable('fonte','Fonte');
+  h+='<div class="section-header"><span class="section-title">Por Submercado</span></div>'+buildTable('submercado','Submercado');
+  return h;
+}
+function bindForward(){
+  function rerender(){ document.getElementById('viewBody').innerHTML=viewForward(); bindForward(); }
+  var f=document.getElementById('fwFonte'); if(f) f.onchange=function(){ FW_FONTE=f.value; rerender(); };
+  var s=document.getElementById('fwSub'); if(s) s.onchange=function(){ FW_SUB=s.value; rerender(); };
+  var q=document.getElementById('fwSearch'); if(q) q.oninput=function(){ FW_SEARCH=q.value; rerender(); q.focus(); };
+  var cl=document.getElementById('fwClear'); if(cl) cl.onclick=function(){ FW_FONTE=''; FW_SUB=''; FW_SEARCH=''; rerender(); };
 }
 
 function viewPosicao(){
@@ -1759,6 +1810,7 @@ function renderView(){
     case 'portfolio': return viewPortfolio();
     case 'mtm': return viewMtM();
     case 'proposta': return viewProposta();
+    case 'forward': return viewForward();
     case 'financeiro': return viewFinanceiro();
     case 'config': return viewConfig();
     default: return viewDashboard();
@@ -1793,6 +1845,7 @@ function bindApp(){
   if(STATE.tab==='contratos') bindContratosTab();
   if(STATE.tab==='mtm') bindMtM();
   if(STATE.tab==='proposta') bindProposta();
+  if(STATE.tab==='forward') bindForward();
   if(STATE.tab==='financeiro') bindFinanceiro();
   if(STATE.tab==='config') bindConfig();
   if(STATE.tab==='dashboard') bindDashboard();
