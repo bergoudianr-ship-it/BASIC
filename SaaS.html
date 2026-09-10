@@ -962,35 +962,31 @@ var FW_CHART_FONTE=''; var FW_CHART_SUB='';
 function hoursInMonth(y,m){ return (new Date(y,m+1,0).getDate())*24; }
 function loadFwCurve(){ try{ return JSON.parse(localStorage.getItem('saas_fw_curve')||'{}'); }catch(e){ return {}; } }
 function saveFwCurve(d){ try{ localStorage.setItem('saas_fw_curve',JSON.stringify(d)); }catch(e){} }
-function fwPrice(sub,fonte,mk){
-  var saved=loadFwCurve(); var key=sub+'|'+fonte+'|'+mk;
-  if(saved[key]!=null&&saved[key]!=='') return +saved[key];
-  var M=loadMtM(); var cp=curvePrice(M,sub,fonte,mk);
-  if(cp!=null) return cp;
-  var c2=convPrice(M,sub,mk);
-  if(c2!=null){
-    if(isConvencional(fonte)) return c2;
-    var so=M.spread[fonte]; var sp=(so&&so[mk]!=null&&so[mk]!=='')?+so[mk]:0;
-    return c2+sp;
-  }
-  return null;
-}
 function fwMonthSpan(cs){
   var min=null,max=null; cs.forEach(function(c){ if(c.inicioForn&&(!min||c.inicioForn<min))min=c.inicioForn; if(c.fimForn&&(!max||c.fimForn>max))max=c.fimForn; });
   var months=[]; if(min&&max){ var d=new Date(min.getFullYear(),min.getMonth(),1),end=new Date(max.getFullYear(),max.getMonth(),1),g=0; while(d<=end&&g<72){ months.push(new Date(d)); d.setMonth(d.getMonth()+1); g++; } }
   return months;
 }
+function fwContractPrice(c,mk){
+  var saved=loadFwCurve(); var key=(c.submercado||'N/D')+'|'+(c.fonte||'N/D')+'|'+mk;
+  if(saved[key]!=null&&saved[key]!=='') return +saved[key];
+  var basePrice=c.precAj||c.precPrev||0;
+  if(!isConvencional(c.fonte)){
+    var M=loadMtM(); var so=M.spread[c.fonte];
+    var sp=(so&&so[mk]!=null&&so[mk]!=='')?+so[mk]:0;
+    basePrice+=sp;
+  }
+  return basePrice;
+}
 function fwCalcData(cs,months){
-  var rows=[]; var saved=loadFwCurve();
+  var rows=[];
   months.forEach(function(m){
     var y=m.getFullYear(),mo=m.getMonth(),st=new Date(y,mo,1),en=new Date(y,mo+1,0),hrs=hoursInMonth(y,mo),mk=mKey(m);
     var fontesMap={},subsMap={};
     cs.forEach(function(c){
       if(!c.inicioForn||!c.fimForn||c.inicioForn>en||c.fimForn<st) return;
       var f=c.fonte||'N/D', s=c.submercado||'N/D';
-      var key=s+'|'+f+'|'+mk;
-      var price=(saved[key]!=null&&saved[key]!=='')?+saved[key]:fwPrice(s,f,mk);
-      if(price==null) price=c.precAj||c.precPrev||0;
+      var price=fwContractPrice(c,mk);
       var mwh=volMWh(c)||0, w=mwh*hrs;
       function addTo(map,k){ if(!map[k])map[k]={cW:0,cS:0,vW:0,vS:0}; if(isCompra(c)){map[k].cS+=price*w;map[k].cW+=w;} if(isVenda(c)){map[k].vS+=price*w;map[k].vW+=w;} }
       addTo(fontesMap,f); addTo(subsMap,s);
@@ -1067,10 +1063,10 @@ function viewForward(){
        '<span style="color:#fcd34d;font-size:12px;font-weight:600">Modo edição ativo — altere os preços e clique Salvar</span>';
   } else {
     h+='<button class="btn btn-ghost" id="fwEdit" style="font-weight:600">✏️ Editar Preços</button>'+
-       '<span style="color:#97a3b6;font-size:11px">Preços bloqueados. Clique Editar para alterar. Fontes não-convencionais = convencional + spread.</span>';
+       (Object.keys(loadFwCurve()).length?'<button class="btn btn-ghost" id="fwResetOverrides" style="color:#f59e0b;border-color:#5c4a10;font-size:11px">Limpar overrides manuais</button>':'')+
+       '<span style="color:#97a3b6;font-size:11px">Média ponderada automática dos contratos. Editar = override manual para casos excepcionais.</span>';
   }
   h+='</div>';
-  var saved=loadFwCurve();
   function priceTable(groupAttr,groupLabel){
     var keys=[]; cs.forEach(function(c){ var k=c[groupAttr]||'N/D'; if(keys.indexOf(k)<0)keys.push(k); }); keys.sort();
     var th='<div class="card" style="margin-bottom:14px"><div class="card-title">Preço Médio Ponderado por '+groupLabel+' (R$/MWh)</div><div class="table-wrap"><table><thead><tr><th>Mês</th>';
@@ -1083,10 +1079,7 @@ function viewForward(){
         var act=cs.filter(function(c){return (c[groupAttr]||'N/D')===k&&c.inicioForn&&c.fimForn&&c.inicioForn<=en&&c.fimForn>=st;});
         var cW=0,cS=0,vW=0,vS=0;
         act.forEach(function(c){
-          var sub=c.submercado||'N/D', fonte=c.fonte||'N/D';
-          var skey=sub+'|'+fonte+'|'+mk;
-          var price=(saved[skey]!=null&&saved[skey]!=='')?+saved[skey]:fwPrice(sub,fonte,mk);
-          if(price==null) price=c.precAj||c.precPrev||0;
+          var price=fwContractPrice(c,mk);
           var mwh=volMWh(c)||0, w=mwh*hrs;
           if(isCompra(c)){ cS+=price*w; cW+=w; }
           if(isVenda(c)){ vS+=price*w; vW+=w; }
@@ -1118,6 +1111,7 @@ function bindForward(){
   var cs2=document.getElementById('fwChartSub'); if(cs2) cs2.onchange=function(){ FW_CHART_SUB=cs2.value; rerender(); };
   var ed=document.getElementById('fwEdit'); if(ed) ed.onclick=function(){ FW_EDITING=true; rerender(); };
   var cn=document.getElementById('fwCancel'); if(cn) cn.onclick=function(){ FW_EDITING=false; rerender(); };
+  var rst=document.getElementById('fwResetOverrides'); if(rst) rst.onclick=function(){ if(confirm('Limpar todos os preços editados manualmente? A curva voltará a calcular automaticamente pelos contratos.')){ saveFwCurve({}); rerender(); } };
   var sv=document.getElementById('fwSave'); if(sv) sv.onclick=function(){
     var saved=loadFwCurve();
     Array.prototype.forEach.call(document.querySelectorAll('.fw-inp'),function(inp){
