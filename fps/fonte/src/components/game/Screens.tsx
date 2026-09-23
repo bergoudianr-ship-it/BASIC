@@ -2,6 +2,7 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { useUI } from '@/game/bridge'
 import { useEngine } from './engine-context'
+import { Choice } from './Choice'
 
 export function Loading() {
   return (
@@ -37,6 +38,12 @@ export function PauseMenu() {
         <h3>CONFIGURAÇÕES</h3>
         <div className="setting"><span>Mapa</span><b>{map?.name}</b></div>
         <div className="setting"><span>Dificuldade dos inimigos</span><b>{diff?.name}</b></div>
+        <Choice label="QUALIDADE GRÁFICA" value={s.quality} onChange={v => api.setSetting('quality', v as 'alta' | 'media' | 'baixa')}
+          options={[
+            { value: 'alta', label: 'ALTA', hint: 'Oclusão de ambiente, bloom, gradação de cor e SMAA' },
+            { value: 'media', label: 'MÉDIA', hint: 'Bloom e gradação de cor' },
+            { value: 'baixa', label: 'BAIXA', hint: 'Sem pós-processamento (máquinas fracas)' },
+          ]} />
         <SliderRow id="set-sens" label="Sensibilidade do mouse" min={0.2} max={3} step={0.01}
           value={s.sens} shown={s.sens.toFixed(2)} onChange={v => api.setSetting('sens', v)} />
         <SliderRow id="set-fov" label="Campo de visão (FOV)" min={65} max={110} step={1}

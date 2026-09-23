@@ -74,6 +74,7 @@ export interface Profile { classes: LoadoutClass[]; cls: number; op: string; kil
 export interface Settings {
   sens: number; fov: number; volume: number; invertY: boolean; bob: boolean
   difficulty: string; map: string; mode: 'sobrevivencia' | 'tdm'; limit: number
+  quality: 'alta' | 'media' | 'baixa'
 }
 
 export interface WeaponStats { dano: number; cad: number; alc: number; mob: number }

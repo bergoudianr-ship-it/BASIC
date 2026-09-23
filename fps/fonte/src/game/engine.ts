@@ -3,6 +3,7 @@
    (bridge.ts): os ~4.000 linhas internas seguem sem checagem de tipos. */
 import * as THREE from 'three';
 import type { Bridge, EngineAPI } from './bridge';
+import { upgradeMaterials, skyEnvironment, createPost } from './graphics';
 
 export function bootEngine(bridge: Bridge): EngineAPI {
 
@@ -37,7 +38,8 @@ const settings = {
   difficulty: 'veterano',
   map: 'ferrovelho',
   mode: 'sobrevivencia',   // sobrevivencia | tdm
-  limit: 0                 // limite de abates no mata-mata (0 = sem limite)
+  limit: 0,                // limite de abates no mata-mata (0 = sem limite)
+  quality: 'alta'          // alta | media | baixa (pós-processamento)
 };
 
 /* Três níveis de dificuldade. Mexem em quanto o inimigo acerta, quanto dói,
@@ -97,8 +99,9 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.near = 1;
 sun.shadow.camera.far  = 190;
-sun.shadow.camera.left = -70; sun.shadow.camera.right = 70;
-sun.shadow.camera.top  =  70; sun.shadow.camera.bottom = -70;
+sun.shadow.camera.left = -42; sun.shadow.camera.right = 42;
+sun.shadow.camera.top  =  42; sun.shadow.camera.bottom = -42;
+sun.shadow.normalBias = 0.04;
 sun.shadow.bias = -0.0012;
 scene.add(sun);
 scene.add(sun.target);
@@ -135,6 +138,7 @@ const ATMOS = {
   saguao:    { zen:0x86a0bd, hor:0xdfe2e4, sun:0xfff3dc, dir:[-0.45,0.55,0.5], sunI:0.95,
                hemi:[0xc9d2dc, 0x4c4a44, 0.5], fog:0xc8ced4, fogR:[40,150], mark:'cidade' }
 };
+const post = createPost(renderer, scene, camera, gunScene, gunCamera, () => gameState === STATE.PLAYING, 0.78);
 function applyAtmos(id){
   const a = ATMOS[id] || ATMOS.ferrovelho;
   skyUni.zen.value.setHex(a.zen); skyUni.hor.value.setHex(a.hor); skyUni.sunC.value.setHex(a.sun);
@@ -144,6 +148,9 @@ function applyAtmos(id){
   hemi.color.setHex(a.hemi[0]); hemi.groundColor.setHex(a.hemi[1]); hemi.intensity = a.hemi[2];
   scene.background.setHex(a.fog);
   scene.fog.color.setHex(a.fog); scene.fog.near = a.fogR[0]; scene.fog.far = a.fogR[1];
+  hemi.intensity = a.hemi[2] * 0.55;          // o IBL do céu já fornece parte da luz ambiente
+  scene.environment = skyEnvironment(renderer, skyUni.zen.value, skyUni.hor.value, skyUni.sunC.value, skyUni.sunD.value);
+  gunScene.environment = scene.environment;
 }
 
 /* ---------------------------------------------------------------
@@ -268,40 +275,41 @@ const Audio_ = {
    4. Materiais e geometrias compartilhados
    --------------------------------------------------------------- */
 const MAT = {
-  ground:   new THREE.MeshLambertMaterial({ color:0x3c4438 }),
-  road:     new THREE.MeshLambertMaterial({ color:0x2b2f33 }),
-  wall:     new THREE.MeshLambertMaterial({ color:0x6c6a60 }),
-  wallDark: new THREE.MeshLambertMaterial({ color:0x4f4d46 }),
-  crate:    new THREE.MeshLambertMaterial({ color:0x7a5c33 }),
-  metal:    new THREE.MeshLambertMaterial({ color:0x555c60 }),
-  barrel:   new THREE.MeshLambertMaterial({ color:0x8a3a2a }),
-  sandbag:  new THREE.MeshLambertMaterial({ color:0x8d8259 }),
-  concrete: new THREE.MeshLambertMaterial({ color:0x8b8b83 }),
-  enemyBody:new THREE.MeshLambertMaterial({ color:0x4a5240 }),
-  enemyHead:new THREE.MeshLambertMaterial({ color:0x9c7c58 }),
-  enemyVest:new THREE.MeshLambertMaterial({ color:0x2c3126 }),
-  gunDark:  new THREE.MeshLambertMaterial({ color:0x24262a }),
-  gunMid:   new THREE.MeshLambertMaterial({ color:0x3a3d42 }),
-  gunWood:  new THREE.MeshLambertMaterial({ color:0x5c3f24 }),
-  hands:    new THREE.MeshLambertMaterial({ color:0x6b5138 }),
-  sleeve:   new THREE.MeshLambertMaterial({ color:0x6f6a4e }),
+  ground:   new THREE.MeshStandardMaterial({ color:0x3c4438 }),
+  road:     new THREE.MeshStandardMaterial({ color:0x2b2f33 }),
+  wall:     new THREE.MeshStandardMaterial({ color:0x6c6a60 }),
+  wallDark: new THREE.MeshStandardMaterial({ color:0x4f4d46 }),
+  crate:    new THREE.MeshStandardMaterial({ color:0x7a5c33 }),
+  metal:    new THREE.MeshStandardMaterial({ color:0x555c60 }),
+  barrel:   new THREE.MeshStandardMaterial({ color:0x8a3a2a }),
+  sandbag:  new THREE.MeshStandardMaterial({ color:0x8d8259 }),
+  concrete: new THREE.MeshStandardMaterial({ color:0x8b8b83 }),
+  enemyBody:new THREE.MeshStandardMaterial({ color:0x4a5240 }),
+  enemyHead:new THREE.MeshStandardMaterial({ color:0x9c7c58 }),
+  enemyVest:new THREE.MeshStandardMaterial({ color:0x2c3126 }),
+  gunDark:  new THREE.MeshStandardMaterial({ color:0x24262a }),
+  gunMid:   new THREE.MeshStandardMaterial({ color:0x3a3d42 }),
+  gunWood:  new THREE.MeshStandardMaterial({ color:0x5c3f24 }),
+  hands:    new THREE.MeshStandardMaterial({ color:0x6b5138 }),
+  sleeve:   new THREE.MeshStandardMaterial({ color:0x6f6a4e }),
   // materiais de armamento
-  gBlack:   new THREE.MeshLambertMaterial({ color:0x1c1e22 }),
-  gSteel:   new THREE.MeshLambertMaterial({ color:0x44484e }),
-  gWood:    new THREE.MeshLambertMaterial({ color:0x6b4726 }),
-  gWoodL:   new THREE.MeshLambertMaterial({ color:0x855c33 }),
-  gPoly:    new THREE.MeshLambertMaterial({ color:0x4c5145 }),
-  gScope:   new THREE.MeshLambertMaterial({ color:0x141619 }),
-  gGlass:   new THREE.MeshLambertMaterial({ color:0x2f5a6b }),
+  gBlack:   new THREE.MeshStandardMaterial({ color:0x1c1e22 }),
+  gSteel:   new THREE.MeshStandardMaterial({ color:0x44484e }),
+  gWood:    new THREE.MeshStandardMaterial({ color:0x6b4726 }),
+  gWoodL:   new THREE.MeshStandardMaterial({ color:0x855c33 }),
+  gPoly:    new THREE.MeshStandardMaterial({ color:0x4c5145 }),
+  gScope:   new THREE.MeshStandardMaterial({ color:0x141619 }),
+  gGlass:   new THREE.MeshStandardMaterial({ color:0x2f5a6b }),
   // superfícies e contêineres dos mapas
-  contA:    new THREE.MeshLambertMaterial({ color:0x8a4a3a }),
-  contB:    new THREE.MeshLambertMaterial({ color:0x3f6272 }),
-  contC:    new THREE.MeshLambertMaterial({ color:0x6d7a4a }),
-  groundDry:new THREE.MeshLambertMaterial({ color:0x8a7b5c }),
-  roadDust: new THREE.MeshLambertMaterial({ color:0x9a8c6b }),
-  floorTile:new THREE.MeshLambertMaterial({ color:0x585d63 }),
-  floorHall:new THREE.MeshLambertMaterial({ color:0x71777e })
+  contA:    new THREE.MeshStandardMaterial({ color:0x8a4a3a }),
+  contB:    new THREE.MeshStandardMaterial({ color:0x3f6272 }),
+  contC:    new THREE.MeshStandardMaterial({ color:0x6d7a4a }),
+  groundDry:new THREE.MeshStandardMaterial({ color:0x8a7b5c }),
+  roadDust: new THREE.MeshStandardMaterial({ color:0x9a8c6b }),
+  floorTile:new THREE.MeshStandardMaterial({ color:0x585d63 }),
+  floorHall:new THREE.MeshStandardMaterial({ color:0x71777e })
 };
+upgradeMaterials(MAT);                // PBR procedural (graphics.ts)
 const BOX = new THREE.BoxGeometry(1,1,1);
 const CYL = new THREE.CylinderGeometry(1,1,1,10);   // unitário no eixo Y
 
@@ -1346,7 +1354,7 @@ function buildEnemyModel(type, team){
   const g = new THREE.Group();
   const ally = team === 'A';
   const op = ally ? (OPERATORS.find(o => o.id === profile.op) || OPERATORS[0]) : null;
-  const bodyMat = new THREE.MeshLambertMaterial({ color: ally ? op.uni : t.color });
+  const bodyMat = new THREE.MeshStandardMaterial({ color: ally ? op.uni : t.color });
   const mk = (w,h,d,mat,x,y,z) => {
     const m = new THREE.Mesh(BOX, mat);
     m.scale.set(w,h,d);
@@ -1591,7 +1599,7 @@ const camoMats = {};
 function camoMat(c){
   if (!camoMats[c.id]) camoMats[c.id] = c.gold
     ? new THREE.MeshPhongMaterial({ color:c.color, specular:0xfff0b0, shininess:70, emissive:0x2a1c00 })
-    : new THREE.MeshLambertMaterial({ color:c.color });
+    : new THREE.MeshStandardMaterial({ color:c.color });
   return camoMats[c.id];
 }
 function applyCosmetics(){
@@ -1657,7 +1665,7 @@ function buildOperatorPreview(){
   }
   if (opPrev.model) opPrev.scene.remove(opPrev.model);
   const o = OPERATORS.find(x => x.id === profile.op) || OPERATORS[0];
-  const g = new THREE.Group(), L = c => new THREE.MeshLambertMaterial({ color:c });
+  const g = new THREE.Group(), L = c => new THREE.MeshStandardMaterial({ color:c });
   const mk = (w,h,d,m,x,y,z) => { const b = new THREE.Mesh(BOX, m); b.scale.set(w,h,d); b.position.set(x,y,z); g.add(b); return b; };
   const uni = L(o.uni), vest = L(o.vest);
   mk(0.20,0.80,0.22, uni,-0.13,0.40,0); mk(0.20,0.80,0.22, uni, 0.13,0.40,0);
@@ -1845,7 +1853,7 @@ function clearSmokes(){ smokes.length = 0; for (let i = ambientEmitters.length-1
    e fogo contam que o lugar está em combate há horas. */
 function addWorld(o){ o.userData.ownGeo = true; scene.add(o); worldMeshes.push(o); return o; }
 function buildLandmark(kind){
-  const haze = new THREE.MeshLambertMaterial({ color:0x6a7078 });
+  const haze = new THREE.MeshStandardMaterial({ color:0x6a7078 });
   if (kind === 'torre-resfriamento'){
     const pts = []; for (let i=0;i<=12;i++){ const t=i/12; pts.push(new THREE.Vector2(16 - 7*Math.sin(t*Math.PI*0.9), t*48)); }
     [[-92,-118],[-60,-132]].forEach(([x,z],i) => {
@@ -1855,7 +1863,7 @@ function buildLandmark(kind){
     });
   } else if (kind === 'mesas'){
     [[-85,-90,34,30],[70,-100,28,40],[110,20,40,24],[-110,40,30,34]].forEach(([x,z,r,h]) => {
-      const m = addWorld(new THREE.Mesh(new THREE.CylinderGeometry(r*0.7, r, h, 9), new THREE.MeshLambertMaterial({ color:0xa5835a })));
+      const m = addWorld(new THREE.Mesh(new THREE.CylinderGeometry(r*0.7, r, h, 9), new THREE.MeshStandardMaterial({ color:0xa5835a })));
       m.position.set(x, h/2, z);
     });
   } else {
@@ -1934,8 +1942,8 @@ function callUAV(){
 }
 function buildHeli(){
   const g = new THREE.Group();
-  const body = new THREE.MeshLambertMaterial({ color:0x4b5140 }), dark = new THREE.MeshLambertMaterial({ color:0x22251f });
-  const glass = new THREE.MeshLambertMaterial({ color:0x6d8aa0, emissive:0x1a2530 });
+  const body = new THREE.MeshStandardMaterial({ color:0x4b5140 }), dark = new THREE.MeshStandardMaterial({ color:0x22251f });
+  const glass = new THREE.MeshStandardMaterial({ color:0x6d8aa0, emissive:0x1a2530 });
   const add = (geo, mat, x,y,z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x,y,z); m.castShadow = true; g.add(m); return m; };
   add(new THREE.BoxGeometry(1.5,1.5,4.4), body, 0,0,0);
   add(new THREE.BoxGeometry(1.2,0.9,1.4), glass, 0,0.15,-2.6);
@@ -2188,7 +2196,7 @@ function throwGrenade(tac){
   else { if (player.grenades <= 0) return; player.grenades--; }
 
   const m = new THREE.Mesh(L.sticky ? new THREE.BoxGeometry(0.16,0.07,0.12) : new THREE.SphereGeometry(0.11, 10, 8),
-                           new THREE.MeshLambertMaterial({ color:L.color }));
+                           new THREE.MeshStandardMaterial({ color:L.color }));
   m.castShadow = true;
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
@@ -3477,17 +3485,12 @@ function loop(now){
   }
 
   skyDome.position.copy(camera.position);
+  // sombra segue o jogador (câmera de sombra justa = sombras nítidas); passo de 4 m evita tremulação
+  const sx = Math.round(camera.position.x / 4) * 4, sz = Math.round(camera.position.z / 4) * 4;
+  sun.target.position.set(sx, 0, sz);
+  sun.position.copy(skyUni.sunD.value).multiplyScalar(90).add(sun.target.position);
   updateAmbientFX(Math.min(dt, 0.05));
-  renderer.clear();
-  renderer.render(scene, camera);
-
-  // arma desenhada por cima, sem limpar a cor
-  if (gameState === STATE.PLAYING){
-    renderer.autoClear = false;
-    renderer.clearDepth();
-    renderer.render(gunScene, gunCamera);
-    renderer.autoClear = true;
-  }
+  post.render(dt);
 }
 
 /* ---------------------------------------------------------------
@@ -3611,6 +3614,8 @@ function loadSettings(){
   if (!MAPS.some(m => m.id === settings.map)) settings.map = MAPS[0].id;
   if (settings.mode !== 'tdm') settings.mode = 'sobrevivencia';
   if (![0,50,100].includes(settings.limit)) settings.limit = 0;
+  if (!['alta','media','baixa'].includes(settings.quality)) settings.quality = 'alta';
+  post.setQuality(settings.quality);
 }
 function saveSettings(){
   try{ localStorage.setItem('blackout_settings', JSON.stringify(settings)); }catch(e){}
@@ -3626,6 +3631,7 @@ function setSetting(key, value){
   if (key === 'map') loadMap(value);            // troca de cenário na hora, atrás do menu
   if (key === 'volume') Audio_.setVolume(value);
   if (key === 'fov'){ camera.fov = value; camera.updateProjectionMatrix(); }
+  if (key === 'quality') post.setQuality(value);
   saveSettings();
   if (['map','difficulty','mode','limit'].includes(key)){ Audio_.init(); Audio_.switchW(); }
   bridge.bump();
@@ -3637,6 +3643,7 @@ addEventListener('resize', () => {
   camera.aspect = w/h; camera.updateProjectionMatrix();
   gunCamera.aspect = w/h; gunCamera.updateProjectionMatrix();
   renderer.setSize(w,h);
+  post.setSize(w,h);
 });
 
 /* --- pausa ao perder o foco da aba --- */

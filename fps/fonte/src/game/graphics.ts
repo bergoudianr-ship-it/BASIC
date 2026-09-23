@@ -1,0 +1,291 @@
+/* Gráficos realistas sem assets externos:
+   - texturas PBR procedurais (ruído fBm em canvas), mapeadas em triplanar no
+     espaço do mundo, então caixas escaladas não esticam a textura;
+   - relevo por derivadas (bump sem normal map) e rugosidade variável;
+   - iluminação por ambiente (IBL) gerada do próprio céu com PMREM;
+   - pós-processamento: AO (SAO), bloom HDR, gradação ACES + vinheta + grão, SMAA.
+   Tudo vem do pacote three@0.128 (examples/jsm); nada é baixado em tempo de execução. */
+import * as THREE from 'three'
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import { SAOPass } from 'three/examples/jsm/postprocessing/SAOPass.js'
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js'
+import { Pass } from 'three/examples/jsm/postprocessing/Pass.js'
+
+export type Quality = 'alta' | 'media' | 'baixa'
+type Kind = 'concrete' | 'asphalt' | 'dirt' | 'metal' | 'corrugated' | 'wood' | 'fabric' | 'tile' | 'paint'
+
+/* ---------------- ruído ---------------- */
+function hash(x: number, y: number, s: number) {
+  const h = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453
+  return h - Math.floor(h)
+}
+function vnoise(x: number, y: number, s: number, per: number) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf)
+  const w = (a: number, b: number) => hash(((a % per) + per) % per, ((b % per) + per) % per, s)
+  return (w(xi, yi) * (1 - u) + w(xi + 1, yi) * u) * (1 - v) + (w(xi, yi + 1) * (1 - u) + w(xi + 1, yi + 1) * u) * v
+}
+function fbm(x: number, y: number, s: number, oct: number, per: number) {
+  let a = 0, amp = 0.5, f = 1, n = 0
+  for (let i = 0; i < oct; i++) { a += vnoise(x * f, y * f, s + i, per * f) * amp; n += amp; amp *= 0.5; f *= 2 }
+  return a / n
+}
+
+/* Textura em tons de cinza (tingida pela cor do material). Média ~0,85 para não escurecer a cena. */
+const texCache = new Map<Kind, THREE.CanvasTexture>()
+function surfaceTexture(kind: Kind): THREE.CanvasTexture {
+  const hit = texCache.get(kind); if (hit) return hit
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N
+  const ctx = c.getContext('2d')!, img = ctx.createImageData(N, N), d = img.data
+  const P = 8                                                          // período do ruído: textura sem emenda
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = x / N * P, v = y / N * P
+    let g = 0.85
+    switch (kind) {
+      case 'concrete': g = 0.76 + fbm(u, v, 1, 5, P) * 0.2 - Math.pow(fbm(u * 0.5, v * 0.5, 9, 3, P / 2), 3) * 0.2; break
+      case 'asphalt':  g = 0.74 + fbm(u * 4, v * 4, 5, 3, P * 4) * 0.1 + fbm(u, v, 2, 4, P) * 0.14; break
+      case 'dirt':     g = 0.68 + fbm(u, v, 4, 5, P) * 0.32; break
+      case 'metal':    g = 0.78 + fbm(u * 2, v * 0.3, 6, 4, P) * 0.2 - Math.pow(fbm(u, v, 12, 4, P), 4) * 0.4; break
+      case 'corrugated': {
+        const rib = 0.5 + 0.5 * Math.sin(x / N * Math.PI * 2 * 10)                // nervuras do contêiner
+        const rust = Math.pow(fbm(u, v * 0.4, 13, 5, P), 2.5)
+        g = 0.8 + rib * 0.12 - rust * 0.25; break
+      }
+      case 'wood': {
+        const plank = (y % 64) < 3 ? -0.35 : 0                                     // junta das tábuas
+        g = 0.72 + Math.sin(u * 6 + fbm(u, v * 8, 7, 4, P) * 6) * 0.08 + fbm(u * 0.5, v * 6, 2, 4, P) * 0.18 + plank; break
+      }
+      case 'fabric':   g = 0.75 + ((x + y) % 4 < 2 ? 0.06 : -0.02) + fbm(u, v, 11, 5, P) * 0.2; break
+      case 'tile': {
+        const line = (x % 64) < 2 || (y % 64) < 2
+        g = line ? 0.45 : 0.82 + fbm(u, v, 14, 4, P) * 0.15 + hash(Math.floor(x / 64), Math.floor(y / 64), 2) * 0.08; break
+      }
+      case 'paint':    g = 0.82 + fbm(u, v, 15, 4, P) * 0.15 - Math.pow(fbm(u * 2, v * 2, 16, 4, P * 2), 5) * 0.5; break
+    }
+    const k = Math.round(Math.max(0, Math.min(1, g)) * 255), i = (y * N + x) * 4
+    d[i] = d[i + 1] = d[i + 2] = k; d[i + 3] = 255
+  }
+  ctx.putImageData(img, 0, 0)
+  const t = new THREE.CanvasTexture(c)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.anisotropy = 8
+  t.encoding = THREE.sRGBEncoding
+  texCache.set(kind, t)
+  return t
+}
+
+/* MeshStandardMaterial com amostragem triplanar, rugosidade pela textura e relevo por derivadas. */
+export function surfaceMaterial(color: number, kind: Kind, opts: { scale?: number; rough?: number; metal?: number; bump?: number; local?: boolean } = {}) {
+  const m = new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.95, metalness: opts.metal ?? 0, map: surfaceTexture(kind) })
+  m.envMapIntensity = (opts.metal ?? 0) > 0.3 ? 0.7 : 0.35     // superfícies ásperas refletem pouco o céu
+  // dFdx/dFdy no WebGL1 (no WebGL2 já é nativo); o tipo da r128 não declara extensions em MeshStandardMaterial
+  ;(m as unknown as { extensions: Record<string, boolean> }).extensions = { derivatives: true }
+  const scale = opts.scale ?? 0.25, bump = (opts.bump ?? 0.6) * 0.25, local = !!opts.local
+  m.onBeforeCompile = sh => {
+    sh.uniforms.triScale = { value: scale }
+    sh.uniforms.bumpK = { value: bump }
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTriP; varying vec3 vTriN;')
+      .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+        ${local
+          ? 'vec3 triS = vec3(length(modelMatrix[0].xyz), length(modelMatrix[1].xyz), length(modelMatrix[2].xyz)); vTriP = transformed * triS; vTriN = objectNormal;'
+          : 'vTriP = (modelMatrix * vec4(transformed, 1.0)).xyz; vTriN = normalize(mat3(modelMatrix) * objectNormal);'}`)
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTriP; varying vec3 vTriN; uniform float triScale; uniform float bumpK;')
+      .replace('#include <map_fragment>', `
+        vec3 triW = pow(abs(vTriN), vec3(4.0)); triW /= (triW.x + triW.y + triW.z);
+        vec4 triTex = texture2D(map, vTriP.zy * triScale) * triW.x
+                    + texture2D(map, vTriP.xz * triScale) * triW.y
+                    + texture2D(map, vTriP.xy * triScale) * triW.z;
+        vec4 texelColor = mapTexelToLinear(triTex);
+        diffuseColor.rgb *= texelColor.rgb;
+        float triLum = dot(triTex.rgb, vec3(0.3333));`)
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = clamp(roughness * (0.7 + 0.6 * (1.0 - triLum)), 0.04, 1.0);')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          vec3 tbPx = dFdx(-vViewPosition); vec3 tbPy = dFdy(-vViewPosition);
+          float tbHx = dFdx(triLum); float tbHy = dFdy(triLum);
+          vec3 tbR1 = cross(tbPy, normal); vec3 tbR2 = cross(normal, tbPx);
+          float tbDet = dot(tbPx, tbR1);
+          vec3 tbGrad = sign(tbDet) * (tbHx * tbR1 + tbHy * tbR2);
+          normal = normalize(abs(tbDet) * normal - bumpK * tbGrad);
+        }`)
+  }
+  m.customProgramCacheKey = () => `tri-${kind}-${local ? 1 : 0}`
+  return m
+}
+
+/* Troca os materiais do cenário e das armas por PBR (mantém os mesmos objetos-chave em MAT). */
+export function upgradeMaterials(MAT: Record<string, THREE.Material>) {
+  const col = (k: string) => (MAT[k] as THREE.MeshStandardMaterial).color.getHex()
+  const set = (k: string, kind: Kind, o: Parameters<typeof surfaceMaterial>[2] = {}) => {
+    if (MAT[k]) MAT[k] = surfaceMaterial(col(k), kind, o)
+  }
+  set('ground', 'dirt', { scale: 0.09, bump: 0.8 })
+  set('groundDry', 'dirt', { scale: 0.09, bump: 0.8 })
+  set('road', 'asphalt', { scale: 0.15, rough: 1, bump: 0.4 })
+  set('roadDust', 'dirt', { scale: 0.22 })
+  set('wall', 'concrete', { scale: 0.22 })
+  set('wallDark', 'concrete', { scale: 0.22 })
+  set('concrete', 'concrete', { scale: 0.22 })
+  set('crate', 'wood', { scale: 0.9, rough: 0.8, bump: 0.9 })
+  set('metal', 'metal', { scale: 0.5, rough: 0.55, metal: 0.6 })
+  set('barrel', 'paint', { scale: 0.9, rough: 0.6, metal: 0.4 })
+  set('sandbag', 'fabric', { scale: 0.9, bump: 1.0 })
+  set('contA', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, bump: 1.2 })
+  set('contB', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, bump: 1.2 })
+  set('contC', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, bump: 1.2 })
+  set('floorTile', 'tile', { scale: 0.25, rough: 0.5 })
+  set('floorHall', 'tile', { scale: 0.25, rough: 0.45 })
+  // uniformes e equipamento: tecido no espaço do objeto (não "escorrega" quando o soldado anda)
+  set('enemyBody', 'fabric', { scale: 3, local: true, bump: 0.5 })
+  set('enemyVest', 'fabric', { scale: 3, local: true, bump: 0.7 })
+  set('sleeve', 'fabric', { scale: 8, local: true, bump: 0.5 })
+  // armas: metal fosco com reflexo do céu, polímero e madeira
+  const std = (k: string, rough: number, metal: number, env = 0.45) => { const m = MAT[k] as THREE.MeshStandardMaterial; if (m) { m.roughness = rough; m.metalness = metal; m.envMapIntensity = env } }
+  std('gBlack', 0.55, 0.3); std('gSteel', 0.4, 0.75, 0.6); std('gScope', 0.35, 0.5)
+  std('gPoly', 0.75, 0.05); std('gGlass', 0.05, 0.9); std('hands', 0.85, 0)
+  set('gWood', 'wood', { scale: 6, local: true, rough: 0.6 })
+  set('gWoodL', 'wood', { scale: 6, local: true, rough: 0.6 })
+}
+
+/* IBL: panorama equirretangular do céu calculado na CPU (horizonte, zênite, sol e chão),
+   pré-filtrado com PMREM. Dá reflexos e luz ambiente coerentes com a hora do dia do mapa. */
+let pmrem: THREE.PMREMGenerator | null = null
+let envRT: THREE.WebGLRenderTarget | null = null
+export function skyEnvironment(renderer: THREE.WebGLRenderer, zen: THREE.Color, hor: THREE.Color, sunC: THREE.Color, sunD: THREE.Vector3): THREE.Texture {
+  pmrem ??= new THREE.PMREMGenerator(renderer)
+  const W = 256, H = 128, data = new Uint8Array(W * H * 4)
+  const dir = new THREE.Vector3(), c = new THREE.Color(), ground = new THREE.Color(0x3a342a)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const phi = (x / W) * Math.PI * 2, th = (y / H) * Math.PI
+    dir.set(-Math.sin(th) * Math.cos(phi), Math.cos(th), -Math.sin(th) * Math.sin(phi))
+    const h = dir.y
+    if (h >= 0) c.copy(hor).lerp(zen, Math.pow(h, 0.55))
+    else c.copy(hor).multiplyScalar(0.78).lerp(ground, Math.min(1, -h * 3))
+    const sd = Math.max(0, dir.dot(sunD))
+    c.r += sunC.r * (Math.pow(sd, 24) * 0.45 + Math.pow(sd, 4) * 0.12)
+    c.g += sunC.g * (Math.pow(sd, 24) * 0.45 + Math.pow(sd, 4) * 0.12)
+    c.b += sunC.b * (Math.pow(sd, 24) * 0.45 + Math.pow(sd, 4) * 0.12)
+    const i = ((H - 1 - y) * W + x) * 4
+    data[i] = Math.min(255, c.r * 255); data[i + 1] = Math.min(255, c.g * 255); data[i + 2] = Math.min(255, c.b * 255); data[i + 3] = 255
+  }
+  const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat)
+  tex.mapping = THREE.EquirectangularReflectionMapping
+  tex.encoding = THREE.sRGBEncoding
+  tex.needsUpdate = true
+  envRT?.dispose()
+  envRT = pmrem.fromEquirectangular(tex)
+  tex.dispose()
+  return envRT.texture
+}
+
+/* ---------------- pós-processamento ---------------- */
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null }, exposure: { value: 1.0 }, time: { value: 0 },
+    vignette: { value: 0.32 }, grain: { value: 0.035 }, saturation: { value: 1.08 },
+    lift: { value: new THREE.Vector3(0.01, 0.012, 0.02) },       // sombras levemente frias
+    gain: { value: new THREE.Vector3(1.04, 1.0, 0.94) },          // altas quentes (look BO2)
+  },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float exposure, time, vignette, grain, saturation; uniform vec3 lift, gain;
+    varying vec2 vUv;
+    vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+    float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + time) * 43758.5453); }
+    void main(){
+      vec2 d = vUv - 0.5;
+      // aberração cromática sutil nas bordas
+      float ca = dot(d, d) * 0.004;
+      vec3 c = vec3(texture2D(tDiffuse, vUv + d * ca).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - d * ca).b);
+      c = aces(c * exposure);
+      c = c * gain + lift * (1.0 - c);
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, saturation);
+      c *= 1.0 - vignette * smoothstep(0.35, 0.85, length(d * vec2(1.25, 1.0)));
+      c = pow(c, vec3(1.0 / 2.2));                                    // saída sRGB
+      c += (rnd(vUv * 1000.0) - 0.5) * grain;
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+}
+
+/* Desenha a arma em 1ª pessoa por cima da cena, dentro do mesmo buffer (ela também recebe a gradação). */
+class OverlayPass extends Pass {
+  overlay: THREE.Scene; cam: THREE.Camera; active: () => boolean
+  constructor(overlay: THREE.Scene, cam: THREE.Camera, active: () => boolean) {
+    super(); this.overlay = overlay; this.cam = cam; this.active = active; this.needsSwap = false
+  }
+  render(renderer: THREE.WebGLRenderer, _w: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
+    if (!this.active()) return
+    const auto = renderer.autoClear
+    renderer.autoClear = false
+    renderer.setRenderTarget(readBuffer)
+    renderer.clearDepth()
+    renderer.render(this.overlay, this.cam)
+    renderer.autoClear = auto
+  }
+}
+
+export interface PostFX {
+  render(dt: number): void
+  setSize(w: number, h: number): void
+  setQuality(q: Quality): void
+}
+
+export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera,
+  gunScene: THREE.Scene, gunCamera: THREE.Camera, showGun: () => boolean, exposure: number): PostFX {
+  const size = new THREE.Vector2(); renderer.getSize(size)
+  const pr = renderer.getPixelRatio()
+  const rt = new THREE.WebGLRenderTarget(size.x * pr, size.y * pr, {
+    type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+  })
+  const composer = new EffectComposer(renderer, rt)
+  const renderPass = new RenderPass(scene, camera)
+  const sao = new SAOPass(scene, camera, false, true)
+  Object.assign(sao.params, { saoIntensity: 0.012, saoScale: 6, saoKernelRadius: 22, saoMinResolution: 0, saoBlur: true, saoBlurRadius: 6, saoBlurStdDev: 3, saoBlurDepthCutoff: 0.01 })
+  // fumaça, traçantes e marcadores não entram na oclusão (evita halos escuros)
+  const saoRender = sao.render.bind(sao)
+  const hidden: THREE.Object3D[] = []
+  sao.render = (...args: Parameters<typeof saoRender>) => {
+    scene.traverseVisible(o => { if ((o as THREE.Sprite).isSprite || (o as THREE.Line).isLine || (o as THREE.Points).isPoints) hidden.push(o) })
+    hidden.forEach(o => (o.visible = false))
+    saoRender(...args)
+    hidden.forEach(o => (o.visible = true)); hidden.length = 0
+  }
+  const gun = new OverlayPass(gunScene, gunCamera, showGun)
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.28, 0.5, 1.6)   // só sol, clarões e fogo
+  const grade = new ShaderPass(GradeShader)
+  grade.uniforms.exposure.value = exposure * 1.2        // mesma escala do ACES do renderer (r128 divide por 0,6)
+  const smaa = new SMAAPass(size.x * pr, size.y * pr)
+  ;[renderPass, sao, gun, bloom, grade, smaa].forEach(p => composer.addPass(p))
+
+  let quality: Quality = 'alta'
+  const apply = () => {
+    const post = quality !== 'baixa'
+    renderer.toneMapping = post ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = exposure
+    sao.enabled = quality === 'alta'
+    smaa.enabled = quality === 'alta'
+    bloom.enabled = post
+  }
+  apply()
+
+  return {
+    render(dt) {
+      if (quality === 'baixa') {
+        renderer.setRenderTarget(null)
+        renderer.clear(); renderer.render(scene, camera)
+        if (showGun()) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(gunScene, gunCamera); renderer.autoClear = true }
+        return
+      }
+      grade.uniforms.time.value = (grade.uniforms.time.value + dt) % 100
+      composer.render(dt)
+    },
+    setSize(w, h) { composer.setSize(w, h); bloom.setSize(w / 2, h / 2) },
+    setQuality(q) { quality = q; apply() },
+  }
+}
