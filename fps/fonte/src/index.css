@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tema único e escuro, de propósito: é a tela de um FPS. As variáveis do
+   shadcn apontam para a paleta do jogo (sálvia #d8e2c8 e âmbar #ffb020). */
+@layer base {
+  :root {
+    color-scheme: dark;
+    --background: 90 14% 5%;
+    --foreground: 86 30% 83%;
+    --card: 90 12% 8%;
+    --card-foreground: 86 30% 83%;
+    --popover: 90 12% 8%;
+    --popover-foreground: 86 30% 83%;
+    --primary: 39 100% 56%;
+    --primary-foreground: 60 10% 6%;
+    --secondary: 86 12% 18%;
+    --secondary-foreground: 86 30% 83%;
+    --muted: 86 10% 16%;
+    --muted-foreground: 86 12% 62%;
+    --accent: 39 100% 56%;
+    --accent-foreground: 60 10% 6%;
+    --destructive: 4 80% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 86 12% 24%;
+    --input: 86 12% 24%;
+    --ring: 39 100% 56%;
+    --radius: 0rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+}
