@@ -3,6 +3,7 @@
    (bridge.ts): os ~4.000 linhas internas seguem sem checagem de tipos. */
 import * as THREE from 'three';
 import type { Bridge, EngineAPI } from './bridge';
+import { m4a1Parts } from './sketchupMesh';
 import { upgradeMaterials, skyEnvironmentCPU, hdriEnvironment, surfaceMaterial, createPost } from './graphics';
 
 export function bootEngine(bridge: Bridge): EngineAPI {
@@ -83,8 +84,8 @@ const camera = new THREE.PerspectiveCamera(settings.fov, innerWidth/innerHeight,
 // Cena separada para o modelo da arma em primeira pessoa (nunca atravessa paredes)
 const gunScene  = new THREE.Scene();
 const gunCamera = new THREE.PerspectiveCamera(58, innerWidth/innerHeight, 0.01, 12);
-gunScene.add(new THREE.AmbientLight(0xffffff, 0.62));
-const gunKey = new THREE.DirectionalLight(0xfff0d8, 0.95);
+gunScene.add(new THREE.AmbientLight(0xffffff, 0.3));   // o HDRI (IBL) completa a luz ambiente
+const gunKey = new THREE.DirectionalLight(0xfff0d8, 0.75);
 gunKey.position.set(-1.2, 2.4, 1.6);
 gunScene.add(gunKey);
 const gunRim = new THREE.DirectionalLight(0x8fb4ff, 0.35);
@@ -301,7 +302,7 @@ const MAT = {
   gSteel:   new THREE.MeshStandardMaterial({ color:0x44484e }),
   gWood:    new THREE.MeshStandardMaterial({ color:0x6b4726 }),
   gWoodL:   new THREE.MeshStandardMaterial({ color:0x855c33 }),
-  gPoly:    new THREE.MeshStandardMaterial({ color:0x4c5145 }),
+  gPoly:    new THREE.MeshStandardMaterial({ color:0x2f322c }),   // polímero preto-oliva
   gScope:   new THREE.MeshStandardMaterial({ color:0x141619 }),
   gGlass:   new THREE.MeshStandardMaterial({ color:0x2f5a6b }),
   // superfícies e contêineres dos mapas
@@ -744,7 +745,7 @@ const WEAPONS = [
     recoilV:0.0135, recoilH:0.0052, kick:0.036,
     reload:2.05, range:180, pellets:1, adsFov:56,
     sound:{ gain:0.40, cut:5200, low:160, dur:0.20, rate:1.0 },
-    switchTime:0.45, realLen:0.84, vmLen:0.556
+    switchTime:0.45, realLen:0.84, vmLen:0.70, hip:[0.135,-0.168,-0.60], adsDot:0.21
   },
   {
     id:'mp7', name:'MP7A1', cal:'4,6×30mm', mode:'AUTOMÁTICO', slot:'pri', chamber:true, sprintOut:0.16,
@@ -822,9 +823,13 @@ function resetWeapons(){
    engatilhamento da MP5, tambor e bipé da RPK, coronha vazada da SVD.
    ---------------------------------------------------------------------- */
 // boca do cano de cada arma (z, y em coordenadas cruas), para o supressor
-const MUZZLE = { m4a1:[-0.63,0.005], mp7:[-0.30,0.005], m870:[-0.55,0.018], awm:[-0.745,0.010], m9:[-0.185,0.030], deagle:[-0.22,0.030] };
+const MUZZLE = { m4a1:[-0.838,0.0254], mp7:[-0.30,0.005], m870:[-0.55,0.018], awm:[-0.745,0.010], m9:[-0.185,0.030], deagle:[-0.22,0.030] };
+// altura das mãos (punho, guarda-mão) quando difere do padrão
+const HAND_Y = { m4a1:[-0.064, -0.02] };
+// posição do pente estendido (z, y) por arma
+const MAG_POS = { m4a1:[-0.42, -0.215] };
 const HAND_Z = {           // onde ficam as mãos em cada arma (coordenadas cruas)
-  m4a1:[0.06,-0.28], mp7:[0.03,-0.16], m870:[0.10,-0.26], awm:[0.14,-0.30], m9:[0.02,0.03], deagle:[0.02,0.03]
+  m4a1:[-0.279,-0.533], mp7:[0.03,-0.16], m870:[0.10,-0.26], awm:[0.14,-0.30], m9:[0.02,0.03], deagle:[0.02,0.03]
 };
 
 /* Mira holográfica: base, laterais, capuz, vidro e ponto vermelho.
@@ -860,20 +865,16 @@ function buildWeaponParts(id, g){
 
   switch (id){
 
-    case 'm4a1':                                    // carabina M4A1
-      B(0.055,0.075,0.30, M.gBlack, 0, 0.010,-0.06);      // caixa da culatra
-      B(0.036,0.022,0.34, M.gSteel, 0, 0.055,-0.12);      // trilho superior
-      B(0.056,0.058,0.24, M.gBlack, 0, 0.005,-0.28);      // guarda-mão
-      C(0.011,0.20, M.gSteel, 0, 0.005,-0.48);            // cano
-      C(0.017,0.06, M.gBlack, 0, 0.005,-0.60);            // apaga-chamas
-      B(0.026,0.050,0.030, M.gBlack, 0, 0.052,-0.40);     // massa de mira
-      B(0.028,0.140,0.055, M.gBlack, 0,-0.100,-0.02, 0.12);// carregador
-      B(0.050,0.060,0.16, M.gBlack, 0,-0.035, 0.00);      // caixa inferior
-      B(0.040,0.110,0.055, M.gBlack, 0,-0.085, 0.06, 0.35);// punho
-      C(0.018,0.16, M.gSteel, 0, 0.012, 0.16);            // tubo da coronha
-      B(0.050,0.075,0.15, M.gBlack, 0, 0.005, 0.20);      // coronha retrátil
-      holo(B, 0.066, -0.05);                               // mira holográfica (tipo EOTech)
+    case 'm4a1': {                                  // carabina M4A1 — modelada no Trimble SketchUp
+      for (const pt of m4a1Parts()){
+        const mat = pt.mat === 'gGlass' ? HOLO_GLASS : (pt.mat === 'dot' ? HOLO_DOT : M[pt.mat]);
+        const m = new THREE.Mesh(pt.geometry, mat);
+        m.name = pt.name;
+        if (pt.mat === 'dot') m.userData.dot = true;          // ponto da mira holográfica: o ADS alinha por ele
+        g.add(m);
+      }
       break;
+    }
 
     case 'mp7':                                     // submetralhadora MP7A1
       B(0.050,0.070,0.24, M.gBlack, 0, 0.000,-0.04);
@@ -1016,11 +1017,12 @@ function buildGunModel(w){
   const h1 = new THREE.Mesh(BOX, MAT.hands);      // mão do gatilho
   const hs = w.slot === 'sec' ? 0.62 : 1;           // pistola: mãos proporcionais ao tamanho da arma
   h1.scale.set(0.055*hs,0.075*hs,0.085*hs);
-  h1.position.set(0.005,-0.075, hz[0]);
+  const hy = HAND_Y[w.id];
+  h1.position.set(0.005, hy ? hy[0] : -0.075, hz[0]);
   g.add(h1);
   const h2 = new THREE.Mesh(BOX, MAT.hands);      // mão de apoio
   h2.scale.set(0.055*hs,0.060*hs,0.095*hs);
-  h2.position.set(0.0, w.slot === 'sec' ? -0.07 : -0.048, hz[1]);
+  h2.position.set(0.0, w.slot === 'sec' ? -0.07 : (hy ? hy[1] : -0.048), hz[1]);
   g.add(h2);
 
 
@@ -1029,8 +1031,9 @@ function buildGunModel(w){
   // manga do uniforme: entra depois da normalização para não mudar o tamanho da arma
   if (w.slot !== 'sec'){
     const sv = new THREE.Mesh(BOX, MAT.sleeve);
-    sv.scale.set(0.070,0.080,0.16);
-    sv.position.copy(h1.position).add(new THREE.Vector3(0.005,-0.012,0.12));
+    sv.scale.set(0.058,0.066,0.17);
+    sv.position.copy(h1.position).add(new THREE.Vector3(0.018,-0.05,0.11));
+    sv.rotation.x = -0.55;                        // antebraço desce em direção ao corpo, fora da linha de visada
     n.add(sv);
   }
   // acessórios (Pick 10): criados já na escala crua, ligados/desligados por classe
@@ -1049,16 +1052,25 @@ function buildGunModel(w){
     n.add(las); n.userData.att.laser = las;
     if (!pistol){
       const gr = new THREE.Mesh(BOX, MAT.gPoly); gr.scale.set(0.026,0.075,0.030);
-      gr.position.set(0, -0.055, hz[1] - 0.02).sub(c0);
+      gr.position.set(0, hy ? hy[1] - 0.02 : -0.055, hz[1] - 0.02).sub(c0);
       n.add(gr); n.userData.att.empunhadura = gr;
       const mg = new THREE.Mesh(BOX, MAT.gBlack); mg.scale.set(0.026,0.07,0.05);
-      mg.position.set(0, -0.20, -0.02).sub(c0);
+      const mp = MAG_POS[w.id] || [-0.02, -0.20];
+      mg.position.set(0, mp[1], mp[0]).sub(c0);
       n.add(mg); n.userData.att.pente = mg;
     }
     Object.values(n.userData.att).forEach(o => o.visible = false);
   }
   const dot = n.children.find(o => o.userData.dot);
-  if (dot) n.userData.ads = new THREE.Vector3(-dot.position.x * n.scale.x, -dot.position.y * n.scale.y, w.slot === 'sec' ? -0.82 : -0.68);
+  if (w.hip) n.userData.hip = new THREE.Vector3(w.hip[0], w.hip[1], w.hip[2]);
+  if (dot){
+    // centro real do ponto: posição do objeto + centro da geometria (malhas do SketchUp guardam a posição nos vértices)
+    dot.geometry.computeBoundingBox();
+    const dc = dot.geometry.boundingBox.getCenter(new THREE.Vector3()).multiply(dot.scale).add(dot.position);
+    // adsDot: distância olho→mira em metros (bochecha na coronha); sem ele, mantém o recuo antigo
+    const az = w.adsDot ? -(w.adsDot + dc.z * n.scale.z) : (w.slot === 'sec' ? -0.82 : -0.68);
+    n.userData.ads = new THREE.Vector3(-dc.x * n.scale.x, -dc.y * n.scale.y, az);
+  }
   return n;
 }
 
@@ -3323,7 +3335,7 @@ function updateViewmodel(dt, hspeed){
   swayY = lerp(swayY, clamp(dPitch * 2.0, -0.07, 0.07), clamp(dt*9, 0, 1));
 
   const adsK = player.adsAmount;
-  const base = HIP_POS.clone().lerp(gunModels[w.id].userData.ads || ADS_POS, adsK);
+  const base = (gunModels[w.id].userData.hip || HIP_POS).clone().lerp(gunModels[w.id].userData.ads || ADS_POS, adsK);
 
   // bob da arma
   let bx = 0, by = 0;

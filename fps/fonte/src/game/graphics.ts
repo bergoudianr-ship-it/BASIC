@@ -201,8 +201,9 @@ export function upgradeMaterials(MAT: Record<string, THREE.Material>) {
   set('sleeve', 'fabric', { scale: 8, local: true, normal: 'twill', nScale: 10 })
   // armas: metal fosco com reflexo do céu, polímero e madeira
   const std = (k: string, rough: number, metal: number, env = 0.45) => { const m = MAT[k] as THREE.MeshStandardMaterial; if (m) { m.roughness = rough; m.metalness = metal; m.envMapIntensity = env } }
-  std('gBlack', 0.55, 0.3, 0.2); std('gSteel', 0.4, 0.75, 0.35); std('gScope', 0.35, 0.5, 0.25)
-  std('gPoly', 0.75, 0.05, 0.2); std('gGlass', 0.05, 0.9, 0.6); std('hands', 0.85, 0, 0.2)
+  // preto anodizado e fosfatizado: quase não reflete o céu, o brilho vem da luz direta
+  std('gBlack', 0.62, 0.12, 0.1); std('gSteel', 0.45, 0.6, 0.2); std('gScope', 0.35, 0.5, 0.2)
+  std('gPoly', 0.8, 0.0, 0.08); std('gGlass', 0.05, 0.9, 0.6); std('hands', 0.85, 0, 0.2)
   set('gWood', 'wood', { scale: 6, local: true, rough: 0.6 })
   set('gWoodL', 'wood', { scale: 6, local: true, rough: 0.6 })
   Object.values(MAT).forEach(m => { const sm = m as THREE.MeshStandardMaterial; if (sm.isMeshStandardMaterial && sm.envMapIntensity === 1) sm.envMapIntensity = 0.4 })

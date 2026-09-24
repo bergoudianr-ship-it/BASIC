@@ -1,6 +1,6 @@
 # Operação Blackout — Direção de arte (documento vivo)
 
-v1.0 · 2026-09-24
+v1.1 · 2026-09-24
 
 ## 1. Norte visual
 Referência: Call of Duty Black Ops 2 (2012), mapas de dia e fim de tarde.
@@ -53,17 +53,33 @@ Albedo procedural + normal map real (mistura "whiteout" nos três eixos).
 - Ciclo de passada: a coxa balança ±0,55 rad e o joelho dobra só na fase de recuperação.
 - Áreas de acerto: cabeça (cabeça, capacete), corpo (tronco, colete, quadril), membros (resto).
 
-## 6. Pós-processamento (qualidade Alta)
+## 6. Pipeline de modelagem: Trimble SketchUp → jogo
+Usado a partir da M4A1 (v1.1). Serve para qualquer arma ou prop rígido.
+1. **Modelar no SketchUp (conector MCP)** em medidas reais, em polegadas. Eixo X = cano (a boca do cano em +X), Z = cima.
+   Cada peça é um grupo nomeado `peça|material`, com material entre `gBlack`, `gPoly`, `gSteel`, `gGlass` e `dot`.
+   Só polígonos convexos (prismas, lofts), sem furos, para a triangulação em leque ser válida.
+2. **Revisar pelo render do SketchUp** (miniatura do `save_model`): proporção, silhueta e inclinação do punho e do carregador.
+3. **Exportar dentro do próprio SketchUp**: transformações aplicadas, normais para fora de cada peça, coordenadas
+   convertidas para o jogo (x = lado, y = cima, z = −cano, em 0,1 mm), com int16 para vértices e uint8 para índices, em base64 e com checksum.
+4. **Trazer para o projeto** sem copiar à mão: a resposta grande é salva em arquivo pelo ambiente, o script extrai o base64
+   e confere o checksum → `src/game/assets/<arma>-sketchup.ts`.
+5. **No jogo** (`sketchupMesh.ts`): decodifica, gera normais com ângulo de vinco de 40° (quinas duras, cilindros suaves)
+   e aplica os materiais PBR existentes. Camuflagem e acessórios continuam funcionando.
+6. **Mira**: o ponto (`holo_dot`) define o alinhamento do ADS; `adsDot` = distância do olho à mira (M4: 0,21 m, bochecha na coronha).
+
+M4A1 v1: 52 peças, 1.464 triângulos, 33" de comprimento. Arquivo-fonte: `m4a1-blackout.skp` (SketchUp).
+
+## 7. Pós-processamento (qualidade Alta)
 SAO → arma em 1ª pessoa → bloom HDR (limiar 1,6) → gradação ACES (lift frio, gain quente, saturação 1,08, vinheta 0,32, grão 0,035, aberração leve) → SMAA.
 
-## 7. Próximas rodadas (ordem de impacto visual)
-1. **Arma em 1ª pessoa**: é o objeto mais visto do jogo e ainda é o mais "caixote". Modelar com cilindros e chanfros, dar mãos e luvas reais.
+## 8. Próximas rodadas (ordem de impacto visual)
+1. **Mãos e luvas em 1ª pessoa** (a M4 já foi feita no SketchUp; as mãos ainda são blocos). Depois: MP7, AWM, Remington e pistolas pelo mesmo pipeline.
 2. **Decalques e sujeira**: marcas de bala, manchas de óleo e pichações nos muros (texturas geradas por código).
 3. **Mapas com mais verticalidade e props**: postes, fios, carcaças de carro, andaimes (as imagens de referência têm muito disso).
 4. **Animações de recarga e troca de arma** com as mãos visíveis.
 5. **Céu com nuvens volumétricas simples** (camadas de sprites) e névoa de altura.
 
-## 8. Como pedir mudanças (guia de prompt)
+## 9. Como pedir mudanças (guia de prompt)
 Prompts curtos como "deixe mais realista" funcionam, mas eu acerto mais rápido quando o pedido tem:
 - **O quê:** qual parte (luz, materiais, personagens, arma, mapa, efeitos, som).
 - **Referência:** uma imagem, um jogo ou um mapa específico ("o mapa Raid do BO2").
@@ -78,4 +94,5 @@ prefira:
 > Prioridade: a arma, depois as mãos. Precisa continuar rodando bem num notebook."
 
 ## Changelog
+- v1.1: M4A1 modelada no Trimble SketchUp e importada como malha; ADS com distância real do olho; preto anodizado com pouco reflexo.
 - v1.0: HDRIs e normal maps CC0 via npm, triplanar com normal map, soldados articulados, ajuste de reflexo do HDRI.
