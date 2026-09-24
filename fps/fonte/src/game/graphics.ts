@@ -13,6 +13,34 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { SAOPass } from 'three/examples/jsm/postprocessing/SAOPass.js'
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js'
 import { Pass } from 'three/examples/jsm/postprocessing/Pass.js'
+import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js'
+import hdriSunset from './assets/hdri-sunset'
+import hdriSky from './assets/hdri-sky'
+import hdriCity from './assets/hdri-city'
+import n0000 from './assets/normal-0000'
+import n0004 from './assets/normal-0004'
+import n0016 from './assets/normal-0016'
+import n0018 from './assets/normal-0018'
+import n0020 from './assets/normal-0020'
+import n0021 from './assets/normal-0021'
+import n0025 from './assets/normal-0025'
+import n0026 from './assets/normal-0026'
+import n0027 from './assets/normal-0027'
+
+/* Normal maps CC0 (@pmndrs/assets), escolhidos por material. */
+const NORMALS: Record<string, string> = {
+  concrete: n0000, wood: n0004, corrugated: n0016, metal: n0018, asphalt: n0020,
+  twill: n0021, tile: n0025, dirt: n0026, burlap: n0027,
+}
+const normalCache = new Map<string, THREE.Texture>()
+function normalTexture(key: string): THREE.Texture {
+  const hit = normalCache.get(key); if (hit) return hit
+  const t = new THREE.TextureLoader().load(NORMALS[key])
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.anisotropy = 8
+  normalCache.set(key, t)
+  return t
+}
 
 export type Quality = 'alta' | 'media' | 'baixa'
 type Kind = 'concrete' | 'asphalt' | 'dirt' | 'metal' | 'corrugated' | 'wood' | 'fabric' | 'tile' | 'paint'
@@ -78,15 +106,20 @@ function surfaceTexture(kind: Kind): THREE.CanvasTexture {
 }
 
 /* MeshStandardMaterial com amostragem triplanar, rugosidade pela textura e relevo por derivadas. */
-export function surfaceMaterial(color: number, kind: Kind, opts: { scale?: number; rough?: number; metal?: number; bump?: number; local?: boolean } = {}) {
+export function surfaceMaterial(color: number, kind: Kind, opts: { scale?: number; rough?: number; metal?: number; bump?: number; local?: boolean; normal?: string; nScale?: number; nStrength?: number } = {}) {
   const m = new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.95, metalness: opts.metal ?? 0, map: surfaceTexture(kind) })
   m.envMapIntensity = (opts.metal ?? 0) > 0.3 ? 0.7 : 0.35     // superfícies ásperas refletem pouco o céu
   // dFdx/dFdy no WebGL1 (no WebGL2 já é nativo); o tipo da r128 não declara extensions em MeshStandardMaterial
   ;(m as unknown as { extensions: Record<string, boolean> }).extensions = { derivatives: true }
   const scale = opts.scale ?? 0.25, bump = (opts.bump ?? 0.6) * 0.25, local = !!opts.local
+  const nTex = opts.normal ? normalTexture(opts.normal) : null
+  m.defines = { ...(m.defines || {}), ...(nTex ? { TRI_NORMAL: '' } : {}), ...(local ? { TRI_LOCAL: '' } : {}) }
   m.onBeforeCompile = sh => {
     sh.uniforms.triScale = { value: scale }
     sh.uniforms.bumpK = { value: bump }
+    sh.uniforms.triNormal = { value: nTex }
+    sh.uniforms.triNScale = { value: opts.nScale ?? scale * 2 }
+    sh.uniforms.triNStr = { value: opts.nStrength ?? 1 }
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vTriP; varying vec3 vTriN;')
       .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
@@ -94,7 +127,7 @@ export function surfaceMaterial(color: number, kind: Kind, opts: { scale?: numbe
           ? 'vec3 triS = vec3(length(modelMatrix[0].xyz), length(modelMatrix[1].xyz), length(modelMatrix[2].xyz)); vTriP = transformed * triS; vTriN = objectNormal;'
           : 'vTriP = (modelMatrix * vec4(transformed, 1.0)).xyz; vTriN = normalize(mat3(modelMatrix) * objectNormal);'}`)
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vTriP; varying vec3 vTriN; uniform float triScale; uniform float bumpK;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTriP; varying vec3 vTriN; uniform float triScale; uniform float bumpK;\n#ifdef TRI_NORMAL\nuniform sampler2D triNormal; uniform float triNScale; uniform float triNStr;\n#endif\n#ifdef TRI_LOCAL\nuniform mat3 normalMatrix;\n#endif')
       .replace('#include <map_fragment>', `
         vec3 triW = pow(abs(vTriN), vec3(4.0)); triW /= (triW.x + triW.y + triW.z);
         vec4 triTex = texture2D(map, vTriP.zy * triScale) * triW.x
@@ -105,6 +138,27 @@ export function surfaceMaterial(color: number, kind: Kind, opts: { scale?: numbe
         float triLum = dot(triTex.rgb, vec3(0.3333));`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = clamp(roughness * (0.7 + 0.6 * (1.0 - triLum)), 0.04, 1.0);')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        #ifdef TRI_NORMAL
+        {
+          // triplanar com mistura "whiteout": cada projeção vira normal no espaço do vTriN
+          vec3 tbN = normalize(vTriN);
+          vec3 tbW = pow(abs(tbN), vec3(4.0)); tbW /= (tbW.x + tbW.y + tbW.z);
+          vec3 tbX = texture2D(triNormal, vTriP.zy * triNScale).xyz * 2.0 - 1.0;
+          vec3 tbY = texture2D(triNormal, vTriP.xz * triNScale).xyz * 2.0 - 1.0;
+          vec3 tbZ = texture2D(triNormal, vTriP.xy * triNScale).xyz * 2.0 - 1.0;
+          tbX.xy *= triNStr; tbY.xy *= triNStr; tbZ.xy *= triNStr;
+          tbX = vec3(tbX.xy + tbN.zy, abs(tbX.z) * tbN.x);
+          tbY = vec3(tbY.xy + tbN.xz, abs(tbY.z) * tbN.y);
+          tbZ = vec3(tbZ.xy + tbN.xy, abs(tbZ.z) * tbN.z);
+          vec3 tbOut = normalize(tbX.zyx * tbW.x + tbY.xzy * tbW.y + tbZ.xyz * tbW.z);
+          #ifdef TRI_LOCAL
+          normal = normalize(normalMatrix * tbOut);
+          #else
+          normal = normalize((viewMatrix * vec4(tbOut, 0.0)).xyz);
+          #endif
+          normal *= faceDirection;
+        }
+        #else
         {
           vec3 tbPx = dFdx(-vViewPosition); vec3 tbPy = dFdy(-vViewPosition);
           float tbHx = dFdx(triLum); float tbHy = dFdy(triLum);
@@ -112,9 +166,10 @@ export function surfaceMaterial(color: number, kind: Kind, opts: { scale?: numbe
           float tbDet = dot(tbPx, tbR1);
           vec3 tbGrad = sign(tbDet) * (tbHx * tbR1 + tbHy * tbR2);
           normal = normalize(abs(tbDet) * normal - bumpK * tbGrad);
-        }`)
+        }
+        #endif`)
   }
-  m.customProgramCacheKey = () => `tri-${kind}-${local ? 1 : 0}`
+  m.customProgramCacheKey = () => `tri-${kind}-${local ? 1 : 0}-${nTex ? 1 : 0}`
   return m
 }
 
@@ -124,39 +179,40 @@ export function upgradeMaterials(MAT: Record<string, THREE.Material>) {
   const set = (k: string, kind: Kind, o: Parameters<typeof surfaceMaterial>[2] = {}) => {
     if (MAT[k]) MAT[k] = surfaceMaterial(col(k), kind, o)
   }
-  set('ground', 'dirt', { scale: 0.09, bump: 0.8 })
-  set('groundDry', 'dirt', { scale: 0.09, bump: 0.8 })
-  set('road', 'asphalt', { scale: 0.15, rough: 1, bump: 0.4 })
-  set('roadDust', 'dirt', { scale: 0.22 })
-  set('wall', 'concrete', { scale: 0.22 })
-  set('wallDark', 'concrete', { scale: 0.22 })
-  set('concrete', 'concrete', { scale: 0.22 })
-  set('crate', 'wood', { scale: 0.9, rough: 0.8, bump: 0.9 })
-  set('metal', 'metal', { scale: 0.5, rough: 0.55, metal: 0.6 })
-  set('barrel', 'paint', { scale: 0.9, rough: 0.6, metal: 0.4 })
-  set('sandbag', 'fabric', { scale: 0.9, bump: 1.0 })
-  set('contA', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, bump: 1.2 })
-  set('contB', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, bump: 1.2 })
-  set('contC', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, bump: 1.2 })
-  set('floorTile', 'tile', { scale: 0.25, rough: 0.5 })
-  set('floorHall', 'tile', { scale: 0.25, rough: 0.45 })
+  set('ground', 'dirt', { scale: 0.09, normal: 'dirt', nScale: 0.22, nStrength: 0.8 })
+  set('groundDry', 'dirt', { scale: 0.09, normal: 'dirt', nScale: 0.22, nStrength: 0.8 })
+  set('road', 'asphalt', { scale: 0.15, rough: 1, normal: 'asphalt', nScale: 0.6 })
+  set('roadDust', 'dirt', { scale: 0.22, normal: 'dirt', nScale: 0.4 })
+  set('wall', 'concrete', { scale: 0.22, normal: 'concrete', nScale: 0.45 })
+  set('wallDark', 'concrete', { scale: 0.22, normal: 'concrete', nScale: 0.45 })
+  set('concrete', 'concrete', { scale: 0.22, normal: 'concrete', nScale: 0.45 })
+  set('crate', 'wood', { scale: 0.9, rough: 0.8, normal: 'wood', nScale: 0.9 })
+  set('metal', 'metal', { scale: 0.5, rough: 0.55, metal: 0.6, normal: 'metal', nScale: 0.8, nStrength: 0.6 })
+  set('barrel', 'paint', { scale: 0.9, rough: 0.6, metal: 0.4, normal: 'metal', nScale: 1.2, nStrength: 0.5 })
+  set('sandbag', 'fabric', { scale: 0.9, normal: 'burlap', nScale: 1.5, nStrength: 1.3 })
+  set('contA', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, normal: 'corrugated', nScale: 0.35, nStrength: 1.4 })
+  set('contB', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, normal: 'corrugated', nScale: 0.35, nStrength: 1.4 })
+  set('contC', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, normal: 'corrugated', nScale: 0.35, nStrength: 1.4 })
+  set('floorTile', 'tile', { scale: 0.25, rough: 0.5, normal: 'tile', nScale: 0.25 })
+  set('floorHall', 'tile', { scale: 0.25, rough: 0.45, normal: 'tile', nScale: 0.25 })
   // uniformes e equipamento: tecido no espaço do objeto (não "escorrega" quando o soldado anda)
-  set('enemyBody', 'fabric', { scale: 3, local: true, bump: 0.5 })
-  set('enemyVest', 'fabric', { scale: 3, local: true, bump: 0.7 })
-  set('sleeve', 'fabric', { scale: 8, local: true, bump: 0.5 })
+  set('enemyBody', 'fabric', { scale: 3, local: true, normal: 'twill', nScale: 4 })
+  set('enemyVest', 'fabric', { scale: 3, local: true, normal: 'burlap', nScale: 4, nStrength: 0.8 })
+  set('sleeve', 'fabric', { scale: 8, local: true, normal: 'twill', nScale: 10 })
   // armas: metal fosco com reflexo do céu, polímero e madeira
   const std = (k: string, rough: number, metal: number, env = 0.45) => { const m = MAT[k] as THREE.MeshStandardMaterial; if (m) { m.roughness = rough; m.metalness = metal; m.envMapIntensity = env } }
-  std('gBlack', 0.55, 0.3); std('gSteel', 0.4, 0.75, 0.6); std('gScope', 0.35, 0.5)
-  std('gPoly', 0.75, 0.05); std('gGlass', 0.05, 0.9); std('hands', 0.85, 0)
+  std('gBlack', 0.55, 0.3, 0.2); std('gSteel', 0.4, 0.75, 0.35); std('gScope', 0.35, 0.5, 0.25)
+  std('gPoly', 0.75, 0.05, 0.2); std('gGlass', 0.05, 0.9, 0.6); std('hands', 0.85, 0, 0.2)
   set('gWood', 'wood', { scale: 6, local: true, rough: 0.6 })
   set('gWoodL', 'wood', { scale: 6, local: true, rough: 0.6 })
+  Object.values(MAT).forEach(m => { const sm = m as THREE.MeshStandardMaterial; if (sm.isMeshStandardMaterial && sm.envMapIntensity === 1) sm.envMapIntensity = 0.4 })
 }
 
 /* IBL: panorama equirretangular do céu calculado na CPU (horizonte, zênite, sol e chão),
    pré-filtrado com PMREM. Dá reflexos e luz ambiente coerentes com a hora do dia do mapa. */
 let pmrem: THREE.PMREMGenerator | null = null
 let envRT: THREE.WebGLRenderTarget | null = null
-export function skyEnvironment(renderer: THREE.WebGLRenderer, zen: THREE.Color, hor: THREE.Color, sunC: THREE.Color, sunD: THREE.Vector3): THREE.Texture {
+export function skyEnvironmentCPU(renderer: THREE.WebGLRenderer, zen: THREE.Color, hor: THREE.Color, sunC: THREE.Color, sunD: THREE.Vector3): THREE.Texture {
   pmrem ??= new THREE.PMREMGenerator(renderer)
   const W = 256, H = 128, data = new Uint8Array(W * H * 4)
   const dir = new THREE.Vector3(), c = new THREE.Color(), ground = new THREE.Color(0x3a342a)
@@ -181,6 +237,29 @@ export function skyEnvironment(renderer: THREE.WebGLRenderer, zen: THREE.Color, 
   envRT = pmrem.fromEquirectangular(tex)
   tex.dispose()
   return envRT.texture
+}
+
+/* IBL fotográfico: HDRI CC0 (Poly Haven via @pmndrs/assets) pré-filtrado com PMREM.
+   Enquanto o EXR decodifica, a cena usa o panorama da CPU (skyEnvironmentCPU). */
+const HDRIS: Record<string, string> = { sunset: hdriSunset, sky: hdriSky, city: hdriCity }
+const hdriCache = new Map<string, THREE.Texture>()
+export async function hdriEnvironment(renderer: THREE.WebGLRenderer, key: string): Promise<THREE.Texture> {
+  const hit = hdriCache.get(key); if (hit) return hit
+  pmrem ??= new THREE.PMREMGenerator(renderer)
+  const buf = await (await fetch(HDRIS[key])).arrayBuffer()
+  const loader = new EXRLoader()
+  const d = loader.parse(buf) as unknown as { data: ArrayBufferView; width: number; height: number; format: THREE.PixelFormat; type: THREE.TextureDataType }
+  const tex = new THREE.DataTexture(d.data as unknown as BufferSource & ArrayBufferView, d.width, d.height, d.format, d.type)
+  tex.mapping = THREE.EquirectangularReflectionMapping
+  tex.encoding = THREE.LinearEncoding
+  tex.minFilter = tex.magFilter = THREE.LinearFilter
+  tex.generateMipmaps = false
+  tex.flipY = false
+  tex.needsUpdate = true
+  const rt = pmrem.fromEquirectangular(tex)
+  tex.dispose()
+  hdriCache.set(key, rt.texture)
+  return rt.texture
 }
 
 /* ---------------- pós-processamento ---------------- */

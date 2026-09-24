@@ -3,7 +3,7 @@
    (bridge.ts): os ~4.000 linhas internas seguem sem checagem de tipos. */
 import * as THREE from 'three';
 import type { Bridge, EngineAPI } from './bridge';
-import { upgradeMaterials, skyEnvironment, createPost } from './graphics';
+import { upgradeMaterials, skyEnvironmentCPU, hdriEnvironment, surfaceMaterial, createPost } from './graphics';
 
 export function bootEngine(bridge: Bridge): EngineAPI {
 
@@ -132,11 +132,11 @@ scene.add(skyDome);
 /* Cada mapa tem uma hora do dia: dourado industrial, deserto enevoado, cidade clara. */
 const ATMOS = {
   ferrovelho:{ zen:0x55789f, hor:0xe9c08e, sun:0xffbe78, dir:[0.62,0.26,-0.74], sunI:1.55,
-               hemi:[0xbac6d6, 0x4a3a28, 0.62], fog:0xcdb08a, fogR:[40,175], mark:'torre-resfriamento' },
+               hemi:[0xbac6d6, 0x4a3a28, 0.62], fog:0xcdb08a, fogR:[40,175], mark:'torre-resfriamento', hdri:'sunset' },
   torre:     { zen:0x6f9ac6, hor:0xead6b0, sun:0xfff0d2, dir:[0.35,0.62,0.45], sunI:1.45,
-               hemi:[0xc7d4e2, 0x6a5638, 0.66], fog:0xdcc9a3, fogR:[40,150], mark:'mesas' },
+               hemi:[0xc7d4e2, 0x6a5638, 0.66], fog:0xdcc9a3, fogR:[40,150], mark:'mesas', hdri:'sky' },
   saguao:    { zen:0x86a0bd, hor:0xdfe2e4, sun:0xfff3dc, dir:[-0.45,0.55,0.5], sunI:0.95,
-               hemi:[0xc9d2dc, 0x4c4a44, 0.5], fog:0xc8ced4, fogR:[40,150], mark:'cidade' }
+               hemi:[0xc9d2dc, 0x4c4a44, 0.5], fog:0xc8ced4, fogR:[40,150], mark:'cidade', hdri:'city' }
 };
 const post = createPost(renderer, scene, camera, gunScene, gunCamera, () => gameState === STATE.PLAYING, 0.78);
 function applyAtmos(id){
@@ -149,8 +149,12 @@ function applyAtmos(id){
   scene.background.setHex(a.fog);
   scene.fog.color.setHex(a.fog); scene.fog.near = a.fogR[0]; scene.fog.far = a.fogR[1];
   hemi.intensity = a.hemi[2] * 0.55;          // o IBL do céu já fornece parte da luz ambiente
-  scene.environment = skyEnvironment(renderer, skyUni.zen.value, skyUni.hor.value, skyUni.sunC.value, skyUni.sunD.value);
+  scene.environment = skyEnvironmentCPU(renderer, skyUni.zen.value, skyUni.hor.value, skyUni.sunC.value, skyUni.sunD.value);
   gunScene.environment = scene.environment;
+  // HDRI fotográfico chega em seguida (decodificação assíncrona do EXR)
+  const tok = (applyAtmos.tok = (applyAtmos.tok || 0) + 1);
+  hdriEnvironment(renderer, a.hdri).then(t => { if (applyAtmos.tok === tok){ scene.environment = t; gunScene.environment = t; } })
+    .catch(e => console.warn('HDRI indisponível, mantendo céu procedural', e));
 }
 
 /* ---------------------------------------------------------------
@@ -1349,51 +1353,105 @@ const ENEMY_TYPES = {
              sound:{ gain:0.22, cut:2500, low:88,  dur:0.32, rate:0.70 } }
 };
 
-function buildEnemyModel(type, team){
-  const t = ENEMY_TYPES[type];
-  const g = new THREE.Group();
-  const ally = team === 'A';
-  const op = ally ? (OPERATORS.find(o => o.id === profile.op) || OPERATORS[0]) : null;
-  const bodyMat = new THREE.MeshStandardMaterial({ color: ally ? op.uni : t.color });
-  const mk = (w,h,d,mat,x,y,z) => {
-    const m = new THREE.Mesh(BOX, mat);
-    m.scale.set(w,h,d);
-    m.position.set(x,y,z);
-    m.castShadow = true;
-    g.add(m);
+/* --- Soldado: figura articulada (quadril→joelho, ombro→cotovelo) com equipamento.
+   Frente = +Z local (o yaw do bot aponta +Z para o alvo). Unidades em metros. --- */
+const SOLDIER_GEO = {
+  thigh: new THREE.CylinderGeometry(0.088, 0.072, 0.46, 10),
+  shin:  new THREE.CylinderGeometry(0.07, 0.055, 0.42, 10),
+  upper: new THREE.CylinderGeometry(0.062, 0.054, 0.30, 10),
+  fore:  new THREE.CylinderGeometry(0.054, 0.044, 0.27, 10),
+  torso: new THREE.CylinderGeometry(0.19, 0.165, 0.50, 14),
+  neck:  new THREE.CylinderGeometry(0.055, 0.062, 0.10, 10),
+  head:  new THREE.SphereGeometry(0.11, 18, 14),
+  helm:  new THREE.SphereGeometry(0.135, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.56),
+  hand:  new THREE.SphereGeometry(0.05, 10, 8),
+};
+MAT.boot  = new THREE.MeshStandardMaterial({ color:0x26231e, roughness:0.75, envMapIntensity:0.3 });
+MAT.gear  = new THREE.MeshStandardMaterial({ color:0x1d1f1b, roughness:0.6, metalness:0.2, envMapIntensity:0.4 });
+MAT.lens  = new THREE.MeshStandardMaterial({ color:0x0c0e10, roughness:0.15, metalness:0.6 });
+
+function buildSoldier(o){
+  // o: { uni, vest, helm, glove, skin, weapon:[id,len], ghost, ownMats }
+  const g = new THREE.Group(), own = [];
+  const fabric = c => { const m = surfaceMaterial(c, 'fabric', { scale:3, local:true, normal:'twill', nScale:4 }); own.push(m); return m; };
+  const plain = (c, rough=0.8) => { const m = new THREE.MeshStandardMaterial({ color:c, roughness:rough, envMapIntensity:0.35 }); own.push(m); return m; };
+  const bodyMat = fabric(o.uni);
+  const vestMat = o.vest === undefined ? MAT.enemyVest : fabric(o.vest);
+  const helmMat = plain(o.helm, 0.7);
+  const gloveMat = o.glove === undefined ? MAT.boot : plain(o.glove, 0.85);
+  const skinMat = o.skin === undefined ? MAT.enemyHead : plain(o.skin, 0.65);
+  const hits = [];
+  const add = (parent, geo, mat, x,y,z, part, sx=1,sy=1,sz=1) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x,y,z); m.scale.set(sx,sy,sz);
+    m.castShadow = true; parent.add(m);
+    if (part){ m.userData.part = part; hits.push(m); }
     return m;
   };
+  const box = (parent, w,h,d, mat, x,y,z, part) => add(parent, BOX, mat, x,y,z, part, w,h,d);
 
-  const legL  = mk(0.20,0.80,0.22, MAT.enemyVest, -0.13,0.40,0);
-  const legR  = mk(0.20,0.80,0.22, MAT.enemyVest,  0.13,0.40,0);
-  const torso = mk(0.52,0.66,0.28, bodyMat, 0,1.13,0);
-  const vest  = mk(0.56,0.42,0.32, MAT.enemyVest, 0,1.17,0);
-  const armL  = mk(0.15,0.55,0.17, bodyMat, -0.33,1.12,0.02);
-  const armR  = mk(0.15,0.55,0.17, bodyMat,  0.33,1.12,0.02);
-  const head  = mk(0.26,0.28,0.26, MAT.enemyHead, 0,1.61,0);
-  const helm  = mk(0.31,0.14,0.31, MAT.enemyVest, 0,1.72,0);
-
-  // arma real nas mãos, em escala de mundo (não é alvo de raycast:
-  // o tiro atravessa a arma e atinge quem está atrás dela)
-  const aw = ally ? ALLY_WEAPON[type] : null;          // aliados usam o arsenal da OTAN
-  const gun = buildEnemyWeapon(aw ? aw[0] : t.weapon, aw ? aw[1] : t.wLen);
-  gun.position.set(0.20, 1.15, -t.wLen * 0.30);
-  gun.rotation.y = -0.06;
+  // pernas
+  const legs = [-1, 1].map(side => {
+    const hip = new THREE.Group(); hip.position.set(0.1 * side, 0.93, 0); g.add(hip);
+    add(hip, SOLDIER_GEO.thigh, bodyMat, 0,-0.23,0, 'limb');
+    box(hip, 0.06,0.12,0.05, MAT.gear, 0.09*side,-0.2,0.02);                 // bolso lateral
+    const knee = new THREE.Group(); knee.position.set(0,-0.46,0); hip.add(knee);
+    add(knee, SOLDIER_GEO.shin, bodyMat, 0,-0.21,0, 'limb');
+    box(knee, 0.11,0.1,0.05, MAT.gear, 0,-0.02,0.07);                        // joelheira
+    box(knee, 0.12,0.1,0.27, MAT.boot, 0,-0.44,0.04, 'limb');                // bota
+    return { hip, knee };
+  });
+  // quadril, tronco e colete
+  box(g, 0.34,0.18,0.22, bodyMat, 0,0.98,0, 'body');
+  box(g, 0.36,0.05,0.24, MAT.gear, 0,1.06,0);                               // cinto
+  const torso = add(g, SOLDIER_GEO.torso, bodyMat, 0,1.3,0, 'body', 1.2,1,0.78);
+  const vest = box(g, 0.42,0.36,0.29, vestMat, 0,1.33,0, 'body');
+  [-0.12, 0, 0.12].forEach(x => box(g, 0.1,0.13,0.06, vestMat, x,1.2,0.17)); // porta-carregadores
+  box(g, 0.2,0.24,0.08, vestMat, 0,1.34,-0.18);                             // bolsa de hidratação
+  box(g, 0.05,0.16,0.05, MAT.gear, 0.12,1.5,-0.17);                         // rádio
+  // cabeça, capacete, óculos
+  add(g, SOLDIER_GEO.neck, skinMat, 0,1.58,0);
+  const head = add(g, SOLDIER_GEO.head, skinMat, 0,1.7,0.01, 'head', 0.95,1.1,1);
+  if (o.ghost) box(g, 0.2,0.12,0.05, plain(0x131313), 0,1.66,0.085);        // balaclava
+  const helm = add(g, SOLDIER_GEO.helm, helmMat, 0,1.715,0, 'head');
+  box(g, 0.05,0.05,0.04, MAT.gear, 0,1.8,0.12);                             // suporte de visão noturna
+  box(g, 0.17,0.045,0.03, MAT.lens, 0,1.715,0.105);                        // óculos
+  // braços em posição de tiro (as duas mãos na arma)
+  const arms = [-1, 1].map(side => {
+    const sh = new THREE.Group(); sh.position.set(0.23 * side, 1.49, 0); g.add(sh);
+    add(sh, SOLDIER_GEO.upper, bodyMat, 0,-0.15,0, 'limb');
+    const el = new THREE.Group(); el.position.set(0,-0.3,0); sh.add(el);
+    add(el, SOLDIER_GEO.fore, bodyMat, 0,-0.135,0, 'limb');
+    add(el, SOLDIER_GEO.hand, gloveMat, 0,-0.29,0);
+    return { sh, el, side };
+  });
+  // mão direita no punho, esquerda no guarda-mão
+  arms[1].sh.rotation.set(-1.15, 0, -0.32);  arms[1].el.rotation.set(-0.95, 0, 0);
+  arms[0].sh.rotation.set(-1.35, 0,  0.42);  arms[0].el.rotation.set(-0.35, 0, 0);
+  // arma apontada para +Z, na altura do ombro
+  const [wid, wlen] = o.weapon;
+  const gun = buildEnemyWeapon(wid, wlen);
+  gun.rotation.y = Math.PI;
+  gun.position.set(0.1, 1.36, 0.2 + wlen * 0.22);
   g.add(gun);
-
-  // ponto na boca do cano, usado para o traçante e o clarão do disparo
   const muzzle = new THREE.Object3D();
-  muzzle.position.set(0.20, 1.15, -t.wLen * 0.30 - t.wLen / 2);
+  muzzle.position.set(0.1, 1.38, 0.2 + wlen * 0.22 + wlen / 2);
   g.add(muzzle);
+  if (o.ownMats) o.ownMats.push(...own);
+  return { group:g, bodyMat, own, hits, gun, muzzle,
+    parts:{ legL:legs[0].hip, legR:legs[1].hip, kneeL:legs[0].knee, kneeR:legs[1].knee,
+            armL:arms[0].sh, armR:arms[1].sh, torso, head, helm, vest } };
+}
 
-  // marcação para o raycast saber o que foi atingido
-  [legL,legR,armL,armR].forEach(m => m.userData.part = 'limb');
-  [torso,vest].forEach(m => m.userData.part = 'body');
-  head.userData.part = 'head';
-  helm.userData.part = 'head';
-
-  g.scale.setScalar(t.scale);
-  return { group:g, bodyMat, parts:{ legL, legR, armL, armR, torso, head, helm, vest }, gun, muzzle };
+function buildEnemyModel(type, team){
+  const t = ENEMY_TYPES[type];
+  const ally = team === 'A';
+  const op = ally ? (OPERATORS.find(o => o.id === profile.op) || OPERATORS[0]) : null;
+  const aw = ally ? ALLY_WEAPON[type] : null;          // aliados usam o arsenal da OTAN
+  const s = buildSoldier(ally
+    ? { uni:op.uni, vest:op.vest, helm:op.helm, glove:op.glove, skin:op.skin, ghost:op.id === 'ghost', weapon:[aw[0], aw[1]] }
+    : { uni:t.color, helm:0x3a4030, weapon:[t.weapon, t.wLen] });
+  s.group.scale.setScalar(t.scale);
+  return s;
 }
 
 /* barra de vida flutuante */
@@ -1460,7 +1518,8 @@ function spawnEnemy(type, pos, team){
   scene.add(hb.grp);
 
   // registra partes atingíveis
-  Object.values(built.parts).forEach(m => {
+  e.ownMats = built.own;
+  built.hits.forEach(m => {
     if (m.userData.part){
       m.userData.enemy = e;
       enemyHitMeshes.push(m);
@@ -1479,7 +1538,7 @@ function removeEnemy(e){
     if (enemyHitMeshes[i].userData.enemy === e) enemyHitMeshes.splice(i,1);
   }
   // libera os materiais criados por inimigo (o resto é compartilhado)
-  if (e.bodyMat) e.bodyMat.dispose();
+  (e.ownMats || [e.bodyMat]).forEach(m => m && m.dispose());
   e.hpBar.grp.children.forEach(c => c.material && c.material.dispose());
   const idx = enemies.indexOf(e);
   if (idx >= 0) enemies.splice(idx, 1);
@@ -1665,22 +1724,10 @@ function buildOperatorPreview(){
   }
   if (opPrev.model) opPrev.scene.remove(opPrev.model);
   const o = OPERATORS.find(x => x.id === profile.op) || OPERATORS[0];
-  const g = new THREE.Group(), L = c => new THREE.MeshStandardMaterial({ color:c });
-  const mk = (w,h,d,m,x,y,z) => { const b = new THREE.Mesh(BOX, m); b.scale.set(w,h,d); b.position.set(x,y,z); g.add(b); return b; };
-  const uni = L(o.uni), vest = L(o.vest);
-  mk(0.20,0.80,0.22, uni,-0.13,0.40,0); mk(0.20,0.80,0.22, uni, 0.13,0.40,0);
-  mk(0.22,0.10,0.28, L(0x2a2620),-0.13,0.05,0.02); mk(0.22,0.10,0.28, L(0x2a2620), 0.13,0.05,0.02);   // botas
-  mk(0.52,0.66,0.28, uni, 0,1.13,0); mk(0.56,0.42,0.32, vest, 0,1.17,0);
-  mk(0.10,0.12,0.06, vest,-0.15,1.05,0.18); mk(0.10,0.12,0.06, vest, 0,1.05,0.18); mk(0.10,0.12,0.06, vest, 0.15,1.05,0.18); // porta-carregadores
-  mk(0.15,0.55,0.17, uni,-0.33,1.12,0.02); mk(0.15,0.55,0.17, uni, 0.33,1.12,0.02);
-  mk(0.13,0.10,0.14, L(o.glove),-0.33,0.80,0.02); mk(0.13,0.10,0.14, L(o.glove), 0.33,0.80,0.02);
-  mk(0.26,0.28,0.26, L(o.skin), 0,1.61,0);
-  if (o.id === 'ghost'){ mk(0.27,0.14,0.02, L(0x111111), 0,1.56,0.13); }   // balaclava
-  mk(0.31,0.14,0.31, L(o.helm), 0,1.72,0);
-  mk(0.20,0.05,0.03, L(0x151515), 0,1.64,0.14);                             // óculos
-  const gun = buildEnemyWeapon(activeClass().pri === 'm870' ? 'm870' : activeClass().pri, 0.9);
-  gun.position.set(0.18, 1.08, 0.22); gun.rotation.y = 0.5; g.add(gun);
-  g.rotation.y = -0.4;
+  const pid = activeClass().pri, pw = WEAPONS.find(w => w.id === pid);
+  const sol = buildSoldier({ uni:o.uni, vest:o.vest, helm:o.helm, glove:o.glove, skin:o.skin, ghost:o.id === 'ghost', weapon:[pid, pw ? pw.realLen : 0.84] });
+  const g = sol.group;
+  g.rotation.y = 0.5;
   opPrev.model = g; opPrev.scene.add(g);
   opPrev.r.render(opPrev.scene, opPrev.cam);
 }
@@ -3017,15 +3064,20 @@ function updateEnemy(e, dt){
   // ----- animação de caminhada -----
   const moving = Math.hypot(e.vel.x, e.vel.z) > 0.4;
   if (moving){
+    // ciclo de passada: coxa balança, joelho dobra na fase de recuperação, arma quase parada
     e.walkT += dt * (spd * 1.9);
-    const sw = Math.sin(e.walkT) * 0.5;
+    const sw = Math.sin(e.walkT) * 0.55;
     e.parts.legL.rotation.x =  sw;
     e.parts.legR.rotation.x = -sw;
-    e.parts.armL.rotation.x = -sw * 0.55;
+    e.parts.kneeL.rotation.x = 0.12 + Math.max(0, Math.sin(e.walkT - 1.2)) * 1.15;
+    e.parts.kneeR.rotation.x = 0.12 + Math.max(0, Math.sin(e.walkT + Math.PI - 1.2)) * 1.15;
+    e.parts.armL.rotation.x = -1.35 + Math.sin(e.walkT * 2) * 0.03;
+    e.parts.armR.rotation.x = -1.15 + Math.sin(e.walkT * 2) * 0.03;
   } else {
     e.parts.legL.rotation.x *= 0.85;
     e.parts.legR.rotation.x *= 0.85;
-    e.parts.armL.rotation.x *= 0.85;
+    e.parts.kneeL.rotation.x = e.parts.kneeL.rotation.x * 0.85 + 0.02;
+    e.parts.kneeR.rotation.x = e.parts.kneeR.rotation.x * 0.85 + 0.02;
   }
 
   // ----- flash ao levar dano -----
