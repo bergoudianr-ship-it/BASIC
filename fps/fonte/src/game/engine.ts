@@ -1276,6 +1276,51 @@ const WEAPONS = [
     switchTime:0.72, realLen:1.18, vmLen:0.652,
     scope:true                      // usa a luneta em tela cheia
   },
+  // --- novas: armas das imagens (BO2) e fuzis de precisão clássicos de Call of Duty ---
+  {
+    id:'pdw57', name:'PDW-57', cal:'5,7×28mm', mode:'AUTOMÁTICO', slot:'pri', chamber:true, sprintOut:0.16, model:'mp7', tint:0xb8a47a,
+    damage:20, headMult:2.4, rpm:850, auto:true, mag:50, magMax:50, reserve:300, reserveMax:300,
+    spread:0.020, adsSpread:0.007, moveSpreadMul:2.0, recoilV:0.0085, recoilH:0.0050, kick:0.024,
+    reload:2.6, range:115, pellets:1, adsFov:62, sound:{ gain:0.30, cut:6400, low:200, dur:0.14, rate:1.3 },
+    switchTime:0.36, realLen:0.50, vmLen:0.52
+  },
+  {
+    id:'m8a1', name:'M8A1', cal:'5,56×45mm', mode:'AUTOMÁTICO', slot:'pri', chamber:true, sprintOut:0.22, model:'m4a1', tint:0x5c4631,
+    damage:27, headMult:2.4, rpm:680, auto:true, mag:32, magMax:32, reserve:224, reserveMax:224,
+    spread:0.0130, adsSpread:0.0033, moveSpreadMul:2.4, recoilV:0.0145, recoilH:0.0045, kick:0.036,
+    reload:2.2, range:185, pellets:1, adsFov:56, sound:{ gain:0.42, cut:5000, low:150, dur:0.21, rate:0.95 },
+    switchTime:0.45, realLen:0.84, vmLen:0.70, hip:[0.135,-0.168,-0.60], adsDot:0.21
+  },
+  { id:'barrett', name:'BARRETT M82A1', cal:'.50 BMG', mode:'SEMIAUTOMÁTICA', slot:'pri', chamber:true, sprintOut:0.40, model:'awm', tint:0x9a8963, scope:true,
+    damage:150, headMult:2.5, rpm:150, auto:false, mag:10, magMax:10, reserve:40, reserveMax:40,
+    spread:0.07, adsSpread:0.0008, moveSpreadMul:3.6, recoilV:0.11, recoilH:0.018, kick:0.21,
+    reload:4.0, range:400, pellets:1, adsFov:10, sound:{ gain:0.75, cut:3000, low:80, dur:0.55, rate:0.6 },
+    switchTime:0.85, realLen:1.45, vmLen:0.70 },
+  { id:'svd', name:'DRAGUNOV SVD', cal:'7,62×54R', mode:'SEMIAUTOMÁTICA', slot:'pri', chamber:true, sprintOut:0.30, model:'awm', tint:0x6e4a28, scope:true,
+    damage:80, headMult:2.5, rpm:240, auto:false, mag:10, magMax:10, reserve:50, reserveMax:50,
+    spread:0.055, adsSpread:0.0012, moveSpreadMul:3.0, recoilV:0.055, recoilH:0.012, kick:0.12,
+    reload:3.0, range:260, pellets:1, adsFov:14, sound:{ gain:0.6, cut:3800, low:100, dur:0.40, rate:0.75 },
+    switchTime:0.65, realLen:1.22, vmLen:0.66 },
+  { id:'l96', name:'L96A1', cal:'7,62×51mm', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.34, model:'awm', tint:0x4f5a38, scope:true,
+    damage:115, headMult:2.5, rpm:50, auto:false, mag:10, magMax:10, reserve:40, reserveMax:40,
+    spread:0.062, adsSpread:0.0004, moveSpreadMul:3.4, recoilV:0.07, recoilH:0.009, kick:0.15,
+    reload:3.5, range:320, pellets:1, adsFov:11, sound:{ gain:0.64, cut:3600, low:95, dur:0.45, rate:0.68 },
+    switchTime:0.72, realLen:1.18, vmLen:0.65 },
+  { id:'m200', name:'INTERVENTION M200', cal:'.408 CheyTac', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.36, model:'awm', tint:0x2b2d2f, scope:true,
+    damage:135, headMult:2.5, rpm:42, auto:false, mag:7, magMax:7, reserve:35, reserveMax:35,
+    spread:0.065, adsSpread:0.0004, moveSpreadMul:3.5, recoilV:0.085, recoilH:0.010, kick:0.17,
+    reload:3.7, range:360, pellets:1, adsFov:10, sound:{ gain:0.7, cut:3300, low:88, dur:0.5, rate:0.63 },
+    switchTime:0.78, realLen:1.4, vmLen:0.68 },
+  { id:'dsr50', name:'DSR 50', cal:'.50 BMG', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.36, model:'awm', tint:0x1d1f22, scope:true,
+    damage:140, headMult:2.5, rpm:45, auto:false, mag:4, magMax:4, reserve:32, reserveMax:32,
+    spread:0.065, adsSpread:0.0004, moveSpreadMul:3.5, recoilV:0.09, recoilH:0.010, kick:0.18,
+    reload:3.3, range:380, pellets:1, adsFov:10, sound:{ gain:0.72, cut:3200, low:85, dur:0.52, rate:0.62 },
+    switchTime:0.75, realLen:1.1, vmLen:0.66 },
+  { id:'ballista', name:'BALLISTA', cal:'.338 Lapua', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.30, model:'awm', tint:0x7d8870, scope:true,
+    damage:110, headMult:2.5, rpm:62, auto:false, mag:7, magMax:7, reserve:42, reserveMax:42,
+    spread:0.058, adsSpread:0.0004, moveSpreadMul:3.2, recoilV:0.068, recoilH:0.009, kick:0.14,
+    reload:3.1, range:320, pellets:1, adsFov:11, sound:{ gain:0.64, cut:3700, low:94, dur:0.44, rate:0.7 },
+    switchTime:0.62, realLen:1.2, vmLen:0.65 },
   // --- secundárias: pistolas semiautomáticas, troca rápida ---
   {
     id:'m9', name:'M9', cal:'9×19mm', mode:'SEMIAUTOMÁTICA', slot:'sec', chamber:true, sprintOut:0.10,
@@ -1341,7 +1386,18 @@ function holo(B, y, z){
   const d = B(0.006,0.006,0.001, HOLO_DOT, 0, y+0.034, z-0.021);
   d.userData.dot = true;
 }
+const tintCache = new Map();
 function buildWeaponParts(id, g){
+  const WD = WEAPONS.find(x => x.id === id);
+  if (WD && WD.model){                             // variante: corpo de outra arma, cor própria
+    buildWeaponParts(WD.model, g);
+    if (WD.tint !== undefined){
+      if (!tintCache.has(id)){ const m = MAT.gPoly.clone(); m.color.setHex(WD.tint); tintCache.set(id, m); }
+      const tm = tintCache.get(id);
+      g.traverse(o => { if (o.isMesh && (o.material === MAT.gPoly || o.material === MAT.gWood || o.material === MAT.gSteel)) o.material = tm; });
+    }
+    return;
+  }
   // caixa
   const B = (w,h,d, mat, x,y,z, rx,rz) => {
     const m = new THREE.Mesh(BOX, mat);
@@ -1509,11 +1565,12 @@ function buildGunModel(w){
   const g = new THREE.Group();
   buildWeaponParts(w.id, g);
 
-  const hz = HAND_Z[w.id] || [0.06,-0.26];
+  const mk = w.model || w.id;
+  const hz = HAND_Z[mk] || [0.06,-0.26];
   const h1 = new THREE.Mesh(BOX, MAT.hands);      // mão do gatilho
   const hs = w.slot === 'sec' ? 0.62 : 1;           // pistola: mãos proporcionais ao tamanho da arma
   h1.scale.set(0.055*hs,0.075*hs,0.085*hs);
-  const hy = HAND_Y[w.id];
+  const hy = HAND_Y[mk];
   h1.position.set(0.005, hy ? hy[0] : -0.075, hz[0]);
   g.add(h1);
   const h2 = new THREE.Mesh(BOX, MAT.hands);      // mão de apoio
@@ -1533,7 +1590,7 @@ function buildGunModel(w){
     n.add(sv);
   }
   // acessórios (Pick 10): criados já na escala crua, ligados/desligados por classe
-  const mz = MUZZLE[w.id], c0 = n.userData.cen, pistol = w.slot === 'sec';
+  const mz = MUZZLE[w.model || w.id], c0 = n.userData.cen, pistol = w.slot === 'sec';
   n.userData.att = {};
   if (mz){
     const len = pistol ? 0.10 : 0.16, rad = pistol ? 0.016 : 0.021;
@@ -1551,7 +1608,7 @@ function buildGunModel(w){
       gr.position.set(0, hy ? hy[1] - 0.02 : -0.055, hz[1] - 0.02).sub(c0);
       n.add(gr); n.userData.att.empunhadura = gr;
       const mg = new THREE.Mesh(BOX, MAT.gBlack); mg.scale.set(0.026,0.07,0.05);
-      const mp = MAG_POS[w.id] || [-0.02, -0.20];
+      const mp = MAG_POS[w.model || w.id] || [-0.02, -0.20];
       mg.position.set(0, mp[1], mp[0]).sub(c0);
       n.add(mg); n.userData.att.pente = mg;
     }
@@ -1640,7 +1697,7 @@ const player = {
   kickZ: 0
 };
 
-const SPEED = { walk:5.4, sprint:8.4, crouch:2.7, air:0.85 };
+const SPEED = { walk:4.2, sprint:6.4, crouch:2.1, air:0.85 };   // ritmo mais pesado (BO2)
 const GRAVITY = 22.0, JUMP_V = 7.6;
 
 /* ---------------------------------------------------------------
@@ -1847,16 +1904,16 @@ const enemyHitMeshes = [];   // alvos de raycast dos inimigos
 // hitChance = probabilidade base de acerto por tiro (ajustada por distância/movimento)
 // weapon/wLen = arma real que o inimigo carrega e seu comprimento em metros
 const ENEMY_TYPES = {
-  grunt:   { hp:100, speed:3.5, dmg:8,  fireRate:0.42, burst:3, hitChance:0.30, range:44,
+  grunt:   { hp:100, speed:2.6, dmg:8,  fireRate:0.42, burst:3, hitChance:0.30, range:44,
              color:0x4a5240, scale:1.00, score:100, weapon:'akm', wLen:0.88, wName:'AKM',
              sound:{ gain:0.13, cut:3400, low:118, dur:0.18, rate:0.95 } },
-  runner:  { hp:70,  speed:5.9, dmg:6,  fireRate:0.24, burst:5, hitChance:0.24, range:26,
+  runner:  { hp:100, speed:4.2, dmg:6,  fireRate:0.24, burst:5, hitChance:0.24, range:26,
              color:0x5c4a2e, scale:0.94, score:130, weapon:'mp5', wLen:0.68, wName:'MP5A3',
              sound:{ gain:0.10, cut:4600, low:160, dur:0.13, rate:1.30 } },
-  heavy:   { hp:260, speed:2.3, dmg:14, fireRate:0.55, burst:2, hitChance:0.34, range:38,
+  heavy:   { hp:100, speed:1.8, dmg:14, fireRate:0.55, burst:2, hitChance:0.34, range:38,
              color:0x36402f, scale:1.16, score:250, weapon:'rpk', wLen:1.04, wName:'RPK',
              sound:{ gain:0.17, cut:2900, low:96,  dur:0.24, rate:0.80 } },
-  sniper:  { hp:85,  speed:2.8, dmg:26, fireRate:1.55, burst:1, hitChance:0.55, range:85,
+  sniper:  { hp:100, speed:2.1, dmg:26, fireRate:1.55, burst:1, hitChance:0.55, range:85,
              color:0x2f3a44, scale:1.00, score:200, weapon:'svd', wLen:1.22, wName:'SVD',
              sound:{ gain:0.22, cut:2500, low:88,  dur:0.32, rate:0.70 } }
 };
@@ -1997,8 +2054,7 @@ function spawnEnemy(type, pos, team){
     hpBar: hb,
     pos: pos.clone(),
     vel: new THREE.Vector3(),
-    hp: t.hp * (1 + (effWave() - 1) * 0.09) * (team === 'A' ? 1 : DIFF().hp),
-    maxHp: t.hp * (1 + (effWave() - 1) * 0.09) * (team === 'A' ? 1 : DIFF().hp),
+    hp: 100, maxHp: 100,                 // mesma vida do jogador para todos (pedido de design)
     radius: 0.42,
     height: 1.78 * t.scale,
     yaw: 0,
@@ -2076,7 +2132,7 @@ const TACTICALS = {
 };
 const TAC_MAX = () => TACTICALS[activeClass().tact].none ? 0 : 1;
 /* Acessórios e vantagens: Pick 10 — cada item custa 1 ponto, 10 no total. */
-const ALL_W = ['m4a1','mp7','m870','awm','m9','deagle'];
+const ALL_W = ['m4a1','mp7','m870','awm','m9','deagle','pdw57','m8a1','barrett','svd','l96','m200','dsr50','ballista'];
 const ATTACH = {
   supressor:  { name:'SUPRESSOR',       for:['m4a1','mp7','awm','m9','deagle'], desc:'Tiro abafado: só denuncia sua posição a 10 m (sem: 70 m) e não acende no minimapa. Alcance −15%.' },
   empunhadura:{ name:'EMPUNHADURA',     for:['m4a1','mp7','m870'],              desc:'Recuo −30%.' },
@@ -2085,6 +2141,8 @@ const ATTACH = {
   cano:       { name:'CANO LONGO',      for:['m4a1','mp7','m870','awm','deagle'], desc:'Alcance +40%.' },
   rapida:     { name:'MIRA RÁPIDA',     for:ALL_W,                              desc:'Entra na mira 40% mais rápido.' }
 };
+WEAPONS.forEach(w => { if (w.model) Object.values(ATTACH).forEach(a => { if (a.for.includes(w.model) && !a.for.includes(w.id)) a.for.push(w.id); }); });
+
 const PERKS = {
   maos:  { name:'MÃOS RÁPIDAS', desc:'Recarga 35% mais rápida.' },
   leveza:{ name:'LEVEZA',       desc:'Anda e corre 12% mais rápido.' },
