@@ -3,6 +3,7 @@
    duras e superfícies curvas (cano, tubo, anéis) ficam suaves. */
 import * as THREE from 'three'
 import { M4A1_MESH, M4A1_PARTS } from './assets/m4a1-sketchup'
+import { RUINAS_KIT_MESH, RUINAS_KIT_NAMES } from './assets/ruinas-kit-sketchup'
 
 export interface MeshPart { name: string; mat: string; geometry: THREE.BufferGeometry }
 
@@ -62,4 +63,66 @@ export function m4a1Parts(): MeshPart[] {
     return { name, mat, geometry: creasedGeometry(pos, 40) }
   })
   return m4Cache
+}
+
+/* ---- Kit de ruínas (lajes, colunas, entulho, barreiras, drone) ----
+   Vértices em mm. Cada asset é reposicionado para um pivô útil no mapa:
+   laje com a ponta inteira em x = 0 (a quebrada em +x) e centrada em z;
+   coluna, barreira e entulho centrados no chão; drone já vem centrado. */
+export type KitAsset = 'slab' | 'column' | 'rubble0' | 'rubble1' | 'rubble2' | 'jersey' | 'drone'
+let kitCache: Record<string, MeshPart[]> | null = null
+export function ruinasKit(): Record<KitAsset, MeshPart[]> {
+  if (kitCache) return kitCache as Record<KitAsset, MeshPart[]>
+  const buf = decodeB64(RUINAS_KIT_MESH), dv = new DataView(buf.buffer)
+  let o = 0
+  kitCache = {}
+  for (const [asset, labels] of RUINAS_KIT_NAMES) {
+    const raw = labels.map(label => {
+      const [name, mat] = label.split('|')
+      const nv = dv.getUint16(o, true), nt = dv.getUint16(o + 2, true); o += 4
+      const verts = new Float32Array(nv * 3)
+      for (let i = 0; i < nv * 3; i++) { verts[i] = dv.getInt16(o, true) * 0.001; o += 2 }
+      const idx = buf.slice(o, o + nt * 3); o += nt * 3
+      return { name, mat, verts, idx }
+    })
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity]
+    raw.forEach(r => { for (let i = 0; i < r.verts.length; i++) { const k = i % 3; mn[k] = Math.min(mn[k], r.verts[i]); mx[k] = Math.max(mx[k], r.verts[i]) } })
+    const off = [-(mn[0] + mx[0]) / 2, 0, -(mn[2] + mx[2]) / 2]
+    if (asset === 'slab') off[0] = 0
+    if (asset.startsWith('rubble')) off[1] = -mn[1] - (mx[1] - mn[1]) * 0.12     // um pouco enterrado no chão
+    if (asset === 'drone') { off[0] = 0; off[2] = 0 }
+    kitCache[asset] = raw.map(r => {
+      const pos = new Float32Array(r.idx.length * 3)
+      for (let i = 0; i < r.idx.length; i++) for (let k = 0; k < 3; k++) pos[i * 3 + k] = r.verts[r.idx[i] * 3 + k] + off[k]
+      return { name: r.name, mat: r.mat, geometry: creasedGeometry(pos, asset.startsWith('rubble') ? 55 : 40) }
+    })
+  }
+  return kitCache as Record<KitAsset, MeshPart[]>
+}
+
+/* Junta as peças de um asset por material (menos draw calls). `keep` separa peças que se movem (rotores). */
+function mergeParts(parts: MeshPart[]): THREE.BufferGeometry {
+  let n = 0; parts.forEach(p => { n += p.geometry.attributes.position.count })
+  const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3)
+  let o = 0
+  parts.forEach(p => {
+    pos.set(p.geometry.attributes.position.array as Float32Array, o * 3)
+    nrm.set(p.geometry.attributes.normal.array as Float32Array, o * 3)
+    o += p.geometry.attributes.position.count
+  })
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3))
+  g.computeBoundingBox(); g.computeBoundingSphere()
+  return g
+}
+const mergedCache = new Map<string, { mat: string; geometry: THREE.BufferGeometry }[]>()
+export function kitByMaterial(asset: KitAsset, keep?: (name: string) => boolean): { mat: string; geometry: THREE.BufferGeometry }[] {
+  const key = asset + (keep ? ':k' : '')
+  const hit = mergedCache.get(key); if (hit) return hit
+  const byMat = new Map<string, MeshPart[]>()
+  ruinasKit()[asset].forEach(p => { if (keep && keep(p.name)) return; const l = byMat.get(p.mat); if (l) l.push(p); else byMat.set(p.mat, [p]) })
+  const out = [...byMat].map(([mat, parts]) => ({ mat, geometry: mergeParts(parts) }))
+  mergedCache.set(key, out)
+  return out
 }

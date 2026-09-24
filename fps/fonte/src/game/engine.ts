@@ -3,7 +3,8 @@
    (bridge.ts): os ~4.000 linhas internas seguem sem checagem de tipos. */
 import * as THREE from 'three';
 import type { Bridge, EngineAPI } from './bridge';
-import { m4a1Parts } from './sketchupMesh';
+import { m4a1Parts, ruinasKit, kitByMaterial } from './sketchupMesh';
+import { crackedGlass, shatteredGlass, wallDecals, decalQuad, cable, droopingCable, merge } from './ruins';
 import { upgradeMaterials, skyEnvironmentCPU, hdriEnvironment, surfaceMaterial, createPost } from './graphics';
 
 export function bootEngine(bridge: Bridge): EngineAPI {
@@ -37,7 +38,7 @@ const settings = {
   invertY: false,
   bob:     true,
   difficulty: 'veterano',
-  map: 'ferrovelho',
+  map: 'ruinas',
   mode: 'sobrevivencia',   // sobrevivencia | tdm
   limit: 0,                // limite de abates no mata-mata (0 = sem limite)
   quality: 'alta'          // alta | media | baixa (pós-processamento)
@@ -137,7 +138,11 @@ const ATMOS = {
   torre:     { zen:0x6f9ac6, hor:0xead6b0, sun:0xfff0d2, dir:[0.35,0.62,0.45], sunI:1.45,
                hemi:[0xc7d4e2, 0x6a5638, 0.66], fog:0xdcc9a3, fogR:[40,150], mark:'mesas', hdri:'sky' },
   saguao:    { zen:0x86a0bd, hor:0xdfe2e4, sun:0xfff3dc, dir:[-0.45,0.55,0.5], sunI:0.95,
-               hemi:[0xc9d2dc, 0x4c4a44, 0.5], fog:0xc8ced4, fogR:[40,150], mark:'cidade', hdri:'city' }
+               hemi:[0xc9d2dc, 0x4c4a44, 0.5], fog:0xc8ced4, fogR:[40,150], mark:'cidade', hdri:'city' },
+  // manhã enfumaçada: sol quente atravessando a poeira, sombras leitosas, cor dessaturada (Aftermath)
+  ruinas:    { zen:0x4d5b69, hor:0xa58d69, sun:0xffd29a, dir:[0.62,0.4,-0.42], sunI:1.35,
+               hemi:[0xb3aa98, 0x453a2d, 0.5], fog:0x8f7f66, fogR:[35,210], mark:'ruinas', hdri:'city',
+               grade:{ saturation:0.92, lift:[0.012,0.01,0.008], gain:[1.05,1.0,0.9], exposure:0.94 } }
 };
 const post = createPost(renderer, scene, camera, gunScene, gunCamera, () => gameState === STATE.PLAYING, 0.78);
 function applyAtmos(id){
@@ -152,6 +157,7 @@ function applyAtmos(id){
   hemi.intensity = a.hemi[2] * 0.55;          // o IBL do céu já fornece parte da luz ambiente
   scene.environment = skyEnvironmentCPU(renderer, skyUni.zen.value, skyUni.hor.value, skyUni.sunC.value, skyUni.sunD.value);
   gunScene.environment = scene.environment;
+  post.setGrade(a.grade || {});
   // HDRI fotográfico chega em seguida (decodificação assíncrona do EXR)
   const tok = (applyAtmos.tok = (applyAtmos.tok || 0) + 1);
   hdriEnvironment(renderer, a.hdri).then(t => { if (applyAtmos.tok === tok){ scene.environment = t; gunScene.environment = t; } })
@@ -312,7 +318,20 @@ const MAT = {
   groundDry:new THREE.MeshStandardMaterial({ color:0x8a7b5c }),
   roadDust: new THREE.MeshStandardMaterial({ color:0x9a8c6b }),
   floorTile:new THREE.MeshStandardMaterial({ color:0x585d63 }),
-  floorHall:new THREE.MeshStandardMaterial({ color:0x71777e })
+  floorHall:new THREE.MeshStandardMaterial({ color:0x71777e }),
+  // Ruínas: poeira clara, asfalto rachado, concreto de fachada, lataria queimada e o kit do SketchUp
+  dust:       new THREE.MeshStandardMaterial({ color:0x8a7f6a }),
+  roadCracked:new THREE.MeshStandardMaterial({ color:0x5e5a53 }),
+  ruin:       new THREE.MeshStandardMaterial({ color:0x7a7367 }),
+  ruinDark:   new THREE.MeshStandardMaterial({ color:0x58524a }),
+  burnt:      new THREE.MeshStandardMaterial({ color:0x3d342c }),
+  tire:       new THREE.MeshStandardMaterial({ color:0x19191a }),
+  pole:       new THREE.MeshStandardMaterial({ color:0x4f4032 }),
+  kConcrete:  new THREE.MeshStandardMaterial({ color:0x857f73 }),
+  kBreak:     new THREE.MeshStandardMaterial({ color:0x958e7f }),
+  kRebar:     new THREE.MeshStandardMaterial({ color:0x6e4431 }),
+  kRubble:    new THREE.MeshStandardMaterial({ color:0x80796c }),
+  kJersey:    new THREE.MeshStandardMaterial({ color:0x9a9589 })
 };
 upgradeMaterials(MAT);                // PBR procedural (graphics.ts)
 const BOX = new THREE.BoxGeometry(1,1,1);
@@ -675,8 +694,453 @@ function mapaSaguao(){
   addSandbags( 43, -5, 5, 0); addSandbags( 43, 5, 5, 0);
 }
 
+/* --- Kit de ruínas (Trimble SketchUp) e peças do mapa RUÍNAS -------------
+   Lajes, colunas, entulho e barreiras vêm do SketchUp (ver sketchupMesh.ts);
+   carros, postes e fachadas são montados aqui com primitivas mescladas. */
+const worldExtras = [];   // peças só visuais (lotes mesclados, vidro, fios, decalques); saem no clearWorld
+const glassMeshes = [];   // vitrines inteiras: a bala atravessa e trinca; não cortam a visão dos bots
+const KIT_MAT = { rConcrete:'kConcrete', rBreak:'kBreak', rRebar:'kRebar', rRubble:'kRubble', rJersey:'kJersey' };
+let seedR = 1;
+const srand = () => { seedR = (seedR * 16807) % 2147483647; return (seedR - 1) / 2147483646; };
+function addExtra(o){ scene.add(o); worldExtras.push(o); return o; }
+
+/** Prop do kit: um mesh por material; entra no raycast (tiro e visão). A colisão é posta à parte. */
+function addKit(asset, x, y, z, o){
+  o = o || {};
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  g.rotation.set(o.rx || 0, o.ry || 0, o.rz || 0, 'YXZ');
+  if (o.s) { if (Array.isArray(o.s)) g.scale.set(o.s[0], o.s[1], o.s[2]); else g.scale.setScalar(o.s); }
+  kitByMaterial(asset).forEach(p => {
+    const m = new THREE.Mesh(p.geometry, MAT[KIT_MAT[p.mat]]);
+    m.castShadow = m.receiveShadow = true;
+    g.add(m); worldMeshes.push(m);
+  });
+  addExtra(g);
+  g.updateMatrixWorld(true);
+  return g;
+}
+
+/** Laje caída: a ponta inteira fica em (x, yTop, z) e a quebrada (com vergalhões) desce
+    na direção yaw (0 = +x, π/2 = −z, π = −x, −π/2 = +z) com inclinação `tilt`. */
+function addFallenSlab(x, yTop, z, yaw, len, width, thick, tilt){
+  return addKit('slab', x, yTop - thick, z, { ry:yaw, rz:-tilt, s:[len/2.438, thick/0.203, width/1.829] });
+}
+
+/** Colisão em rampa: degraus de até 0,3 m (sobe andando) de (x0,z0) na altura y0 até (x1,z1) na y1. */
+function addRamp(x0, z0, y0, x1, z1, y1, width){
+  const alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0);
+  const L = alongX ? Math.abs(x1 - x0) : Math.abs(z1 - z0);
+  const n = Math.max(2, Math.ceil(Math.abs(y1 - y0) / 0.3));
+  for (let i = 0; i < n; i++){
+    const t = (i + 0.5) / n, cx = lerp(x0, x1, t), cz = lerp(z0, z1, t);
+    const top = lerp(y0, y1, t), bottom = top - 0.6 < 1.9 ? 0 : top - 0.6, seg = L / n + 0.04;
+    if (alongX) addCollider(cx, bottom, cz, seg, top - bottom, width);
+    else        addCollider(cx, bottom, cz, width, top - bottom, seg);
+  }
+}
+
+/** Colisão de caixa girada: fatiada ao longo do comprimento para não virar um quadrado enorme. */
+function addRotCollider(x, y, z, w, h, d, yaw){
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  if (Math.abs(s) < 0.08 || Math.abs(c) < 0.08){
+    const sw = Math.abs(c) > 0.5; addCollider(x, y, z, sw ? w : d, h, sw ? d : w); return;
+  }
+  const n = Math.max(1, Math.round(w / 1.0));
+  for (let i = 0; i < n; i++){
+    const f = (i + 0.5) / n - 0.5, px = x + c * f * w, pz = z - s * f * w, pw = w / n;
+    addCollider(px, y, pz, Math.abs(c) * pw + Math.abs(s) * d, h, Math.abs(s) * pw + Math.abs(c) * d);
+  }
+}
+
+/** Prop montado com primitivas (caixa/cilindro unitários) e mesclado: um mesh por material. */
+const _pm = new THREE.Matrix4(), _pb = new THREE.Matrix4(), _pq = new THREE.Quaternion(), _pe = new THREE.Euler();
+function addProp(pieces, x, y, z, yaw, tilt, ray){
+  _pb.makeRotationY(yaw || 0);
+  if (tilt) _pb.multiply(new THREE.Matrix4().makeRotationZ(tilt));
+  _pb.setPosition(x, y, z);
+  const byMat = new Map();
+  for (const [mat, geo, px,py,pz, sx,sy,sz, rx,ry,rz] of pieces){
+    _pe.set(rx || 0, ry || 0, rz || 0); _pq.setFromEuler(_pe);
+    _pm.compose(new THREE.Vector3(px,py,pz), _pq, new THREE.Vector3(sx,sy,sz)).premultiply(_pb);
+    const g = geo.clone().applyMatrix4(_pm);
+    if (!byMat.has(mat)) byMat.set(mat, []);
+    byMat.get(mat).push(g);
+  }
+  byMat.forEach((list, mat) => {
+    const m = new THREE.Mesh(merge(list), mat);
+    m.castShadow = m.receiveShadow = true;
+    m.userData.ownGeo = true;
+    scene.add(m);
+    if (ray === false) worldExtras.push(m); else worldMeshes.push(m);
+  });
+}
+
+/** Carcaça de carro queimado: lataria afundada, sem vidros, pneus derretidos. */
+function addCarHulk(x, z, yaw, y){
+  y = y || 0;
+  const B = MAT.burnt, T = MAT.tire, P = [];
+  P.push([B, BOX, 0, 0.66, 0, 4.4, 0.62, 1.78]);                      // caixa inferior
+  P.push([B, BOX, 1.55, 1.02, 0, 1.25, 0.08, 1.7, 0, 0, -0.16]);      // capô estufado
+  P.push([B, BOX, -1.78, 1.0, 0, 0.85, 0.08, 1.66, 0, 0, 0.07]);      // porta-malas
+  P.push([B, BOX, -0.3, 1.43, 0, 1.95, 0.08, 1.5, 0.05, 0, 0.03]);    // teto amassado
+  [[0.8, 0.72, -0.5], [0.8, -0.72, -0.5], [-1.2, 0.72, 0.35], [-1.2, -0.72, 0.35]].forEach(([px, pz, rz]) =>
+    P.push([B, BOX, px, 1.2, pz, 0.08, 0.5, 0.08, 0, 0, rz]));        // colunas A e C
+  P.push([T, BOX, -0.35, 1.08, 0, 1.9, 0.3, 1.4]);                    // bancos carbonizados
+  [[1.35, 0.8], [1.35, -0.8], [-1.4, 0.8], [-1.4, -0.8]].forEach(([px, pz]) =>
+    P.push([T, CYL, px, 0.32, pz, 0.34, 0.24, 0.34, Math.PI/2, 0, 0]));
+  addProp(P, x, y, z, yaw);
+  addRotCollider(x, y, z, 4.4, 1.46, 1.8, yaw);
+}
+
+/** Ônibus queimado: bloqueia a linha longa do bulevar. */
+function addBusHulk(x, z, yaw){
+  const B = MAT.burnt, T = MAT.tire, P = [];
+  P.push([B, BOX, 0, 1.3, 0, 11, 1.7, 2.5]);
+  P.push([T, BOX, 0, 2.5, 0, 10.4, 0.8, 2.52]);                       // faixa das janelas, vazada e preta
+  P.push([B, BOX, 0.3, 3.0, 0, 10.6, 0.14, 2.4, 0.04, 0, 0.02]);      // teto cedendo
+  for (let i = 0; i < 6; i++) P.push([B, BOX, -4.9 + i * 1.95, 2.5, 1.2, 0.14, 0.8, 0.1]);
+  for (let i = 0; i < 6; i++) P.push([B, BOX, -4.9 + i * 1.95, 2.5, -1.2, 0.14, 0.8, 0.1]);
+  [[3.8, 1.1], [3.8, -1.1], [-3.4, 1.1], [-3.4, -1.1]].forEach(([px, pz]) =>
+    P.push([T, CYL, px, 0.45, pz, 0.48, 0.3, 0.48, Math.PI/2, 0, 0]));
+  addProp(P, x, 0, z, yaw);
+  addRotCollider(x, 0, z, 11, 3.1, 2.5, yaw);
+}
+
+/** Poste de madeira com cruzeta; devolve os pontos de fixação dos fios (mundo). */
+function addPole(x, z, tilt){
+  const P = [[MAT.pole, CYL, 0, 4, 0, 0.15, 8, 0.15],
+             [MAT.pole, BOX, 0, 7.6, 0, 0.12, 0.14, 2.3],
+             [MAT.metal, CYL, 0.3, 6.6, 0.2, 0.3, 0.9, 0.3]];
+  [-1.05, 0, 1.05].forEach(pz => P.push([MAT.tire, CYL, 0, 7.75, pz, 0.05, 0.16, 0.05]));
+  addProp(P, x, 0, z, 0, tilt || 0);
+  addCollider(x, 0, z, 0.36, 8, 0.36);
+  const m = new THREE.Matrix4().makeRotationZ(tilt || 0).setPosition(x, 0, z);
+  return [-1.05, 0, 1.05].map(pz => new THREE.Vector3(0, 7.8, pz).applyMatrix4(m));
+}
+
+/** Poste de luz do viaduto (braço voltado para o bulevar, em −x). `quebrado` = braço caído. */
+function addDeckLamp(x, y, z, quebrado){
+  const P = [[MAT.metal, CYL, 0, 2.75, 0, 0.1, 5.5, 0.1]];
+  if (quebrado) P.push([MAT.metal, BOX, -0.55, 4.95, 0, 1.4, 0.1, 0.1, 0, 0, 0.95], [MAT.metal, BOX, -1.0, 4.35, 0, 0.55, 0.16, 0.32, 0, 0, 0.95]);
+  else          P.push([MAT.metal, BOX, -1.1, 5.4, 0, 2.3, 0.1, 0.1], [MAT.metal, BOX, -2.15, 5.3, 0, 0.6, 0.16, 0.32]);
+  addProp(P, x, y, z, 0);
+  addCollider(x, y, z, 0.25, 5.5, 0.25);
+  return quebrado ? new THREE.Vector3(x - 1.2, y + 4.2, z) : new THREE.Vector3(x - 0.2, y + 5.4, z);
+}
+
+/** Barreiras de concreto (New Jersey) do kit, todas numa única InstancedMesh. [x, z, yaw, y] */
+function addJerseys(list){
+  const geo = kitByMaterial('jersey')[0].geometry;
+  const im = new THREE.InstancedMesh(geo, MAT.kJersey, list.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+  list.forEach(([x, z, yaw, y], i) => {
+    q.setFromAxisAngle(up, yaw); m4.compose(new THREE.Vector3(x, y || 0, z), q, one); im.setMatrixAt(i, m4);
+    addRotCollider(x, y || 0, z, 3.05, 0.81, 0.61, yaw);
+  });
+  im.castShadow = im.receiveShadow = true; im.frustumCulled = false;
+  scene.add(im); worldMeshes.push(im);
+}
+
+/** Entulho do kit (3 formas) em instâncias. [x, z, escala, forma?]. Pedras de escala ≥ 1,6 ganham colisão. */
+const RUBBLE_DIM = [[0.44, 0.155, 0.46], [0.82, 0.265, 0.74], [1.07, 0.333, 1.12]];
+function addRubble(list, solid){
+  const byType = [[], [], []];
+  list.forEach(r => byType[r[3] !== undefined ? r[3] : Math.min(2, Math.floor(srand() * 3))].push(r));
+  byType.forEach((arr, k) => {
+    if (!arr.length) return;
+    const im = new THREE.InstancedMesh(kitByMaterial('rubble' + k)[0].geometry, MAT.kRubble, arr.length);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+    arr.forEach(([x, z, s], i) => {
+      e.set((srand() - 0.5) * 0.3, srand() * TAU, (srand() - 0.5) * 0.3); q.setFromEuler(e);
+      const sy = s * (0.7 + srand() * 0.6);
+      m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(s * (0.85 + srand() * 0.3), sy, s * (0.85 + srand() * 0.3)));
+      im.setMatrixAt(i, m4);
+      if (solid && s >= 1.6){ const [wx, h, wz] = RUBBLE_DIM[k], f = Math.min(wx, wz) * s * 0.7; addCollider(x, 0, z, f, h * sy * 0.85, f); }
+    });
+    im.castShadow = im.receiveShadow = true; im.frustumCulled = false;
+    scene.add(im);
+    if (solid) worldMeshes.push(im); else worldExtras.push(im);
+  });
+}
+/** Monte de entulho em volta de um ponto. */
+function rubbleMound(x, z, r, n, big){
+  const out = [];
+  for (let i = 0; i < n; i++){ const a = srand() * TAU, d = Math.sqrt(srand()) * r; out.push([x + Math.cos(a) * d, z + Math.sin(a) * d, (big || 1.8) * (0.5 + srand() * 0.8)]); }
+  return out;
+}
+
+/** Parede arruinada: trechos de alturas diferentes, topo serrilhado, vãos de passagem. */
+function addRuinWall(fixo, de, ate, h, eixo, vaos, mat, esp){
+  const t = esp || 0.5, M = mat || MAT.ruin, largVao = 3.6;
+  const cortes = (vaos || []).slice().sort((a,b) => a-b), trechos = [];
+  let cursor = de;
+  for (const v of cortes){ if (v - largVao/2 > cursor) trechos.push([cursor, v - largVao/2]); cursor = v + largVao/2; }
+  if (ate > cursor) trechos.push([cursor, ate]);
+  for (const [a, b] of trechos){
+    let p = a;
+    while (b - p > 0.05){
+      const seg = Math.min(b - p, 1.4 + srand() * 2.4), mid = p + seg / 2;
+      const hh = srand() < 0.18 ? Math.max(1.0, h * 0.3) : h * (0.55 + 0.45 * srand());
+      if (eixo === 'x') addBox(mid, 0, fixo, seg, hh, t, M); else addBox(fixo, 0, mid, t, hh, seg, M);
+      if (hh > 2 && srand() < 0.45){                              // dente de parede que ainda resiste
+        const dw = seg * (0.25 + srand() * 0.3), off = (srand() - 0.5) * (seg - dw), dh = 0.4 + srand() * 1.2;
+        if (eixo === 'x') addBox(mid + off, hh, fixo, dw, dh, t, M); else addBox(fixo, hh, mid + off, t, dh, dw, M);
+      }
+      p += seg;
+    }
+  }
+}
+function addRuinRoom(cx, cz, w, d, h, portas, mat){
+  const tem = c => (portas || '').includes(c);
+  addRuinWall(cz - d/2, cx - w/2, cx + w/2, h, 'x', tem('n') ? [cx] : [], mat);
+  addRuinWall(cz + d/2, cx - w/2, cx + w/2, h, 'x', tem('s') ? [cx] : [], mat);
+  addRuinWall(cx - w/2, cz - d/2 + 0.25, cz + d/2 - 0.25, h, 'z', tem('w') ? [cz] : [], mat);
+  addRuinWall(cx + w/2, cz - d/2 + 0.25, cz + d/2 - 0.25, h, 'z', tem('e') ? [cz] : [], mat);
+}
+
+/* Vidro das vitrines (texturas por código, com semente: sai igual a cada partida). */
+let glassMats = null;
+function getGlassMats(){
+  if (glassMats) return glassMats;
+  const mk = t => new THREE.MeshStandardMaterial({ map:t.map, alphaMap:t.alphaMap, transparent:true, depthWrite:false,
+    side:THREE.DoubleSide, roughness:0.08, metalness:0.2, envMapIntensity:1.1 });
+  glassMats = { cracked:[crackedGlass(11), crackedGlass(23), crackedGlass(37)].map(mk), shattered:[shatteredGlass(5), shatteredGlass(9)].map(mk) };
+  return glassMats;
+}
+/** Painel de vidro virado para ±x. Inteiro: colide e trinca com tiro. Estourado: só cacos na moldura. */
+function addGlassPane(x, y, z, w, h, mat, inteiro){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.position.set(x, y + h/2, z); m.rotation.y = Math.PI/2;
+  m.userData.ownGeo = true; m.renderOrder = 2;
+  addExtra(m);
+  if (inteiro){ glassMeshes.push(m); addCollider(x, y, z, 0.12, h, w); }
+}
+
+/* Decalques fixos (rajadas de tiro e fuligem) juntados num único mesh por mapa. */
+let decalMat = null;
+const decalBuf = [];
+function wallDecal(cell, x, y, z, nx, ny, nz, size){
+  decalBuf.push(decalQuad(cell, new THREE.Vector3(x, y, z), new THREE.Vector3(nx, ny, nz), size, srand() * TAU));
+}
+function flushDecals(){
+  if (!decalBuf.length) return;
+  decalMat = decalMat || new THREE.MeshStandardMaterial({ map:wallDecals(), transparent:true, depthWrite:false, roughness:1,
+    polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2, envMapIntensity:0.3 });
+  const m = new THREE.Mesh(merge(decalBuf.splice(0)), decalMat);
+  m.receiveShadow = true; m.userData.ownGeo = true; m.renderOrder = 1;
+  addExtra(m);
+}
+
+/* Caixas só visuais (janelas escuras, detalhes): mescladas por material, sem colisão nem raycast. */
+const visBuf = new Map();
+function vbox(x, y, z, w, h, d, mat){
+  const g = BOX.clone().applyMatrix4(new THREE.Matrix4().makeScale(w, h, d).setPosition(x, y + h/2, z));
+  if (!visBuf.has(mat)) visBuf.set(mat, []);
+  visBuf.get(mat).push(g);
+}
+function flushVisual(){
+  visBuf.forEach((list, mat) => { const m = new THREE.Mesh(merge(list), mat); m.userData.ownGeo = true; addExtra(m); });
+  visBuf.clear();
+}
+
+/** Fachadas em volta do mapa: prédios de alturas diferentes, topo quebrado e janelas vazias. */
+function addRuinPerimeter(S){
+  const t = 1.4, half = S/2, inner = half - t/2 - 0.03;
+  const lado = (fixo, eixo, sinal) => {
+    let p = -half;
+    while (p < half - 0.05){
+      const seg = Math.min(half - p, 5 + srand() * 8), mid = p + seg/2, hh = 7 + srand() * 9;
+      if (eixo === 'x') addBox(mid, 0, fixo, seg, hh, t, MAT.ruin); else addBox(fixo, 0, mid, t, hh, seg, MAT.ruin);
+      if (srand() < 0.6){
+        const dw = seg * (0.2 + srand() * 0.35), off = (srand() - 0.5) * (seg - dw), dh = 1 + srand() * 3;
+        if (eixo === 'x') addBox(mid + off, hh, fixo, dw, dh, t, MAT.ruinDark); else addBox(fixo, hh, mid + off, t, dh, dw, MAT.ruinDark);
+      }
+      // janelas vazias (pretas) na face voltada para dentro, andar por andar
+      for (let yy = 3.2; yy + 1.7 < hh - 0.6; yy += 3.1){
+        for (let a = p + 1.2; a < p + seg - 1.6; a += 2.6){
+          if (srand() < 0.12) continue;
+          const f = (inner - 0.05) * sinal;
+          if (eixo === 'x') vbox(a + 0.6, yy, f, 1.3, 1.7, 0.1, MAT.tire); else vbox(f, yy, a + 0.6, 0.1, 1.7, 1.3, MAT.tire);
+        }
+      }
+      p += seg;
+    }
+  };
+  lado(-half, 'x', -1); lado(half, 'x', 1); lado(-half, 'z', -1); lado(half, 'z', 1);
+}
+
+/* 4. RUÍNAS — cidade devastada (referência de clima: Aftermath, Black Ops 2; layout original).
+      Bulevar central com carros queimados e barreiras; viaduto a leste partido nas duas
+      pontas (as lajes caídas viram rampas: posição de poder que os dois lados disputam);
+      loja de vitrine a oeste com teto desabado; prédio desmoronado a leste com ninho alto. */
+function mapaRuinas(){
+  seedR = 20260924;
+  const S = 90;
+  addGround(S, S, MAT.dust);
+  addPaved(14, S, 0, 0, MAT.roadCracked);                       // bulevar
+  addBox(-9, 0, 0, 4, 0.15, S, MAT.kConcrete);                  // calçadas (sobe andando)
+  addBox( 9, 0, 0, 4, 0.15, S, MAT.kConcrete);
+  addRuinPerimeter(S);
+
+  // --- LOJA (oeste): vitrine voltada para o bulevar, 7 vãos ---
+  const FX = -11, Z0 = -22, Z1 = 10, bay = (Z1 - Z0) / 7, gm = getGlassMats();
+  const estados = ['inteiro', 'estourado', 'inteiro', 'porta', 'estourado', 'inteiro', 'estourado'];
+  for (let i = 0; i <= 7; i++) addBox(FX, 0, Z0 + i * bay, 0.7, 4.4, 0.7, MAT.ruinDark);   // pilares
+  estados.forEach((st, i) => {
+    const zc = Z0 + (i + 0.5) * bay, w = bay - 0.7;
+    if (st !== 'porta') addBox(FX, 0, zc, 0.5, 0.45, w, MAT.ruinDark);                      // peitoril
+    if (st === 'inteiro')   addGlassPane(FX, 0.45, zc, w, 3.1, gm.cracked[i % 3], true);
+    if (st === 'estourado') addGlassPane(FX, 0.45, zc, w, 3.1, gm.shattered[i % 2], false);
+    if (st !== 'inteiro') wallDecal(1, FX + 0.36, 4.1, zc, 1, 0, 0, 3.2);                   // fuligem sobre o vão
+  });
+  addBox(FX, 3.55, (Z0 + Z1) / 2, 0.7, 0.85, Z1 - Z0 + 0.7, MAT.ruin);                      // verga da vitrine
+  // andar de cima: só a fachada resistiu (janelas vazadas, topo desmoronado)
+  addBox(FX, 4.4, (Z0 + Z1) / 2, 0.5, 1.0, Z1 - Z0 + 0.7, MAT.ruin);
+  const montante = [2.2, 0.9, 2.2, 2.2, 1.5, 2.2, 2.2, 2.2];
+  montante.forEach((h, i) => addBox(FX, 5.4, Z0 + i * bay, 0.5, h, 1.3, MAT.ruin));
+  addBox(FX, 7.6, Z0 + 2.5 * bay, 0.5, 1.2, bay + 1.3, MAT.ruin);
+  addBox(FX, 7.6, Z0 + 6 * bay, 0.5, 1.2, 2 * bay + 1.3, MAT.ruin);
+  addBox(FX, 8.8, Z0 + 5.6 * bay, 0.5, 0.9, 2.2, MAT.ruin); addBox(FX, 8.8, Z0 + 6.7 * bay, 0.5, 0.5, 1.4, MAT.ruin);
+  // laterais, fundos e teto (com o buraco do desabamento entre z −9 e −1)
+  addWallWithGaps(Z0, -25, FX, 4.4, 'x', [-17], MAT.ruin);
+  addWallWithGaps(Z1, -25, FX, 4.4, 'x', [], MAT.ruin);
+  addBox(-13.5, 4.4, Z0, 5, 2.6, 0.5, MAT.ruin); addBox(-13.5, 4.4, Z1, 5, 3.4, 0.5, MAT.ruin);
+  addWallWithGaps(-25, Z0, Z1, 4.4, 'z', [-14, 4], MAT.ruin);
+  addBox(-18, 4.4, -15.6, 14.5, 0.4, 13.3, MAT.ruinDark);
+  addBox(-18, 4.4, 4.6, 14.5, 0.4, 11.3, MAT.ruinDark);
+  addFallenSlab(-19.5, 4.8, -1.05, Math.PI/2, 6.2, 6, 0.4, 0.95);                           // laje do teto caída
+  addCollider(-19.5, 0, -3.5, 6, 2.2, 2.0);
+  addRubble(rubbleMound(-19.5, -5.2, 2.6, 9, 1.9), true);
+  addKit('column', -23.3, 0, -7.5, { s:[1.8, 1.35, 1.8], ry:0.3 }); addCollider(-23.3, 0, -7.5, 0.85, 2.4, 0.85);
+  addKit('column', -13.4, 0, -2.6, { s:[1.8, 1.2, 1.8], ry:1.1 });  addCollider(-13.4, 0, -2.6, 0.85, 2.1, 0.85);
+  // balcão, prateleiras (uma tombada) e caixa
+  addPaved(13.6, 31.5, -18, -6, MAT.floorTile);                                              // piso de loja, sujo
+  addBox(-15.8, 0, -17, 1.0, 1.1, 5.5, MAT.ruinDark);
+  addBox(-22.8, 0, -16.5, 0.7, 1.9, 6, MAT.metal);
+  addBox(-22.8, 0, 5, 0.7, 1.9, 6, MAT.metal);
+  addBox(-18.5, 0, 6.2, 4.5, 0.6, 1.1, MAT.metal, { rotY:0.5 });
+  addBox(-14.8, 0, 3.5, 1.0, 1.1, 3.0, MAT.ruinDark);
+  wallDecal(1, -18.5, 0.03, -5.5, 0, 1, 0, 5);
+
+  // --- VIADUTO (leste do bulevar): tabuleiro a 4,2 m, partido nas duas pontas ---
+  const DX = 12, DW = 7, DZ0 = -30, DZ1 = 6, DY = 4.2;
+  addBox(DX, DY - 0.7, (DZ0 + DZ1) / 2, DW, 0.7, DZ1 - DZ0, MAT.kConcrete);
+  addPaved(DW - 0.5, DZ1 - DZ0, DX, (DZ0 + DZ1) / 2, MAT.roadCracked).position.y = DY + 0.013;       // pista do viaduto
+  [-24, -12, 0].forEach(z => {
+    addBox(DX, 0, z, 1.3, DY - 1.2, 1.3, MAT.kConcrete);
+    addBox(DX, DY - 1.3, z, 6.2, 0.6, 1.7, MAT.kConcrete);
+    wallDecal(0, DX - 0.67, 1.6 + srand(), z + (srand() - 0.5) * 0.6, -1, 0, 0, 1.3);
+  });
+  const rampa = (zEdge, dir) => {               // dir +1: desce para o sul; −1: para o norte
+    const yaw = dir > 0 ? -Math.PI/2 : Math.PI/2;
+    addFallenSlab(DX - 1.78, DY, zEdge, yaw + 0.03 * dir, 12.2, 3.5, 0.55, 0.31);
+    addFallenSlab(DX + 1.78, DY, zEdge, yaw - 0.05 * dir, 11.6, 3.5, 0.55, 0.335);
+    addRamp(DX, zEdge + dir * 0.2, DY, DX, zEdge + dir * 12.4, 0.2, DW);
+    addRubble(rubbleMound(DX, zEdge + dir * 12.4, 3.2, 10, 1.8), true);
+  };
+  rampa(DZ1, +1); rampa(DZ0, -1);
+  addJerseys([
+    // parapeito do viaduto (com falhas) e uma barreira arrastada para o meio
+    [9.0, -28, Math.PI/2, DY], [9.0, -18, Math.PI/2, DY], [9.0, -8, Math.PI/2, DY], [9.0, 2, Math.PI/2, DY],
+    [15.0, -24, Math.PI/2, DY], [15.0, -16, Math.PI/2, DY], [15.0, -3, Math.PI/2, DY], [15.0, 3.2, Math.PI/2, DY],
+    [11.4, -21, 0.4, DY],
+    // bulevar: posto de controle perto do spawn sul e cobertura escalonada até o norte
+    [-5.3, 30, 0], [1.6, 30, 0.08], [5.2, 29.4, -0.3], [-3.2, 12, 0.25], [4.2, 8, -0.2],
+    [3, -22, 0], [-2.5, -33, 0.35], [4.5, -38, 1.4], [-4.6, -5, 0.1],
+    // oeste e leste
+    [-34, -12, 0.2], [-38, -15.5, 1.3], [-14.5, -30, 1.2], [-15, 34, 0.2],
+    [19.5, 8, 1.2], [36.5, 18, 0.1], [24, 38.5, 0]
+  ]);
+  addCarHulk(12.6, -11.5, Math.PI/2 + 0.35, DY);
+  const lamp1 = addDeckLamp(8.85, DY, -23), lampQ = addDeckLamp(8.85, DY, -13, true), lamp3 = addDeckLamp(8.85, DY, -3);
+  wallDecal(1, 12.4, DY + 0.02, -11.5, 0, 1, 0, 4);
+
+  // --- BULEVAR: carros queimados, ônibus, postes e fios ---
+  addBusHulk(-1.5, -13, Math.PI/2 + 0.12);
+  wallDecal(1, -1.5, 0.03, -13, 0, 1, 0, 9);
+  [[-3.2, 21, Math.PI/2 + 0.3], [3.8, -3, Math.PI/2 - 0.5], [-4.4, -26, Math.PI/2 + 2.6],
+   [21.5, 25, 0.8], [21, -33, -0.3], [-35, 5, 1.4], [-18, 22, 0.3]].forEach(([x, z, yaw]) => {
+    addCarHulk(x, z, yaw); wallDecal(1, x, 0.03, z, 0, 1, 0, 5.2);
+  });
+  const fios = [], polos = [];
+  [-38, -24, -10, 4, 18, 32].forEach(z => polos.push(addPole(-9.6, z, z === 18 ? -0.2 : 0)));
+  for (let i = 0; i < polos.length - 1; i++){
+    if (i === 3) continue;                                         // vão arrebentado (poste torto em z 18)
+    for (let k = 0; k < 3; k++) fios.push(cable(polos[i][k], polos[i + 1][k], 0.5 + k * 0.15));
+  }
+  // fios atravessando o bulevar até os postes do viaduto
+  [[1, lamp1], [2, lampQ], [3, lamp3]].forEach(([i, l]) => {
+    fios.push(cable(polos[i][0], l, 1.3)); fios.push(cable(polos[i][2], l.clone().add(new THREE.Vector3(0, -0.2, 0.4)), 1.5));
+  });
+  // fio arrebentado caído na pista: solta faísca
+  fios.push(droopingCable(polos[4][0], new THREE.Vector3(-4, 0.03, 14.5)));
+  fios.push(droopingCable(polos[3][2], new THREE.Vector3(-6.5, 0.03, 9.5)));
+  ambientEmitters.push({ pos:new THREE.Vector3(-4, 0.06, 14.5), type:'sparks', acc:0.8, map:'ruinas', sound:true });
+  ambientEmitters.push({ pos:new THREE.Vector3(-6.5, 0.06, 9.5), type:'sparks', acc:2.4, map:'ruinas', sound:true });
+  ambientEmitters.push({ pos:lampQ.clone(), type:'sparks', acc:1.6, map:'ruinas', min:0.9, max:2.6 });
+  const cabos = new THREE.Mesh(merge(fios), new THREE.MeshStandardMaterial({ color:0x151515, roughness:0.6 }));
+  cabos.userData.ownGeo = true; addExtra(cabos);
+
+  // --- OESTE: beco dos fundos, praças norte e sul, duas cascas de prédio ---
+  addRuinRoom(-34, -36.5, 12, 9, 4.2, 'es');
+  addRuinRoom(-34, 32.5, 12, 9, 3.8, 'en');
+  addBox(-27.3, 0, -1.5, 1.2, 1.25, 1.9, MAT.contC); addBox(-27.3, 0, 13.5, 1.2, 1.25, 1.9, MAT.contC);   // caçambas
+  addFallenSlab(-25.4, 3.6, -8, Math.PI, 4.6, 3.2, 0.35, 0.95);                                         // laje apoiada no muro
+  addCollider(-26.8, 0, -8, 2.6, 1.4, 3.2);
+  addKit('slab', -21, 0, -31, { ry:0.35, rz:0.12, s:[6/2.438, 0.45/0.203, 3.6/1.829] });               // laje caída na praça
+  addRotCollider(-18.2, 0, -32, 6, 0.95, 3.4, 0.35);
+  addRubble(rubbleMound(-15.3, -33.2, 1.6, 5, 1.6).concat(rubbleMound(-36, -2, 3, 8, 2.0), rubbleMound(-18, 16, 2.4, 6, 1.8),
+            rubbleMound(-38, 18, 2.5, 6, 1.9)), true);
+
+  // --- LESTE: prédio desmoronado (lajes empilhadas), cratera, duas cascas ---
+  [[22, -21, 1.9], [38, -21, 1.55], [22, -4, 1.9], [38, -4, 1.55], [30, -21, 1.3]].forEach(([x, z, sy], i) => {
+    addKit('column', x, 0, z, { s:[2.4, sy, 2.4], ry:i * 0.7 }); addCollider(x, 0, z, 1.1, 1.727 * sy, 1.1);
+  });
+  addKit('slab', 23.2, 0.55, -14.1, { rz:0.03, s:[10/2.438, 0.45/0.203, 4/1.829] });                  // 1º piso, caído inteiro
+  addKit('slab', 23.0, 0.5, -10.0, { ry:0.04, rz:0.02, s:[9.4/2.438, 0.45/0.203, 4/1.829] });
+  addCollider(28, 0, -12.1, 10, 1.0, 8.2);
+  addCollider(22.3, 0, -12, 1.4, 0.5, 5);                                                              // degrau de entulho
+  addKit('column', 38.6, 0, -12, { s:[2.4, 1.75, 2.4], ry:0.4 }); addCollider(38.6, 0, -12, 1.1, 3.0, 1.1);
+  addFallenSlab(38.8, 4.2, -12, Math.PI, 11.8, 4.4, 0.45, 0.235);                                     // 2º piso inclinado: ninho alto
+  addRamp(27.2, -12, 1.25, 38.8, -12, 4.2, 4.4);
+  addRubble(rubbleMound(22, -12, 2.2, 8, 1.5).concat(rubbleMound(33, -7.5, 3, 7, 1.7), rubbleMound(33, -16.5, 3, 7, 1.7)), true);
+  addRuinWall(-22.5, 19, 41, 6.5, 'x', [30]);                                                          // fachada que sobrou
+  addRuinWall(-1.5, 19, 28, 3.0, 'x', []);
+  wallDecal(1, 29, 0.03, 12, 0, 1, 0, 8);                                                              // cratera
+  const anel = []; for (let i = 0; i < 11; i++){ const a = i / 11 * TAU; anel.push([29 + Math.cos(a) * 3.4, 12 + Math.sin(a) * 3.4, 1.1 + srand() * 0.8]); }
+  addRubble(anel, true);
+  addRuinRoom(33, -37.5, 12, 9, 4.6, 'sw');
+  addRuinRoom(33, 33, 12, 9, 3.6, 'wn');
+
+  // rajadas de tiro nas fachadas
+  for (let i = 0; i <= 7; i++) if (srand() < 0.6) wallDecal(0, FX + 0.37, 1.0 + srand() * 2.2, Z0 + i * bay, 1, 0, 0, 0.62);
+  for (let i = 0; i < 6; i++) wallDecal(0, FX + 0.37, 3.95, Z0 + 2 + srand() * (Z1 - Z0 - 4), 1, 0, 0, 0.8);
+  for (let i = 0; i < 10; i++){ const sx = i % 2 ? 1 : -1; wallDecal(0, sx * 44.27, 1.5 + srand() * 3, -40 + srand() * 80, -sx, 0, 0, 1.4); }
+  // entulho miúdo espalhado (só visual)
+  const miudo = []; for (let i = 0; i < 140; i++) miudo.push([(srand() - 0.5) * 86, (srand() - 0.5) * 86, 0.35 + srand() * 0.7]);
+  addRubble(miudo, false);
+
+  flushVisual();
+  flushDecals();
+}
+
 /* --- catálogo de mapas --------------------------------------------------- */
 const MAPS = [
+  {
+    id:'ruinas', name:'RUÍNAS', build: mapaRuinas, extras: ruinasExtras,
+    desc:'Cidade devastada. Viaduto partido no meio, vitrines estilhaçadas a oeste, prédio desabado a leste.',
+    player:{ x:0, z:40, yaw:0 }, mm:46, minDist:20,
+    sky:0x8f7f66, fog:[35,210],
+    fires:[[29,12,0.2,1.8],[-3.2,21,1.0,1.5]],           // cratera e carro [x, z, y, tamanho]
+    emitters:[
+      { type:'dust', pos:[0,0.4,0], rate:0.5 }, { type:'dust', pos:[-20,0.4,-30], rate:0.4 }, { type:'dust', pos:[25,0.4,22], rate:0.4 },
+      { type:'dust', pos:[30,0.4,-12], rate:0.4 }, { type:'dust', pos:[-32,0.4,18], rate:0.4 }, { type:'dust', pos:[12,0.4,-36], rate:0.4 },
+      { type:'smoke', pos:[-19.5,1.0,-5.5], rate:2.5 }, { type:'smoke', pos:[31,2.6,-12], rate:1.8 }
+    ],
+    spawns:[[0,-42],[-7,-40],[-18,-40],[-34,-26],[-40,-8],[20,-40],[42,-26],[42,-2],[25,5],
+            [-30,42],[30,42],[-42,24],[40,22]]
+  },
   {
     id:'ferrovelho', name:'FERRO-VELHO', build: mapaFerroVelho,
     desc:'Pátio industrial. Corredor de contêineres a oeste, armazém no centro.',
@@ -710,10 +1174,40 @@ function clearWorld(){
   for (const m of worldMeshes){
     scene.remove(m);
     if (m.userData.ownGeo && m.geometry) m.geometry.dispose();
+    if (m.isInstancedMesh) m.dispose();
   }
   worldMeshes.length = 0;
+  for (const o of worldExtras){
+    scene.remove(o);
+    if (o.userData.ownGeo && o.geometry) o.geometry.dispose();
+    if (o.isInstancedMesh) o.dispose();
+  }
+  worldExtras.length = 0; glassMeshes.length = 0;
+  clearRuinsFX();
+  // emissores do mapa anterior (e do próprio, ao remontar) saem; fumaça de granada fica
+  for (let i = ambientEmitters.length-1; i>=0; i--) if (ambientEmitters[i].type !== 'smokeG') ambientEmitters.splice(i,1);
   colliders.length  = 0;
   spawnPoints.length = 0;
+}
+
+/** Junta as caixas estáticas do cenário num mesh por material (de centenas para poucas draw calls).
+    As caixas originais saem da cena mas continuam em worldMeshes como alvos de raycast. */
+function mergeStaticBoxes(){
+  const grupos = new Map();
+  for (const m of worldMeshes){
+    if (!m.isMesh || m.geometry !== BOX || m.parent !== scene) continue;
+    const k = m.material.uuid + (m.castShadow ? 's' : 'n');
+    if (!grupos.has(k)) grupos.set(k, { mat:m.material, cast:m.castShadow, list:[] });
+    grupos.get(k).list.push(m);
+  }
+  grupos.forEach(g => {
+    if (g.list.length < 2) return;
+    const geos = g.list.map(m => { m.updateMatrixWorld(true); return BOX.clone().applyMatrix4(m.matrixWorld); });
+    const mesh = new THREE.Mesh(merge(geos), g.mat);
+    mesh.castShadow = g.cast; mesh.receiveShadow = true; mesh.userData.ownGeo = true;
+    scene.add(mesh); worldExtras.push(mesh);
+    g.list.forEach(m => scene.remove(m));
+  });
 }
 
 function loadMap(id){
@@ -721,6 +1215,7 @@ function loadMap(id){
   const def = MAPDEF();
   clearWorld();
   def.build();
+  mergeStaticBoxes();
   def.spawns.forEach(p => spawnPoints.push(new THREE.Vector3(p[0], 0, p[1])));
   MM_RANGE = def.mm;
   scene.background.setHex(def.sky);
@@ -730,6 +1225,7 @@ function loadMap(id){
   applyAtmos(def.id);
   buildLandmark(ATMOS[def.id].mark);
   setupAmbientFX(def);
+  if (def.extras) def.extras();
   mapaCarregado = def.id;
 }
 
@@ -1925,6 +2421,20 @@ function buildLandmark(kind){
       const m = addWorld(new THREE.Mesh(new THREE.CylinderGeometry(r*0.7, r, h, 9), new THREE.MeshStandardMaterial({ color:0xa5835a })));
       m.position.set(x, h/2, z);
     });
+  } else if (kind === 'ruinas'){
+    // horizonte de arranha-céus partidos na névoa (um único mesh) e colunas de fumaça
+    let sd = 7;
+    const r = () => { sd = (sd * 16807) % 2147483647; return (sd - 1) / 2147483646; };
+    const geos = [], o = new THREE.Object3D();
+    const bloco = (w, h, d, x, y, z, ry, rz) => { o.position.set(x, y, z); o.rotation.set(0, ry, rz); o.updateMatrix(); geos.push(new THREE.BoxGeometry(w, h, d).applyMatrix4(o.matrix)); };
+    for (let i = 0; i < 26; i++){
+      const a = i / 26 * TAU + r() * 0.1, d = 100 + r() * 45, w = 12 + r() * 14, h = 30 + r() * 70, ry = (r() - 0.5) * 0.1;   // alinhados: a grade de janelas é triplanar
+      const x = Math.cos(a) * d, z = Math.sin(a) * d, rz = r() < 0.3 ? (r() - 0.5) * 0.12 : 0;   // alguns adernados
+      bloco(w, h, w * (0.7 + r() * 0.5), x, h/2, z, ry, rz);
+      if (r() < 0.7) bloco(w * 0.5, h * 0.18, w * 0.45, x + (r() - 0.5) * w * 0.4, h * 1.08, z + (r() - 0.5) * w * 0.4, ry, (r() - 0.5) * 0.4);
+    }
+    addWorld(new THREE.Mesh(merge(geos), surfaceMaterial(0x55575b, 'facade', { scale:1/24, bump:0 })));
+    [[-70,-95],[60,-110],[105,-30]].forEach(([x,z]) => ambientEmitters.push({ pos:new THREE.Vector3(x, 14, z), type:'plume', acc:0, rate:0.6 }));
   } else {
     for (let i=0;i<22;i++){
       const a = i/22*TAU, d = 95 + (i%3)*14, h = 18 + ((i*37)%5)*9;
@@ -1950,46 +2460,303 @@ function setupAmbientFX(def){
   puffs.forEach(p => { scene.remove(p.s); p.s.material.dispose(); }); puffs.length = 0;
   fireLights.forEach(l => l.intensity = 0);
   // destroços em chamas perto de dois pontos de entrada inimigos: marcam as rotas de chegada
-  const sp = def.spawns, picks = [sp[1], sp[Math.floor(sp.length/2)]];
+  const sp = def.spawns, picks = def.fires || [sp[1], sp[Math.floor(sp.length/2)]].map(q => [q[0]*0.8, q[1]*0.8]);
   picks.forEach((q,i) => {
-    const pos = new THREE.Vector3(q[0]*0.8, 0.2, q[1]*0.8);
-    ambientEmitters.push({ pos, type:'fire', acc:0, rate:22, map:def.id, light:fireLights[i] });
-    ambientEmitters.push({ pos:pos.clone().setY(1.2), type:'smoke', acc:0, rate:5, map:def.id });
+    const pos = new THREE.Vector3(q[0], q[2] !== undefined ? q[2] : 0.2, q[1]), size = q[3] || 1;
+    ambientEmitters.push({ pos, type:'fire', acc:0, rate:22 * size, map:def.id, light:fireLights[i], size:Math.sqrt(size), spread:size });
+    ambientEmitters.push({ pos:pos.clone().setY(pos.y + 1.0 * size), type:'smoke', acc:0, rate:5, map:def.id, size:Math.sqrt(size) });
   });
+  (def.emitters || []).forEach(e => ambientEmitters.push({ ...e, pos:new THREE.Vector3(...e.pos), acc:0, map:def.id }));
   ambientEmitters.forEach(e => { if (!e.map) e.map = def.id; });
+}
+const FIRE_A = new THREE.Color(3.2, 2.1, 0.7), FIRE_B = new THREE.Color(1.5, 0.35, 0.06);   // base amarela → ponta vermelha
+/* Língua de fogo: gota alongada com borda irregular (o sprite é esticado na vertical). */
+const flameTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 42, 2, 32, 38, 30);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.8)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g;
+  x.beginPath(); x.moveTo(32, 2);
+  x.bezierCurveTo(46, 20, 58, 40, 46, 58); x.bezierCurveTo(40, 64, 24, 64, 18, 58); x.bezierCurveTo(6, 40, 18, 20, 32, 2);
+  x.fill();
+  return new THREE.CanvasTexture(c);
+})();
+const PUFF_COL = { fire:0xff9a40, vapor:0xe8e4dc, smokeG:0xb9bab2, smoke:0x3a3632, dust:0xcdbfa2, plume:0x57514a };
+/** Um sprite de fumaça/fogo/poeira. `em` precisa só de pos e type. */
+function spawnPuff(em){
+  const t = em.type, fire = t === 'fire', vapor = t === 'vapor', sg = t === 'smokeG';
+  // fogo em cor HDR com mistura normal: aparece contra o céu claro de dia e ainda passa do limiar do bloom
+  const mat = new THREE.SpriteMaterial({ map: fire ? flameTex : puffTex, depthWrite:false, fog:!fire, opacity:0,
+    color: fire ? FIRE_A : (PUFF_COL[t] || PUFF_COL.smoke) });
+  if (fire) mat.rotation = rand(-0.25, 0.25);
+  const s = new THREE.Sprite(mat);
+  const spread = (vapor ? 10 : (sg ? 7 : (t === 'dust' ? 7 : (t === 'plume' ? 4 : 1)))) * (em.spread || 1);
+  s.position.copy(em.pos).add(new THREE.Vector3(rand(-0.6,0.6), sg ? rand(0,2.4) : 0, rand(-0.6,0.6)).multiplyScalar(spread));
+  scene.add(s);
+  let p;
+  if (sg)               p = { life:rand(4,6), vy:rand(0.1,0.4), size:rand(3.2,4.4), grow:0.5, peak:0.92, drift:0.15 };
+  else if (t === 'dust')  p = { life:rand(7,11), vy:rand(0.05,0.2), size:rand(5,8), grow:0.8, peak:0.2, drift:1.5 };   // lençol de poeira ao vento
+  else if (t === 'plume') p = { life:rand(11,15), vy:rand(3,4.2), size:rand(9,12), grow:2.6, peak:0.5, drift:2.2 };   // coluna de fumaça distante
+  else p = { life: fire ? rand(0.5,0.9) : (vapor ? rand(9,13) : rand(6,9)),
+             vy: fire ? rand(1.6,2.6) : (vapor ? rand(3,4.5) : rand(1.8,2.6)),
+             size: fire ? rand(0.9,1.5) : (vapor ? 14 : rand(1.6,2.4)), grow: fire ? -0.6 : (vapor ? 2.2 : 1.3),
+             peak: fire ? 0.9 : (vapor ? 0.55 : 0.62), drift: vapor ? 2.5 : 0.9 };
+  if (em.size){ p.size *= em.size; if (fire) p.vy *= Math.sqrt(em.size); }     // fogo grande: chamas mais altas
+  p.s = s; p.t = 0; p.fire = fire;
+  puffs.push(p);
 }
 function updateAmbientFX(dt){
   for (let i = ambientEmitters.length-1; i>=0; i--){
     const em = ambientEmitters[i];
     if (em.ttl !== undefined){ em.ttl -= dt; if (em.ttl <= 0){ ambientEmitters.splice(i,1); continue; } }
     if (em.map !== mapaCarregado) continue;
-    em.acc += dt * em.rate;
-    while (em.acc >= 1 && puffs.length < 340){
-      em.acc -= 1;
-      const fire = em.type === 'fire', vapor = em.type === 'vapor', sg = em.type === 'smokeG';
-      const mat = new THREE.SpriteMaterial({ map:puffTex, depthWrite:false, fog:!fire,
-        color: fire ? 0xff9a40 : (vapor ? 0xe8e4dc : (sg ? 0xb9bab2 : 0x3a3632)),
-        blending: fire ? THREE.AdditiveBlending : THREE.NormalBlending, opacity:0 });
-      const s = new THREE.Sprite(mat);
-      s.position.copy(em.pos).add(new THREE.Vector3(rand(-0.6,0.6), sg ? rand(0,2.4) : 0, rand(-0.6,0.6)).multiplyScalar(vapor?10:(sg?7:1)));
-      scene.add(s);
-      puffs.push(sg
-        ? { s, t:0, life:rand(4,6), vy:rand(0.1,0.4), size:rand(3.2,4.4), grow:0.5, peak:0.92, drift:0.15 }
-        : { s, t:0, life: fire ? rand(0.5,0.9) : (vapor ? rand(9,13) : rand(6,9)),
-        vy: fire ? rand(1.6,2.6) : (vapor ? rand(3,4.5) : rand(1.8,2.6)),
-        size: fire ? rand(0.9,1.5) : (vapor ? 14 : rand(1.6,2.4)), grow: fire ? -0.6 : (vapor ? 2.2 : 1.3),
-        peak: fire ? 0.9 : (vapor ? 0.55 : 0.62), drift: vapor ? 2.5 : 0.9 });
+    if (em.type === 'sparks'){                                 // fio rompido: rajadas de faísca em intervalos irregulares
+      em.acc -= dt;
+      if (em.acc <= 0){
+        em.acc = rand(em.min || 1.2, em.max || 3.6);
+        emitSparks(em.pos, randInt(10, 22), 3.2, 1.2);
+        if (em.sound && camera.position.distanceTo(em.pos) < 20) Audio_.click(0.06, 3800, 0.14, 2.2);
+      }
+      continue;
     }
-    if (em.light) em.light.position.copy(em.pos).setY(1.4), em.light.intensity = 2.2 + Math.random()*1.2;
+    em.acc += dt * em.rate;
+    while (em.acc >= 1 && puffs.length < 340){ em.acc -= 1; spawnPuff(em); }
+    if (em.light) em.light.position.copy(em.pos).setY(em.pos.y + 1.2), em.light.intensity = 2.2 + Math.random()*1.2;
   }
   for (let i = puffs.length-1; i>=0; i--){
     const p = puffs[i]; p.t += dt;
     const k = p.t / p.life;
     if (k >= 1){ scene.remove(p.s); p.s.material.dispose(); puffs.splice(i,1); continue; }
     p.s.position.y += p.vy * dt; p.s.position.x += p.drift * dt;   // vento leve para +x
-    p.s.scale.setScalar(Math.max(0.2, p.size * (1 + p.grow * k)));
+    const sc = Math.max(0.2, p.size * (1 + p.grow * k));
+    if (p.fire){ p.s.scale.set(sc * 0.62, sc * 1.2, 1); p.s.material.color.copy(FIRE_A).lerp(FIRE_B, k); }
+    else p.s.scale.setScalar(sc);
     p.s.material.opacity = p.peak * Math.min(1, k*5) * (1 - k);
   }
+  updateSparks(dt);
+  updateMotes(dt);
+  updateDrones(dt);
+}
+
+/* --- Faíscas: segmentos de linha com cor HDR (acima do limiar do bloom), uma única draw call.
+       Saem de fios rompidos, de tiros em metal e de drones atingidos. --- */
+const SPARK_MAX = 280;
+const sparkGeo = new THREE.BufferGeometry();
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SPARK_MAX * 6), 3));
+sparkGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(SPARK_MAX * 6), 3));
+sparkGeo.setDrawRange(0, 0);
+const sparkLines = new THREE.LineSegments(sparkGeo, new THREE.LineBasicMaterial({ vertexColors:true, transparent:true,
+  blending:THREE.AdditiveBlending, depthWrite:false, fog:false }));
+sparkLines.frustumCulled = false;
+scene.add(sparkLines);
+const sparks = [];
+function emitSparks(pos, n, speed, up, normal){
+  for (let i = 0; i < n && sparks.length < SPARK_MAX; i++){
+    const v = new THREE.Vector3(rand(-1,1), rand(-0.3,1), rand(-1,1)).normalize().multiplyScalar(speed * rand(0.4, 1.2));
+    if (normal) v.addScaledVector(normal, speed * 0.7);
+    v.y += up || 0;
+    sparks.push({ p:pos.clone(), v, t:0, life:rand(0.3, 0.9) });
+  }
+}
+function updateSparks(dt){
+  const P = sparkGeo.attributes.position.array, C = sparkGeo.attributes.color.array;
+  let n = 0;
+  for (let i = sparks.length-1; i>=0; i--){
+    const s = sparks[i]; s.t += dt;
+    if (s.t >= s.life){ sparks.splice(i,1); continue; }
+    s.v.y -= 11 * dt; s.p.addScaledVector(s.v, dt);
+    if (s.p.y < 0.02){ s.p.y = 0.02; s.v.y *= -0.35; s.v.x *= 0.6; s.v.z *= 0.6; }   // quica no chão
+    const k = 1 - s.t / s.life, j = n * 6;
+    P[j] = s.p.x; P[j+1] = s.p.y; P[j+2] = s.p.z;
+    P[j+3] = s.p.x - s.v.x * 0.035; P[j+4] = s.p.y - s.v.y * 0.035; P[j+5] = s.p.z - s.v.z * 0.035;
+    C[j] = 4.5 * k; C[j+1] = 1.9 * k; C[j+2] = 0.4 * k; C[j+3] = 1.2 * k; C[j+4] = 0.3 * k; C[j+5] = 0.04 * k;
+    n++;
+  }
+  sparkGeo.setDrawRange(0, n * 2);
+  sparkGeo.attributes.position.needsUpdate = true; sparkGeo.attributes.color.needsUpdate = true;
+}
+
+/* --- Poeira em suspensão: partículas finas que brilham contra o sol, sempre em volta da câmera. --- */
+const ruinsFX = { drones:[], motes:null };
+function buildMotes(){
+  const N = 520, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++){ pos[i*3] = rand(-18,18); pos[i*3+1] = rand(0.3, 9); pos[i*3+2] = rand(-18,18); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.PointsMaterial({ size:0.032, map:puffTex, color:0xfff0d4, transparent:true, opacity:0.5,
+    depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true });
+  const p = new THREE.Points(g, m); p.frustumCulled = false;
+  scene.add(p);
+  return p;
+}
+function updateMotes(dt){
+  const p = ruinsFX.motes; if (!p) return;
+  const a = p.geometry.attributes.position.array, c = camera.position, t = performance.now() / 1000;
+  for (let i = 0; i < a.length; i += 3){
+    a[i]   += (0.35 + Math.sin(t * 0.7 + i) * 0.15) * dt;          // vento leve para +x
+    a[i+1] += Math.sin(t * 0.9 + i * 0.37) * 0.08 * dt;
+    a[i+2] += Math.cos(t * 0.5 + i * 0.21) * 0.1 * dt;
+    if (a[i] - c.x > 18) a[i] -= 36; else if (a[i] - c.x < -18) a[i] += 36;
+    if (a[i+2] - c.z > 18) a[i+2] -= 36; else if (a[i+2] - c.z < -18) a[i+2] += 36;
+    if (a[i+1] > 9) a[i+1] = 0.3; else if (a[i+1] < 0.3) a[i+1] = 9;
+  }
+  p.geometry.attributes.position.needsUpdate = true;
+}
+
+/* --- Drones de vigilância (quadricóptero modelado no SketchUp): patrulham o céu, piscam luz
+       vermelha e caem em chamas quando levam tiros. Não atiram: são ambiente e alvo de habilidade. --- */
+const droneHitMeshes = [];
+let droneMats = null;
+const rotorCache = new Map();
+function buildDrone(){
+  droneMats = droneMats || {
+    dBody: new THREE.MeshStandardMaterial({ color:0x2e3236, roughness:0.45, metalness:0.35, envMapIntensity:0.5 }),
+    dRotor: new THREE.MeshStandardMaterial({ color:0x121416, roughness:0.6, transparent:true, opacity:0.5, depthWrite:false }),
+    dLens: new THREE.MeshStandardMaterial({ color:0x05070a, roughness:0.08, metalness:0.9, envMapIntensity:1 })
+  };
+  const g = new THREE.Group(), rotors = [];
+  kitByMaterial('drone', n => n.startsWith('rotor') || n.startsWith('light')).forEach(p => {
+    const m = new THREE.Mesh(p.geometry, droneMats[p.mat]); m.castShadow = true; g.add(m);
+  });
+  const lightMat = new THREE.MeshStandardMaterial({ color:0x200000, emissive:0xff2a14, emissiveIntensity:6 });
+  ruinasKit().drone.forEach(p => {
+    if (p.name.startsWith('light')) g.add(new THREE.Mesh(p.geometry, lightMat));
+    if (p.name.startsWith('rotor')){
+      // cada hélice gira no próprio eixo: geometria recentrada, mesh no centro do motor
+      let c = rotorCache.get(p.name);
+      if (!c){
+        const geo = p.geometry.clone(); geo.computeBoundingBox();
+        const ctr = geo.boundingBox.getCenter(new THREE.Vector3()); geo.translate(-ctr.x, -ctr.y, -ctr.z);
+        c = { geo, ctr }; rotorCache.set(p.name, c);
+      }
+      const m = new THREE.Mesh(c.geo, droneMats.dRotor); m.position.copy(c.ctr); g.add(m); rotors.push(m);
+    }
+  });
+  g.scale.setScalar(1.3);
+  return { g, rotors, lightMat };
+}
+function spawnDrones(paths){
+  paths.forEach((path, i) => {
+    const d = Object.assign(buildDrone(), { path, hp:60, state:'fly', respawn:0, vel:new THREE.Vector3(), phase:i * 2.1, yaw:0 });
+    d.g.traverse(o => { if (o.isMesh){ o.userData.drone = d; droneHitMeshes.push(o); } });
+    dronePathPos(d, performance.now() / 1000, d.g.position);
+    scene.add(d.g); ruinsFX.drones.push(d);
+  });
+}
+function dronePathPos(d, t, out){
+  const p = d.path;
+  if (p.kind === 'orbit') return out.set(p.x + Math.cos(t * p.w + d.phase) * p.r, p.y + Math.sin(t * 1.3 + d.phase) * 0.4, p.z + Math.sin(t * p.w + d.phase) * p.r);
+  if (p.kind === 'line')  return out.set(p.x + Math.sin(t * 0.37) * 2, p.y + Math.sin(t * 1.1) * 0.5, p.z + Math.sin(t * p.w + d.phase) * p.r);
+  return out.set(p.x + Math.sin(t * p.w) * p.r, p.y + Math.sin(t * 1.7) * 0.3, p.z + Math.sin(t * p.w * 2) * p.r * 0.5);   // oito
+}
+const _dp = new THREE.Vector3();
+function updateDrones(dt){
+  if (!ruinsFX.drones.length) return;
+  const t = performance.now() / 1000;
+  for (const d of ruinsFX.drones){
+    if (d.state === 'dead'){
+      d.respawn -= dt;
+      if (d.respawn <= 0){ d.state = 'fly'; d.hp = 60; d.g.visible = true; dronePathPos(d, t, d.g.position); }
+      continue;
+    }
+    d.rotors.forEach((r, i) => { r.rotation.y += dt * (i % 2 ? 62 : -62); });
+    if (d.state === 'fall'){
+      d.vel.y -= 9.8 * dt;
+      d.g.position.addScaledVector(d.vel, dt);
+      d.g.rotation.y += dt * 9; d.g.rotation.z += dt * 2.2;
+      if (Math.random() < dt * 25) spawnPuff({ pos:d.g.position, type:'smoke' });
+      if (d.g.position.y <= 0.3) crashDrone(d);
+      continue;
+    }
+    d.lightMat.emissiveIntensity = Math.sin(t * 5 + d.phase) > 0.55 ? 9 : 0.6;
+    dronePathPos(d, t, _dp);
+    d.vel.subVectors(_dp, d.g.position).divideScalar(Math.max(dt, 1e-3));
+    d.g.position.copy(_dp);
+    // o nariz (câmera em +x) aponta para onde vai; inclina para a frente com a velocidade
+    const sp = Math.hypot(d.vel.x, d.vel.z);
+    if (sp > 0.2){ let dy = Math.atan2(-d.vel.z, d.vel.x) - d.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); d.yaw += dy * clamp(dt * 2, 0, 1); }
+    d.g.rotation.set(0, d.yaw, -clamp(sp * 0.05, 0, 0.25), 'YXZ');
+  }
+}
+function hitDrone(d, dmg, point){
+  if (d.state !== 'fly') return;
+  emitSparks(point, randInt(6, 10), 4, 1);
+  d.hp -= dmg;
+  showHitmarker(d.hp <= 0, false);
+  if (d.hp <= 0){
+    d.state = 'fall';
+    d.vel.set(d.vel.x * 0.3 + rand(-2, 2), 1.5, d.vel.z * 0.3 + rand(-2, 2));
+    d.lightMat.emissiveIntensity = 0;
+    emitSparks(point, 24, 6, 2);
+    addKillfeed('DRONE ABATIDO', true);
+  }
+}
+function crashDrone(d){
+  const p = d.g.position.clone(); p.y = 0.4;
+  Audio_.explode();
+  addParticles(p, 0xffb040, 18, 8, 6, 1.3);
+  addParticles(p, 0x3a3834, 12, 5, 4, 1.8);
+  emitSparks(p, 40, 7, 3);
+  const light = new THREE.PointLight(0xffa030, 14, 14, 2); light.position.copy(p).setY(1.2); scene.add(light);
+  fx.explosions.push({ light, t:0, life:0.35 });
+  if (camera.position.distanceTo(p) < 12) shake(0.25, 0.3);
+  d.state = 'dead'; d.g.visible = false; d.respawn = 25;
+}
+const activeDroneMeshes = () => droneHitMeshes.filter(m => m.userData.drone.state === 'fly');
+function clearRuinsFX(){
+  ruinsFX.drones.forEach(d => scene.remove(d.g));
+  ruinsFX.drones.length = 0; droneHitMeshes.length = 0;
+  if (ruinsFX.motes){ scene.remove(ruinsFX.motes); ruinsFX.motes.geometry.dispose(); ruinsFX.motes.material.dispose(); ruinsFX.motes = null; }
+  sparks.length = 0;
+}
+/** Extras do mapa Ruínas criados depois da montagem: drones e poeira no ar. */
+function ruinasExtras(){
+  spawnDrones([
+    { kind:'orbit', x:0, y:12, z:-8, r:16, w:0.16 },
+    { kind:'line',  x:-2, y:11, z:-3, r:32, w:0.09 },
+    { kind:'eight', x:30, y:9.5, z:-12, r:6, w:0.35 }
+  ]);
+  ruinsFX.motes = buildMotes();
+}
+
+/* Impacto de bala por material: metal solta faísca, o resto levanta pó da cor da superfície. */
+let METAL_SET = null;
+const _white = new THREE.Color(0xffffff);
+function impactFX(h, n){
+  METAL_SET = METAL_SET || new Set([MAT.metal, MAT.burnt, MAT.kRebar, MAT.barrel, MAT.contA, MAT.contB, MAT.contC, MAT.gSteel]);
+  const m = h.object.material;
+  if (METAL_SET.has(m)){ emitSparks(h.point, randInt(4, 8), 4, 0.6, n); addParticles(h.point, 0x55524c, 2, 2.5, 8, 0.35); return; }
+  const c = m && m.color ? m.color.clone().lerp(_white, 0.3).getHex() : 0xbbbbaa;
+  addParticles(h.point, c, 3, 3.2, 8, 0.45);
+}
+const _im = new THREE.Matrix4();
+function hitNormal(h, dir){
+  if (!h.face) return dir.clone().negate();
+  const n = h.face.normal.clone();
+  if (h.instanceId !== undefined && h.object.isInstancedMesh){ h.object.getMatrixAt(h.instanceId, _im); n.transformDirection(_im); }
+  return n.transformDirection(h.object.matrixWorld);
+}
+/* Vidro: a bala atravessa e deixa a estrela de trinca; cacos brilhantes caem. */
+const glassRay = new THREE.Raycaster();
+const glassHoleTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d');
+  x.strokeStyle = 'rgba(245,250,255,0.9)'; x.lineWidth = 1.2;
+  for (let i = 0; i < 11; i++){ const a = i / 11 * TAU + Math.random() * 0.3, r = 14 + Math.random() * 16; x.beginPath(); x.moveTo(32, 32); x.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r); x.stroke(); }
+  x.beginPath(); x.arc(32, 32, 9, 0, TAU); x.stroke();
+  x.fillStyle = 'rgba(230,238,242,0.95)'; x.beginPath(); x.arc(32, 32, 4.5, 0, TAU); x.fill();
+  x.fillStyle = 'rgba(10,12,14,1)'; x.beginPath(); x.arc(32, 32, 2.2, 0, TAU); x.fill();
+  return new THREE.CanvasTexture(c);
+})();
+function glassCross(origin, dir, far){
+  if (!glassMeshes.length) return;
+  glassRay.set(origin, dir); glassRay.far = far;
+  const g = glassRay.intersectObjects(glassMeshes, false);
+  if (!g.length) return;
+  const n = hitNormal(g[0], dir); if (n.dot(dir) > 0) n.negate();
+  addDecal(g[0].point, n, glassHoleTex);
+  addParticles(g[0].point, 0xd6e6ec, 5, 2.6, 9, 0.3);
+  Audio_.click(0.07, 5600, 0.05, 2.8);
 }
 
 /* --- Sequências (scorestreaks): UAV por abates, helicóptero pela loja --- */
@@ -2214,13 +2981,13 @@ const holeTex = (() => {
 })();
 const decalGeo = new THREE.PlaneGeometry(0.22, 0.22);
 
-function addDecal(point, normal){
+function addDecal(point, normal, tex){
   if (fx.decals.length > 90){
     const old = fx.decals.shift();
     scene.remove(old.mesh); old.mesh.material.dispose();
   }
   const mat = new THREE.MeshBasicMaterial({
-    map:holeTex, transparent:true, opacity:0.95, depthWrite:false
+    map:tex || holeTex, transparent:true, opacity:0.95, depthWrite:false
   });
   const m = new THREE.Mesh(decalGeo, mat);
   m.position.copy(point).addScaledVector(normal, 0.012);
@@ -2381,7 +3148,7 @@ function fireBullet(w){
   const right = new THREE.Vector3().crossVectors(baseDir, up).normalize();
   const realUp = new THREE.Vector3().crossVectors(right, baseDir).normalize();
 
-  const targets = worldMeshes.concat(enemyHitMeshes);
+  const targets = worldMeshes.concat(enemyHitMeshes, activeDroneMeshes());
   // Acumula o dano por inimigo para que uma cartuchada vire UM número, não nove.
   const hitMap = new Map();
   let anyHit = false;
@@ -2405,7 +3172,8 @@ function fireBullet(w){
       end = h.point.clone();
       const e = h.object.userData.enemy;
 
-      if (e && e.team === 'A'){ /* aliado: a bala para nele, sem dano */ }
+      if (h.object.userData.drone){ hitDrone(h.object.userData.drone, w.damage, h.point); }
+      else if (e && e.team === 'A'){ /* aliado: a bala para nele, sem dano */ }
       else if (e && !e.dead){
         const part = h.object.userData.part;
         const isHead = part === 'head';
@@ -2425,12 +3193,12 @@ function fireBullet(w){
         anyHit = true;
       } else {
         // impacto no cenário
-        const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld)
-                         : dir.clone().negate();
+        const n = hitNormal(h, dir);
         addDecal(h.point, n);
-        addParticles(h.point, 0xbbbbaa, 3, 3.2, 8, 0.45);
+        impactFX(h, n);
       }
     }
+    glassCross(origin, dir, hits.length ? hits[0].distance : w.range);
 
     // tracer só em alguns projéteis, para não poluir
     if (w.pellets === 1 || p % 3 === 0){
@@ -3495,7 +4263,7 @@ let lastT = performance.now(), clockT = 0, hudAcc = 0, frameCount = 0;
 /* Sonda somente-leitura para diagnóstico e testes automatizados. */
 window.__blackout = {
   kill:()=>damagePlayer(99999, player.pos.clone().add(new THREE.Vector3(0,0,-3))),
-  eco:{ get wave(){return wave;}, get stats(){return stats;}, get player(){return player;}, get weapons(){return weapons;}, get curW(){return curW;}, get enemies(){return enemies;}, renderShop:()=>renderShop(), get streaks(){return streaks;}, callUAV:()=>callUAV(), launchHeli:()=>{ launchHeli(); streaks.heli.t=40; }, get puffs(){return puffs.length;}, loadMap:(id)=>loadMap(id), gunModels, get profile(){return profile;}, get fx(){return fx;}, get breath(){return breath;}, get tdm(){return tdm;}, get smokes(){return smokes;}, settings, startSmoke:(x,z)=>startSmoke(new THREE.Vector3(x,0,z)), smokeBlocks:(a,b)=>smokeBlocks(new THREE.Vector3(...a), new THREE.Vector3(...b)) },
+  eco:{ get wave(){return wave;}, get stats(){return stats;}, get player(){return player;}, get weapons(){return weapons;}, get curW(){return curW;}, get enemies(){return enemies;}, renderShop:()=>renderShop(), get streaks(){return streaks;}, callUAV:()=>callUAV(), launchHeli:()=>{ launchHeli(); streaks.heli.t=40; }, get puffs(){return puffs.length;}, get emitters(){ return ambientEmitters.map(e => e.type + ':' + e.map + ':' + e.pos.toArray().map(v=>v.toFixed(1)).join(',')); }, loadMap:(id)=>loadMap(id), gunModels, get profile(){return profile;}, get fx(){return fx;}, get breath(){return breath;}, get tdm(){return tdm;}, get smokes(){return smokes;}, get ruins(){ return { drones: ruinsFX.drones.map(d => ({ state:d.state, hp:d.hp, pos:d.g.position.toArray() })), glass: glassMeshes.length, sparks: sparks.length, extras: worldExtras.length, world: worldMeshes.length, colliders: colliders.length, motes: !!ruinsFX.motes }; }, shootDrone:(i)=>{ const d = ruinsFX.drones[i]; hitDrone(d, 999, d.g.position.clone()); }, sparkBurst:(x,y,z)=>emitSparks(new THREE.Vector3(x,y,z), 30, 4, 1), settings, startSmoke:(x,z)=>startSmoke(new THREE.Vector3(x,0,z)), smokeBlocks:(a,b)=>smokeBlocks(new THREE.Vector3(...a), new THREE.Vector3(...b)) },
   get time(){ return clockT; },
   get frames(){ return frameCount; },
   get state(){ return gameState; },
@@ -3524,6 +4292,7 @@ function loop(now){
   let dt = (now - lastT) / 1000;
   lastT = now;
   if (dt > 0.05) dt = 0.05;         // evita saltos após pausa
+  if (dt < 0) dt = 0;               // o rAF pode trazer um instante anterior ao clique em JOGAR
 
   if (gameState === STATE.PLAYING || gameState === STATE.DEAD){
     clockT += dt;

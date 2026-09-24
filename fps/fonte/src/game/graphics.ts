@@ -43,7 +43,7 @@ function normalTexture(key: string): THREE.Texture {
 }
 
 export type Quality = 'alta' | 'media' | 'baixa'
-type Kind = 'concrete' | 'asphalt' | 'dirt' | 'metal' | 'corrugated' | 'wood' | 'fabric' | 'tile' | 'paint'
+type Kind = 'concrete' | 'asphalt' | 'dirt' | 'metal' | 'corrugated' | 'wood' | 'fabric' | 'tile' | 'paint' | 'cracked' | 'ruin' | 'facade'
 
 /* ---------------- ruído ---------------- */
 function hash(x: number, y: number, s: number) {
@@ -62,11 +62,24 @@ function fbm(x: number, y: number, s: number, oct: number, per: number) {
   return a / n
 }
 
+/* Ruído celular periódico: distância ao ponto mais próximo (f1) e ao segundo (f2). As rachaduras ficam onde f2 − f1 ≈ 0. */
+function cellular(x: number, y: number, s: number, per: number) {
+  const xi = Math.floor(x), yi = Math.floor(y)
+  let f1 = 9, f2 = 9
+  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const cx = xi + i, cy = yi + j, wx = ((cx % per) + per) % per, wy = ((cy % per) + per) % per
+    const px = cx + hash(wx, wy, s), py = cy + hash(wx, wy, s + 7)
+    const d = Math.hypot(px - x, py - y)
+    if (d < f1) { f2 = f1; f1 = d } else if (d < f2) f2 = d
+  }
+  return f2 - f1
+}
+
 /* Textura em tons de cinza (tingida pela cor do material). Média ~0,85 para não escurecer a cena. */
 const texCache = new Map<Kind, THREE.CanvasTexture>()
 function surfaceTexture(kind: Kind): THREE.CanvasTexture {
   const hit = texCache.get(kind); if (hit) return hit
-  const N = 256, c = document.createElement('canvas'); c.width = c.height = N
+  const N = kind === 'cracked' ? 512 : 256, c = document.createElement('canvas'); c.width = c.height = N
   const ctx = c.getContext('2d')!, img = ctx.createImageData(N, N), d = img.data
   const P = 8                                                          // período do ruído: textura sem emenda
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
@@ -90,6 +103,32 @@ function surfaceTexture(kind: Kind): THREE.CanvasTexture {
       case 'tile': {
         const line = (x % 64) < 2 || (y % 64) < 2
         g = line ? 0.45 : 0.82 + fbm(u, v, 14, 4, P) * 0.15 + hash(Math.floor(x / 64), Math.floor(y / 64), 2) * 0.08; break
+      }
+      case 'cracked': {
+        // asfalto velho: agregado, remendos de poeira e malha de rachaduras (rede de Voronoi deformada por ruído)
+        const w = fbm(u * 2, v * 2, 31, 3, P * 2) * 0.35
+        const crack = cellular(u * 0.75 + w, v * 0.75 + w, 33, P * 0.75)
+        const fine = cellular(u * 2 + w * 2, v * 2 + w * 2, 35, P * 2)
+        g = 0.72 + fbm(u * 4, v * 4, 5, 3, P * 4) * 0.1 + Math.pow(fbm(u * 0.5, v * 0.5, 34, 4, P / 2), 2) * 0.3
+        g *= 0.5 + 0.5 * Math.min(1, crack / 0.045)
+        g *= 0.8 + 0.2 * Math.min(1, fine / 0.03)
+        break
+      }
+      case 'ruin': {
+        // concreto de fachada: manchas, escorrido de fuligem na vertical e lascas claras
+        const streak = Math.pow(vnoise(u * 3, 0, 21, P * 3), 4) * fbm(u * 2, v * 0.5, 22, 3, P) * 2
+        const chip = fbm(u * 2, v * 2, 23, 4, P * 2)
+        g = 0.8 + fbm(u, v, 1, 5, P) * 0.18 - Math.pow(fbm(u * 0.5, v * 0.5, 9, 3, P / 2), 3) * 0.2 - streak * 0.22 + (chip > 0.7 ? 0.08 : 0)
+        break
+      }
+      case 'facade': {
+        // prédio distante: grade de janelas (8 × 8 por ladrilho), algumas estouradas (mais escuras)
+        const cx = Math.floor(x / (N / 8)), cy = Math.floor(y / (N / 8))
+        const fx = (x % (N / 8)) / (N / 8), fy = (y % (N / 8)) / (N / 8)
+        const win = fx > 0.22 && fx < 0.78 && fy > 0.3 && fy < 0.8
+        const h = hash(cx, cy, 41)
+        g = win ? (h < 0.2 ? 0.12 : 0.3 + h * 0.12) : 0.78 + fbm(u, v, 42, 3, P) * 0.15
+        break
       }
       case 'paint':    g = 0.82 + fbm(u, v, 15, 4, P) * 0.15 - Math.pow(fbm(u * 2, v * 2, 16, 4, P * 2), 5) * 0.5; break
     }
@@ -125,7 +164,11 @@ export function surfaceMaterial(color: number, kind: Kind, opts: { scale?: numbe
       .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
         ${local
           ? 'vec3 triS = vec3(length(modelMatrix[0].xyz), length(modelMatrix[1].xyz), length(modelMatrix[2].xyz)); vTriP = transformed * triS; vTriN = objectNormal;'
-          : 'vTriP = (modelMatrix * vec4(transformed, 1.0)).xyz; vTriN = normalize(mat3(modelMatrix) * objectNormal);'}`)
+          : `vec4 triWP = vec4(transformed, 1.0); vec3 triON = objectNormal;
+             #ifdef USE_INSTANCING
+             triWP = instanceMatrix * triWP; triON = mat3(instanceMatrix) * triON;
+             #endif
+             vTriP = (modelMatrix * triWP).xyz; vTriN = normalize(mat3(modelMatrix) * triON);`}`)
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vTriP; varying vec3 vTriN; uniform float triScale; uniform float bumpK;\n#ifdef TRI_NORMAL\nuniform sampler2D triNormal; uniform float triNScale; uniform float triNStr;\n#endif\n#ifdef TRI_LOCAL\nuniform mat3 normalMatrix;\n#endif')
       .replace('#include <map_fragment>', `
@@ -195,6 +238,18 @@ export function upgradeMaterials(MAT: Record<string, THREE.Material>) {
   set('contC', 'corrugated', { scale: 0.35, rough: 0.6, metal: 0.45, normal: 'corrugated', nScale: 0.35, nStrength: 1.4 })
   set('floorTile', 'tile', { scale: 0.25, rough: 0.5, normal: 'tile', nScale: 0.25 })
   set('floorHall', 'tile', { scale: 0.25, rough: 0.45, normal: 'tile', nScale: 0.25 })
+  // Ruínas: poeira, asfalto rachado, fachada com fuligem, lataria queimada e o kit do SketchUp
+  set('dust', 'dirt', { scale: 0.09, normal: 'dirt', nScale: 0.25, nStrength: 0.9 })
+  set('roadCracked', 'cracked', { scale: 0.07, rough: 1, normal: 'asphalt', nScale: 0.5 })
+  set('ruin', 'ruin', { scale: 0.2, normal: 'concrete', nScale: 0.4 })
+  set('ruinDark', 'ruin', { scale: 0.2, normal: 'concrete', nScale: 0.4 })
+  set('burnt', 'metal', { scale: 0.6, rough: 0.85, metal: 0.35, normal: 'metal', nScale: 1, nStrength: 0.9 })
+  set('pole', 'wood', { scale: 1.5, rough: 0.85, normal: 'wood', nScale: 1.5 })
+  set('kConcrete', 'concrete', { scale: 0.3, normal: 'concrete', nScale: 0.6 })
+  set('kBreak', 'concrete', { scale: 0.6, normal: 'dirt', nScale: 1.2, nStrength: 1.4 })
+  set('kRebar', 'metal', { scale: 2, rough: 0.8, metal: 0.5, normal: 'metal', nScale: 3 })
+  set('kRubble', 'concrete', { scale: 0.5, normal: 'dirt', nScale: 1.2, nStrength: 1.3 })
+  set('kJersey', 'concrete', { scale: 0.45, normal: 'concrete', nScale: 1.8, nStrength: 0.5 })
   // uniformes e equipamento: tecido no espaço do objeto (não "escorrega" quando o soldado anda)
   set('enemyBody', 'fabric', { scale: 3, local: true, normal: 'twill', nScale: 4 })
   set('enemyVest', 'fabric', { scale: 3, local: true, normal: 'burlap', nScale: 4, nStrength: 0.8 })
@@ -204,6 +259,7 @@ export function upgradeMaterials(MAT: Record<string, THREE.Material>) {
   // preto anodizado e fosfatizado: quase não reflete o céu, o brilho vem da luz direta
   std('gBlack', 0.62, 0.12, 0.1); std('gSteel', 0.45, 0.6, 0.2); std('gScope', 0.35, 0.5, 0.2)
   std('gPoly', 0.8, 0.0, 0.08); std('gGlass', 0.05, 0.9, 0.6); std('hands', 0.85, 0, 0.2)
+  std('tire', 0.9, 0, 0.15)
   set('gWood', 'wood', { scale: 6, local: true, rough: 0.6 })
   set('gWoodL', 'wood', { scale: 6, local: true, rough: 0.6 })
   Object.values(MAT).forEach(m => { const sm = m as THREE.MeshStandardMaterial; if (sm.isMeshStandardMaterial && sm.envMapIntensity === 1) sm.envMapIntensity = 0.4 })
@@ -314,7 +370,11 @@ export interface PostFX {
   render(dt: number): void
   setSize(w: number, h: number): void
   setQuality(q: Quality): void
+  /** gradação por mapa (saturação, lift nas sombras, gain nas altas) */
+  setGrade(g: Grade): void
 }
+export interface Grade { saturation?: number; lift?: [number, number, number]; gain?: [number, number, number]; exposure?: number }
+const GRADE_DEFAULT: Required<Grade> = { saturation: 1.08, lift: [0.01, 0.012, 0.02], gain: [1.04, 1.0, 0.94], exposure: 1 }
 
 export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera,
   gunScene: THREE.Scene, gunCamera: THREE.Camera, showGun: () => boolean, exposure: number): PostFX {
@@ -322,6 +382,9 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   const pr = renderer.getPixelRatio()
   const rt = new THREE.WebGLRenderTarget(size.x * pr, size.y * pr, {
     type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    // com stencil a r128 aloca DEPTH24_STENCIL8; sem ele o depth é de 16 bits e superfícies próximas
+    // (janelas, decalques, faixas de asfalto) brigam a distância
+    stencilBuffer: true,
   })
   const composer = new EffectComposer(renderer, rt)
   const renderPass = new RenderPass(scene, camera)
@@ -344,10 +407,11 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   ;[renderPass, sao, gun, bloom, grade, smaa].forEach(p => composer.addPass(p))
 
   let quality: Quality = 'alta'
+  let gradeExp = 1                                         // ajuste de exposição do mapa atual
   const apply = () => {
     const post = quality !== 'baixa'
     renderer.toneMapping = post ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = exposure
+    renderer.toneMappingExposure = exposure * gradeExp
     sao.enabled = quality === 'alta'
     smaa.enabled = quality === 'alta'
     bloom.enabled = post
@@ -367,5 +431,14 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
     },
     setSize(w, h) { composer.setSize(w, h); bloom.setSize(w / 2, h / 2) },
     setQuality(q) { quality = q; apply() },
+    setGrade(g) {
+      const v = { ...GRADE_DEFAULT, ...g }
+      grade.uniforms.saturation.value = v.saturation
+      grade.uniforms.lift.value.set(...v.lift)
+      grade.uniforms.gain.value.set(...v.gain)
+      gradeExp = v.exposure
+      grade.uniforms.exposure.value = exposure * 1.2 * gradeExp
+      apply()
+    },
   }
 }
