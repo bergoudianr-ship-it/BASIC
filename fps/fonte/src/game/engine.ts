@@ -1278,14 +1278,14 @@ const WEAPONS = [
   },
   // --- novas: armas das imagens (BO2) e fuzis de precisão clássicos de Call of Duty ---
   {
-    id:'pdw57', name:'PDW-57', cal:'5,7×28mm', mode:'AUTOMÁTICO', slot:'pri', chamber:true, sprintOut:0.16, model:'mp7', tint:0xb8a47a,
+    id:'pdw57', name:'PDW-57', cal:'5,7×28mm', mode:'AUTOMÁTICO', slot:'pri', chamber:true, sprintOut:0.16,
     damage:20, headMult:2.4, rpm:850, auto:true, mag:50, magMax:50, reserve:300, reserveMax:300,
     spread:0.020, adsSpread:0.007, moveSpreadMul:2.0, recoilV:0.0085, recoilH:0.0050, kick:0.024,
     reload:2.6, range:115, pellets:1, adsFov:62, sound:{ gain:0.30, cut:6400, low:200, dur:0.14, rate:1.3 },
-    switchTime:0.36, realLen:0.50, vmLen:0.52
+    switchTime:0.36, realLen:0.50, vmLen:0.62, hip:[0.14,-0.17,-0.46]
   },
   {
-    id:'m8a1', name:'M8A1', cal:'5,56×45mm', mode:'AUTOMÁTICO', slot:'pri', chamber:true, sprintOut:0.22, model:'m4a1', tint:0x5c4631,
+    id:'m8a1', name:'M8A1', cal:'5,56×45mm', mode:'AUTOMÁTICO', slot:'pri', chamber:true, sprintOut:0.22,
     damage:27, headMult:2.4, rpm:680, auto:true, mag:32, magMax:32, reserve:224, reserveMax:224,
     spread:0.0130, adsSpread:0.0033, moveSpreadMul:2.4, recoilV:0.0145, recoilH:0.0045, kick:0.036,
     reload:2.2, range:185, pellets:1, adsFov:56, sound:{ gain:0.42, cut:5000, low:150, dur:0.21, rate:0.95 },
@@ -1296,31 +1296,31 @@ const WEAPONS = [
     spread:0.0125, adsSpread:0.0032, moveSpreadMul:2.2, recoilV:0.0125, recoilH:0.0055, kick:0.032,
     reload:2.4, range:170, pellets:1, adsFov:55, sound:{ gain:0.40, cut:5400, low:160, dur:0.18, rate:1.05 },
     switchTime:0.42, realLen:0.757, vmLen:0.74, hip:[0.15,-0.175,-0.50] },
-  { id:'barrett', name:'BARRETT M82A1', cal:'.50 BMG', mode:'SEMIAUTOMÁTICA', slot:'pri', chamber:true, sprintOut:0.40, model:'awm', tint:0x9a8963, scope:true,
+  { id:'barrett', name:'BARRETT M82A1', cal:'.50 BMG', mode:'SEMIAUTOMÁTICA', slot:'pri', chamber:true, sprintOut:0.40, scope:true,
     damage:150, headMult:2.5, rpm:150, auto:false, mag:10, magMax:10, reserve:40, reserveMax:40,
     spread:0.07, adsSpread:0.0008, moveSpreadMul:3.6, recoilV:0.11, recoilH:0.018, kick:0.21,
     reload:4.0, range:400, pellets:1, adsFov:10, sound:{ gain:0.75, cut:3000, low:80, dur:0.55, rate:0.6 },
-    switchTime:0.85, realLen:1.45, vmLen:0.70 },
-  { id:'svd', name:'DRAGUNOV SVD', cal:'7,62×54R', mode:'SEMIAUTOMÁTICA', slot:'pri', chamber:true, sprintOut:0.30, model:'awm', tint:0x6e4a28, scope:true,
+    switchTime:0.85, realLen:1.45, vmLen:0.86, hip:[0.16,-0.19,-0.56] },
+  { id:'svd', name:'DRAGUNOV SVD', cal:'7,62×54R', mode:'SEMIAUTOMÁTICA', slot:'pri', chamber:true, sprintOut:0.30, scope:true,
     damage:80, headMult:2.5, rpm:240, auto:false, mag:10, magMax:10, reserve:50, reserveMax:50,
     spread:0.055, adsSpread:0.0012, moveSpreadMul:3.0, recoilV:0.055, recoilH:0.012, kick:0.12,
     reload:3.0, range:260, pellets:1, adsFov:14, sound:{ gain:0.6, cut:3800, low:100, dur:0.40, rate:0.75 },
-    switchTime:0.65, realLen:1.22, vmLen:0.66 },
-  { id:'l96', name:'L96A1', cal:'7,62×51mm', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.34, model:'awm', tint:0x4f5a38, scope:true,
+    switchTime:0.65, realLen:1.22, vmLen:0.86, hip:[0.16,-0.19,-0.56] },
+  { id:'l96', name:'L96A1', cal:'7,62×51mm', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.34, scope:true,
     damage:115, headMult:2.5, rpm:50, auto:false, mag:10, magMax:10, reserve:40, reserveMax:40,
     spread:0.062, adsSpread:0.0004, moveSpreadMul:3.4, recoilV:0.07, recoilH:0.009, kick:0.15,
     reload:3.5, range:320, pellets:1, adsFov:11, sound:{ gain:0.64, cut:3600, low:95, dur:0.45, rate:0.68 },
-    switchTime:0.72, realLen:1.18, vmLen:0.65 },
-  { id:'m200', name:'INTERVENTION M200', cal:'.408 CheyTac', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.36, model:'awm', tint:0x2b2d2f, scope:true,
+    switchTime:0.72, realLen:1.18, vmLen:0.86, hip:[0.16,-0.19,-0.56] },
+  { id:'m200', name:'INTERVENTION M200', cal:'.408 CheyTac', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.36, scope:true,
     damage:135, headMult:2.5, rpm:42, auto:false, mag:7, magMax:7, reserve:35, reserveMax:35,
     spread:0.065, adsSpread:0.0004, moveSpreadMul:3.5, recoilV:0.085, recoilH:0.010, kick:0.17,
     reload:3.7, range:360, pellets:1, adsFov:10, sound:{ gain:0.7, cut:3300, low:88, dur:0.5, rate:0.63 },
-    switchTime:0.78, realLen:1.4, vmLen:0.68 },
-  { id:'dsr50', name:'DSR 50', cal:'.50 BMG', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.36, model:'awm', tint:0x1d1f22, scope:true,
+    switchTime:0.78, realLen:1.4, vmLen:0.86, hip:[0.16,-0.19,-0.56] },
+  { id:'dsr50', name:'DSR 50', cal:'.50 BMG', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.36, scope:true,
     damage:140, headMult:2.5, rpm:45, auto:false, mag:4, magMax:4, reserve:32, reserveMax:32,
     spread:0.065, adsSpread:0.0004, moveSpreadMul:3.5, recoilV:0.09, recoilH:0.010, kick:0.18,
     reload:3.3, range:380, pellets:1, adsFov:10, sound:{ gain:0.72, cut:3200, low:85, dur:0.52, rate:0.62 },
-    switchTime:0.75, realLen:1.1, vmLen:0.66 },
+    switchTime:0.75, realLen:1.1, vmLen:0.86, hip:[0.16,-0.19,-0.56] },
   { id:'ballista', name:'BALLISTA', cal:'.338 Lapua', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.30, scope:true,
     damage:110, headMult:2.5, rpm:62, auto:false, mag:7, magMax:7, reserve:42, reserveMax:42,
     spread:0.058, adsSpread:0.0004, moveSpreadMul:3.2, recoilV:0.068, recoilH:0.009, kick:0.14,
@@ -1369,13 +1369,13 @@ function resetWeapons(){
    engatilhamento da MP5, tambor e bipé da RPK, coronha vazada da SVD.
    ---------------------------------------------------------------------- */
 // boca do cano de cada arma (z, y em coordenadas cruas), para o supressor
-const MUZZLE = { ballista:[-0.66,0.01], famas:[-0.46,0.0], m4a1:[-0.838,0.0254], mp7:[-0.30,0.005], m870:[-0.55,0.018], awm:[-0.745,0.010], m9:[-0.185,0.030], deagle:[-0.22,0.030] };
+const MUZZLE = { pdw57:[-0.26,0.0], m8a1:[-0.47,0.01], barrett:[-0.86,0.01], svd:[-0.72,0.01], l96:[-0.66,0.01], m200:[-0.80,0.01], dsr50:[-0.50,0.01], ballista:[-0.66,0.01], famas:[-0.46,0.0], m4a1:[-0.838,0.0254], mp7:[-0.30,0.005], m870:[-0.55,0.018], awm:[-0.745,0.010], m9:[-0.185,0.030], deagle:[-0.22,0.030] };
 // altura das mãos (punho, guarda-mão) quando difere do padrão
 const HAND_Y = { m4a1:[-0.064, -0.02] };
 // posição do pente estendido (z, y) por arma
 const MAG_POS = { m4a1:[-0.42, -0.215] };
 const HAND_Z = {           // onde ficam as mãos em cada arma (coordenadas cruas)
-  ballista:[0.14,-0.28], famas:[0.02,-0.22], m4a1:[-0.279,-0.533], mp7:[0.03,-0.16], m870:[0.10,-0.26], awm:[0.14,-0.30], m9:[0.02,0.03], deagle:[0.02,0.03]
+  pdw57:[0.02,-0.14], m8a1:[0.04,-0.24], barrett:[0.10,-0.34], svd:[0.12,-0.30], l96:[0.12,-0.28], m200:[0.10,-0.30], dsr50:[-0.02,-0.26], ballista:[0.14,-0.28], famas:[0.02,-0.22], m4a1:[-0.279,-0.533], mp7:[0.03,-0.16], m870:[0.10,-0.26], awm:[0.14,-0.30], m9:[0.02,0.03], deagle:[0.02,0.03]
 };
 
 /* Mira holográfica: base, laterais, capuz, vidro e ponto vermelho.
@@ -1392,6 +1392,8 @@ function holo(B, y, z){
   d.userData.dot = true;
 }
 const tintCache = new Map();
+const polyMat = c => new THREE.MeshStandardMaterial({ color:c, roughness:0.7, metalness:0.05, envMapIntensity:0.12 });
+const TAN_POLY = polyMat(0xb8a47a), BROWN_POLY = polyMat(0x5c4631), BARRETT_TAN = polyMat(0x8f8062), GREEN_POLY = polyMat(0x4f5a38);
 const BALLISTA_TAN = new THREE.MeshStandardMaterial({ color:0xa8905a, roughness:0.55, metalness:0.25, envMapIntensity:0.25 });   // tom areia/ouro da imagem
 function buildWeaponParts(id, g){
   const WD = WEAPONS.find(x => x.id === id);
@@ -1470,6 +1472,114 @@ function buildWeaponParts(id, g){
       B(0.050,0.100,0.22, M.gWood,  0,-0.020, 0.24);      // coronha
       B(0.052,0.115,0.02, M.gBlack, 0,-0.030, 0.35);      // soleira
       break;
+
+    case 'pdw57': {                                  // PDW-57 (FN P90): corpo arredondado, carregador translúcido em cima
+      const K = TAN_POLY;
+      B(0.060,0.110,0.40, K, 0,-0.010,-0.02);                   // corpo
+      B(0.056,0.030,0.30, M.gBlack, 0, 0.052,-0.06);            // tampa / carregador
+      B(0.050,0.012,0.28, HOLO_GLASS, 0, 0.070,-0.06);          // carregador translúcido
+      holo(B, 0.078, -0.02);                                    // mira reflex
+      C(0.011,0.08, M.gSteel, 0, 0.000,-0.25);                  // cano
+      B(0.050,0.060,0.050, M.gBlack, 0,-0.055,-0.13);           // frente do punho
+      B(0.030,0.075,0.060, M.gBlack, 0,-0.080,-0.07, 0.3);      // punho vazado
+      B(0.060,0.030,0.10, K, 0,-0.080, 0.02);                   // base do polegar
+      B(0.062,0.120,0.030, K, 0,-0.020, 0.19);                  // soleira
+      break;
+    }
+    case 'm8a1': {                                   // M8A1: corpo alto de polímero, trilho longo, cano curto
+      const K = BROWN_POLY;
+      B(0.060,0.100,0.36, K, 0, 0.000,-0.08);                   // caixa e guarda-mão em peça única
+      B(0.026,0.016,0.44, M.gBlack, 0, 0.058,-0.10);            // trilho
+      holo(B, 0.066, -0.02);
+      C(0.012,0.10, M.gSteel, 0, 0.005,-0.30);                  // cano
+      C(0.018,0.05, M.gBlack, 0, 0.005,-0.37);                  // quebra-chamas
+      B(0.034,0.100,0.050, M.gBlack, 0,-0.095,-0.02, -0.2);     // carregador
+      B(0.036,0.100,0.045, K, 0,-0.090, 0.10, 0.25);            // punho
+      B(0.040,0.070,0.20, K, 0,-0.010, 0.24);                   // coronha
+      B(0.042,0.110,0.025, M.gBlack, 0,-0.025, 0.35);
+      break;
+    }
+    case 'barrett': {                                // Barrett M82A1: enorme, freio de boca em seta, carregador reto
+      const K = BARRETT_TAN;
+      B(0.070,0.100,0.60, K, 0, 0.000,-0.05);                   // caixa superior (ferro estampado)
+      B(0.060,0.050,0.40, K, 0,-0.070, 0.02);                   // caixa inferior
+      C(0.019,0.42, M.gBlack, 0, 0.015,-0.62);                  // cano pesado
+      B(0.080,0.040,0.10, M.gBlack, 0, 0.015,-0.86);            // freio de boca em V
+      B(0.020,0.060,0.10, M.gBlack, 0, 0.015,-0.86);
+      B(0.020,0.014,0.40, M.gBlack, 0, 0.060,-0.10);            // trilho
+      C(0.025,0.30, M.gScope, 0, 0.100,-0.10); C(0.036,0.08, M.gScope, 0, 0.100,-0.28); C(0.033,0.012, M.gGlass, 0, 0.100,-0.325);
+      B(0.034,0.060,0.024, M.gBlack, 0, 0.070,-0.20); B(0.034,0.060,0.024, M.gBlack, 0, 0.070, 0.00);
+      B(0.040,0.140,0.080, M.gBlack, 0,-0.140,-0.04);           // carregador de 10
+      B(0.044,0.120,0.055, M.gBlack, 0,-0.130, 0.12, 0.2);      // punho
+      B(0.060,0.100,0.22, K, 0,-0.040, 0.36);                   // coronha
+      B(0.064,0.140,0.035, M.gBlack, 0,-0.040, 0.48);           // soleira de borracha
+      B(0.014,0.160,0.014, M.gBlack,-0.050,-0.090,-0.40, 0, 0.4);   // bipé aberto
+      B(0.014,0.160,0.014, M.gBlack, 0.050,-0.090,-0.40, 0,-0.4);
+      break;
+    }
+    case 'svd': {                                    // Dragunov SVD: coronha de madeira vazada, cano longo e fino, PSO-1 lateral
+      B(0.050,0.080,0.26, M.gSteel, 0, 0.000, 0.00);            // caixa
+      B(0.056,0.060,0.24, M.gWood, 0, 0.000,-0.26);             // guarda-mão de madeira com fendas
+      for (let i=0;i<3;i++) B(0.058,0.010,0.030, M.gBlack, 0, 0.010,-0.18-i*0.07);
+      C(0.011,0.34, M.gSteel, 0, 0.005,-0.55);                  // cano fino
+      C(0.016,0.07, M.gBlack, 0, 0.005,-0.73);                  // quebra-chamas longo
+      C(0.020,0.22, M.gScope, 0.018, 0.085,-0.02);              // PSO-1 deslocada
+      C(0.026,0.05, M.gScope, 0.018, 0.085,-0.14); C(0.024,0.010, M.gGlass, 0.018, 0.085,-0.168);
+      B(0.030,0.050,0.10, M.gBlack, 0.030, 0.045, 0.00);        // trilho lateral
+      B(0.030,0.110,0.060, M.gBlack, 0,-0.080,-0.02, 0.15);     // carregador
+      B(0.040,0.030,0.34, M.gWood, 0, 0.020, 0.26);             // coronha: viga de cima
+      B(0.040,0.030,0.20, M.gWood, 0,-0.080, 0.30, -0.2);       //          viga de baixo (punho integrado)
+      B(0.042,0.130,0.030, M.gWood, 0,-0.040, 0.43);            //          soleira
+      B(0.040,0.030,0.10, M.gWoodL, 0, 0.045, 0.22);            // apoio de rosto
+      break;
+    }
+    case 'l96': {                                    // L96A1 (Arctic Warfare): coronha verde vazada, cano livre, carregador curto
+      const K = GREEN_POLY;
+      B(0.052,0.070,0.28, M.gSteel, 0, 0.000, 0.00);
+      B(0.064,0.070,0.36, K, 0,-0.030,-0.20);                   // chassi
+      C(0.015,0.40, M.gBlack, 0, 0.010,-0.46);                  // cano
+      C(0.020,0.05, M.gBlack, 0, 0.010,-0.66);
+      C(0.022,0.30, M.gScope, 0, 0.088,-0.04); C(0.030,0.07, M.gScope, 0, 0.088,-0.20); C(0.027,0.010, M.gGlass, 0, 0.088,-0.236);
+      B(0.030,0.055,0.022, M.gBlack, 0, 0.060,-0.10); B(0.030,0.055,0.022, M.gBlack, 0, 0.060, 0.04);
+      B(0.012,0.012,0.07, M.gSteel, 0.045, 0.020, 0.08);
+      B(0.030,0.070,0.060, M.gBlack, 0,-0.070,-0.04);
+      B(0.060,0.040,0.34, K, 0, 0.010, 0.30);                   // coronha: viga de cima
+      B(0.060,0.040,0.22, K, 0,-0.100, 0.32);                   //          viga de baixo
+      B(0.044,0.110,0.050, K, 0,-0.070, 0.14, 0.35);            // punho em polegar
+      B(0.062,0.160,0.035, K, 0,-0.040, 0.46);
+      break;
+    }
+    case 'm200': {                                   // CheyTac Intervention: guarda-mão tubular, coronha retrátil em trilho
+      B(0.056,0.080,0.30, M.gBlack, 0, 0.000, 0.00);
+      C(0.034,0.30, M.gBlack, 0, 0.000,-0.32);                  // guarda-mão tubular
+      for (let i=0;i<4;i++) B(0.070,0.010,0.02, M.gSteel, 0, 0.000,-0.20-i*0.07);
+      C(0.017,0.30, M.gSteel, 0, 0.000,-0.62);                  // cano
+      C(0.024,0.06, M.gBlack, 0, 0.000,-0.78);                  // freio
+      C(0.025,0.34, M.gScope, 0, 0.100,-0.10); C(0.036,0.08, M.gScope, 0, 0.100,-0.29); C(0.033,0.010, M.gGlass, 0, 0.100,-0.335);
+      B(0.020,0.014,0.44, M.gBlack, 0, 0.050,-0.14);            // trilho
+      B(0.032,0.080,0.060, M.gBlack, 0,-0.080,-0.04);
+      B(0.044,0.110,0.050, M.gBlack, 0,-0.080, 0.12, 0.25);
+      C(0.010,0.26, M.gSteel, 0,-0.010, 0.28);                  // tubos da coronha
+      C(0.010,0.26, M.gSteel, 0,-0.060, 0.28);
+      B(0.056,0.130,0.030, M.gBlack, 0,-0.035, 0.42);           // soleira
+      B(0.040,0.030,0.08, M.gBlack, 0, 0.030, 0.38);
+      B(0.012,0.12,0.012, M.gBlack,-0.04,-0.06,-0.35,0,0.35); B(0.012,0.12,0.012, M.gBlack,0.04,-0.06,-0.35,0,-0.35);
+      break;
+    }
+    case 'dsr50': {                                  // DSR-50: bullpup preto, carregador atrás do punho, reserva à frente
+      B(0.070,0.130,0.62, M.gBlack, 0,-0.020, 0.02);            // corpo
+      B(0.068,0.040,0.40, M.gPoly, 0, 0.060,-0.02);             // tampa
+      C(0.018,0.26, M.gSteel, 0, 0.020,-0.40);                  // cano
+      C(0.030,0.08, M.gBlack, 0, 0.020,-0.55);                  // freio grande
+      C(0.025,0.30, M.gScope, 0, 0.130,-0.02); C(0.036,0.08, M.gScope, 0, 0.130,-0.19); C(0.033,0.010, M.gGlass, 0, 0.130,-0.235);
+      B(0.034,0.060,0.024, M.gBlack, 0, 0.100,-0.10); B(0.034,0.060,0.024, M.gBlack, 0, 0.100, 0.08);
+      B(0.040,0.110,0.050, M.gPoly, 0,-0.130,-0.14, 0.2);       // punho
+      B(0.036,0.090,0.070, M.gBlack, 0,-0.120, 0.02);           // carregador
+      B(0.036,0.080,0.070, M.gBlack, 0,-0.110,-0.28);           // carregador reserva
+      B(0.072,0.150,0.030, M.gPoly, 0,-0.040, 0.34);            // soleira
+      B(0.060,0.030,0.14, M.gPoly, 0, 0.070, 0.24);             // apoio de rosto
+      break;
+    }
 
     case 'ballista': {                               // Ballista (BO2): cano canelado, coronha vazada, luneta grande com torres
       const T = BALLISTA_TAN;
