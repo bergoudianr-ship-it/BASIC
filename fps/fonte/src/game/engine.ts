@@ -1291,6 +1291,11 @@ const WEAPONS = [
     reload:2.2, range:185, pellets:1, adsFov:56, sound:{ gain:0.42, cut:5000, low:150, dur:0.21, rate:0.95 },
     switchTime:0.45, realLen:0.84, vmLen:0.70, hip:[0.135,-0.168,-0.60], adsDot:0.21
   },
+  { id:'famas', name:'FAMAS F1', cal:'5,56×45mm', mode:'AUTOMÁTICO', slot:'pri', chamber:true, sprintOut:0.20,
+    damage:25, headMult:2.4, rpm:900, auto:true, mag:30, magMax:30, reserve:210, reserveMax:210,
+    spread:0.0125, adsSpread:0.0032, moveSpreadMul:2.2, recoilV:0.0125, recoilH:0.0055, kick:0.032,
+    reload:2.4, range:170, pellets:1, adsFov:55, sound:{ gain:0.40, cut:5400, low:160, dur:0.18, rate:1.05 },
+    switchTime:0.42, realLen:0.757, vmLen:0.74, hip:[0.15,-0.175,-0.50] },
   { id:'barrett', name:'BARRETT M82A1', cal:'.50 BMG', mode:'SEMIAUTOMÁTICA', slot:'pri', chamber:true, sprintOut:0.40, model:'awm', tint:0x9a8963, scope:true,
     damage:150, headMult:2.5, rpm:150, auto:false, mag:10, magMax:10, reserve:40, reserveMax:40,
     spread:0.07, adsSpread:0.0008, moveSpreadMul:3.6, recoilV:0.11, recoilH:0.018, kick:0.21,
@@ -1316,11 +1321,11 @@ const WEAPONS = [
     spread:0.065, adsSpread:0.0004, moveSpreadMul:3.5, recoilV:0.09, recoilH:0.010, kick:0.18,
     reload:3.3, range:380, pellets:1, adsFov:10, sound:{ gain:0.72, cut:3200, low:85, dur:0.52, rate:0.62 },
     switchTime:0.75, realLen:1.1, vmLen:0.66 },
-  { id:'ballista', name:'BALLISTA', cal:'.338 Lapua', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.30, model:'awm', tint:0x7d8870, scope:true,
+  { id:'ballista', name:'BALLISTA', cal:'.338 Lapua', mode:'FERROLHO', slot:'pri', chamber:true, sprintOut:0.30, scope:true,
     damage:110, headMult:2.5, rpm:62, auto:false, mag:7, magMax:7, reserve:42, reserveMax:42,
     spread:0.058, adsSpread:0.0004, moveSpreadMul:3.2, recoilV:0.068, recoilH:0.009, kick:0.14,
     reload:3.1, range:320, pellets:1, adsFov:11, sound:{ gain:0.64, cut:3700, low:94, dur:0.44, rate:0.7 },
-    switchTime:0.62, realLen:1.2, vmLen:0.65 },
+    switchTime:0.62, realLen:1.2, vmLen:0.86, hip:[0.16,-0.19,-0.56] },
   // --- secundárias: pistolas semiautomáticas, troca rápida ---
   {
     id:'m9', name:'M9', cal:'9×19mm', mode:'SEMIAUTOMÁTICA', slot:'sec', chamber:true, sprintOut:0.10,
@@ -1364,13 +1369,13 @@ function resetWeapons(){
    engatilhamento da MP5, tambor e bipé da RPK, coronha vazada da SVD.
    ---------------------------------------------------------------------- */
 // boca do cano de cada arma (z, y em coordenadas cruas), para o supressor
-const MUZZLE = { m4a1:[-0.838,0.0254], mp7:[-0.30,0.005], m870:[-0.55,0.018], awm:[-0.745,0.010], m9:[-0.185,0.030], deagle:[-0.22,0.030] };
+const MUZZLE = { ballista:[-0.66,0.01], famas:[-0.46,0.0], m4a1:[-0.838,0.0254], mp7:[-0.30,0.005], m870:[-0.55,0.018], awm:[-0.745,0.010], m9:[-0.185,0.030], deagle:[-0.22,0.030] };
 // altura das mãos (punho, guarda-mão) quando difere do padrão
 const HAND_Y = { m4a1:[-0.064, -0.02] };
 // posição do pente estendido (z, y) por arma
 const MAG_POS = { m4a1:[-0.42, -0.215] };
 const HAND_Z = {           // onde ficam as mãos em cada arma (coordenadas cruas)
-  m4a1:[-0.279,-0.533], mp7:[0.03,-0.16], m870:[0.10,-0.26], awm:[0.14,-0.30], m9:[0.02,0.03], deagle:[0.02,0.03]
+  ballista:[0.14,-0.28], famas:[0.02,-0.22], m4a1:[-0.279,-0.533], mp7:[0.03,-0.16], m870:[0.10,-0.26], awm:[0.14,-0.30], m9:[0.02,0.03], deagle:[0.02,0.03]
 };
 
 /* Mira holográfica: base, laterais, capuz, vidro e ponto vermelho.
@@ -1387,6 +1392,7 @@ function holo(B, y, z){
   d.userData.dot = true;
 }
 const tintCache = new Map();
+const BALLISTA_TAN = new THREE.MeshStandardMaterial({ color:0xa8905a, roughness:0.55, metalness:0.25, envMapIntensity:0.25 });   // tom areia/ouro da imagem
 function buildWeaponParts(id, g){
   const WD = WEAPONS.find(x => x.id === id);
   if (WD && WD.model){                             // variante: corpo de outra arma, cor própria
@@ -1464,6 +1470,58 @@ function buildWeaponParts(id, g){
       B(0.050,0.100,0.22, M.gWood,  0,-0.020, 0.24);      // coronha
       B(0.052,0.115,0.02, M.gBlack, 0,-0.030, 0.35);      // soleira
       break;
+
+    case 'ballista': {                               // Ballista (BO2): cano canelado, coronha vazada, luneta grande com torres
+      const T = BALLISTA_TAN;
+      B(0.056,0.070,0.28, M.gBlack, 0, 0.000, 0.00);            // caixa da culatra
+      C(0.016,0.46, M.gSteel, 0, 0.012,-0.39);                   // cano
+      for (let i=0;i<6;i++) B(0.036,0.004,0.035, M.gBlack, 0, 0.012,-0.22 - i*0.055);   // aneis do canelado
+      C(0.022,0.06, M.gBlack, 0, 0.012,-0.63);                   // freio de boca
+      B(0.060,0.060,0.34, T, 0,-0.030,-0.26);                    // guarda-mao longo
+      B(0.020,0.012,0.30, M.gBlack, 0, 0.048,-0.20);             // trilho
+      C(0.026,0.34, M.gScope, 0, 0.098,-0.08);                   // tubo da luneta
+      C(0.040,0.09, M.gScope, 0, 0.098,-0.27);                   // objetiva grande
+      C(0.037,0.012, M.gGlass, 0, 0.098,-0.318);                 // lente
+      C(0.031,0.06, M.gScope, 0, 0.098, 0.12);                   // ocular
+      C(0.016,0.035, M.gBlack, 0, 0.140,-0.06).rotation.set(0,0,0);   // torre de elevacao (vertical)
+      C(0.016,0.035, M.gBlack, 0.040, 0.098,-0.06, true);             // torre de deriva (lateral)
+      B(0.034,0.060,0.024, M.gBlack, 0, 0.062,-0.17);            // aneis
+      B(0.034,0.060,0.024, M.gBlack, 0, 0.062, 0.02);
+      B(0.012,0.012,0.07, M.gSteel, 0.045, 0.020, 0.07);         // ferrolho
+      C(0.013,0.02, M.gSteel, 0.080, 0.020, 0.10, true);         // bola do ferrolho
+      B(0.032,0.085,0.060, M.gBlack, 0,-0.070,-0.05);            // carregador
+      B(0.044,0.120,0.055, T, 0,-0.085, 0.13, 0.25);             // punho
+      B(0.050,0.030,0.30, T, 0,-0.005, 0.30);                    // coronha: viga de cima
+      B(0.050,0.030,0.22, T, 0,-0.105, 0.33);                    //          viga de baixo (vazada no meio)
+      B(0.052,0.140,0.035, T, 0,-0.055, 0.44);                   //          soleira
+      B(0.046,0.035,0.12, T, 0, 0.040, 0.30);                    // apoio de face
+      B(0.012,0.010,0.18, M.gBlack,-0.032,-0.070,-0.36);         // bipe dobrado
+      B(0.012,0.010,0.18, M.gBlack, 0.032,-0.070,-0.36);
+      break;
+    }
+
+    case 'famas': {                                  // FAMAS F1: bullpup com alca de transporte longa
+      B(0.058,0.090,0.46, M.gBlack, 0, 0.000,-0.02);             // corpo
+      B(0.050,0.040,0.26, M.gPoly, 0,-0.055,-0.12);              // guarda-mao inferior
+      C(0.012,0.14, M.gSteel, 0,-0.005,-0.33);                   // cano
+      C(0.017,0.05, M.gBlack, 0,-0.005,-0.42);                   // quebra-chamas
+      B(0.020,0.014,0.40, M.gBlack, 0, 0.125,-0.04);             // alca de transporte (topo)
+      B(0.018,0.080,0.030, M.gBlack, 0, 0.080,-0.23, -0.35);     // pe dianteiro da alca
+      B(0.018,0.080,0.030, M.gBlack, 0, 0.080, 0.15);            // pe traseiro
+      B(0.022,0.028,0.012, M.gBlack, 0, 0.145,-0.22);            // massa de mira (orelhas)
+      B(0.004,0.022,0.004, M.gBlack, 0.010, 0.165,-0.22); B(0.004,0.022,0.004, M.gBlack,-0.010, 0.165,-0.22);
+      const al = B(0.040,0.040,0.022, M.gBlack, 0, 0.150, 0.14); // alca de mira com abas
+      B(0.010,0.030,0.020, M.gBlack, 0.024, 0.160, 0.14); B(0.010,0.030,0.020, M.gBlack,-0.024, 0.160, 0.14);
+      const d = B(0.004,0.004,0.001, HOLO_DOT, 0, 0.158,-0.225); d.userData.dot = true;   // ponto p/ alinhar o ADS
+      B(0.034,0.020,0.08, M.gSteel, 0.032, 0.070,-0.02);         // alavanca de manejo sob a alca
+      B(0.042,0.095,0.045, M.gPoly, 0,-0.095,-0.12, 0.2);        // punho
+      B(0.048,0.060,0.060, M.gBlack, 0,-0.080,-0.20);            // guarda-mato largo
+      B(0.030,0.110,0.060, M.gSteel, 0,-0.095, 0.08, -0.1);      // carregador (atras do punho)
+      B(0.060,0.100,0.035, M.gPoly, 0,-0.010, 0.22);             // soleira
+      B(0.010,0.010,0.14, M.gBlack, 0.032,-0.030,-0.25);         // bipe dobrado nas laterais
+      B(0.010,0.010,0.14, M.gBlack,-0.032,-0.030,-0.25);
+      break;
+    }
 
     case 'awm':                                     // fuzil de precisão AWM
       B(0.055,0.075,0.30, M.gSteel, 0, 0.000, 0.00);
@@ -2132,7 +2190,7 @@ const TACTICALS = {
 };
 const TAC_MAX = () => TACTICALS[activeClass().tact].none ? 0 : 1;
 /* Acessórios e vantagens: Pick 10 — cada item custa 1 ponto, 10 no total. */
-const ALL_W = ['m4a1','mp7','m870','awm','m9','deagle','pdw57','m8a1','barrett','svd','l96','m200','dsr50','ballista'];
+const ALL_W = ['famas','m4a1','mp7','m870','awm','m9','deagle','pdw57','m8a1','barrett','svd','l96','m200','dsr50','ballista'];
 const ATTACH = {
   supressor:  { name:'SUPRESSOR',       for:['m4a1','mp7','awm','m9','deagle'], desc:'Tiro abafado: só denuncia sua posição a 10 m (sem: 70 m) e não acende no minimapa. Alcance −15%.' },
   empunhadura:{ name:'EMPUNHADURA',     for:['m4a1','mp7','m870'],              desc:'Recuo −30%.' },
