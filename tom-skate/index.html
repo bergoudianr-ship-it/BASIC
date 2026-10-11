@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="UTF-8" />
+	<title>Tom Skate</title>
+
+	<link rel="manifest" href="appmanifest.json" />
+
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+	<meta name="theme-color" content="#000000" />
+	<meta name="apple-mobile-web-app-capable" content="yes" />
+	<meta name="mobile-web-app-capable" content="yes" />
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+	<meta name="apple-mobile-web-app-title" content="Tom Skate" />
+	<meta name="HandheldFriendly" content="true" />
+	<link rel="apple-touch-icon" sizes="256x256" href="icon-256.png" />
+	<link rel="icon" sizes="256x256" href="icon-256.png" />
+
+	<style type="text/css">
+		* {
+			padding: 0;
+			margin: 0;
+		}
+		html, body {
+			background: #000;
+			color: #fff;
+			overflow: hidden;
+			width: 100%;
+			height: 100%;
+			touch-action: none;
+			-ms-touch-action: none;
+			overscroll-behavior: none;
+			-webkit-user-select: none;
+			user-select: none;
+			-webkit-touch-callout: none;
+			-webkit-tap-highlight-color: transparent;
+		}
+		canvas {
+			touch-action: none;
+			-ms-touch-action: none;
+		}
+
+		/* Centraliza o jogo por CSS. O runtime calcula margens proprias e, em tela
+		   cheia fora do Chrome (Safari no iPad, Firefox no Android), soma uma margem
+		   extra no canvas que empurra o jogo para o lado. */
+		body {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		#c2canvasdiv {
+			flex: none;
+		}
+		#c2canvasdiv, #c2canvas {
+			margin: 0 !important;
+		}
+
+		/* Aviso para girar o celular (o jogo e em paisagem 1260x720) */
+		#rotate {
+			display: none;
+			position: fixed;
+			inset: 0;
+			z-index: 1000;
+			background: #111;
+			color: #fff;
+			font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+			text-align: center;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			gap: 18px;
+			padding: 24px;
+		}
+		#rotate .phone {
+			width: 46px;
+			height: 80px;
+			border: 4px solid #fff;
+			border-radius: 10px;
+			animation: girar 2s ease-in-out infinite;
+		}
+		#rotate p {
+			font-size: 18px;
+			line-height: 1.4;
+		}
+		#rotate small {
+			font-size: 14px;
+			opacity: .7;
+		}
+		@keyframes girar {
+			0%, 25% { transform: rotate(0deg); }
+			60%, 100% { transform: rotate(-90deg); }
+		}
+		@media (orientation: portrait) and (pointer: coarse) {
+			#rotate { display: flex; }
+		}
+	</style>
+
+	<script>
+	// Navegadores atuais criam o AudioContext "suspenso" ate o primeiro toque.
+	// O runtime do Construct 2 (2016) nao chama resume(), entao o jogo ficaria mudo.
+	(function () {
+		var AC = window.AudioContext || window.webkitAudioContext;
+		if (!AC) return;
+		var contexts = [];
+		function TrackedAudioContext(opts) {
+			var ctx = opts ? new AC(opts) : new AC();
+			contexts.push(ctx);
+			return ctx;
+		}
+		TrackedAudioContext.prototype = AC.prototype;
+		window.AudioContext = TrackedAudioContext;
+		if (window.webkitAudioContext) window.webkitAudioContext = TrackedAudioContext;
+
+		function unlock() {
+			for (var i = 0; i < contexts.length; i++) {
+				var ctx = contexts[i];
+				if (ctx.state !== "running" && ctx.state !== "closed" && ctx.resume) {
+					var p = ctx.resume();
+					if (p && p.catch) p.catch(function () {});
+				}
+			}
+		}
+		["touchend", "pointerup", "mousedown", "keydown"].forEach(function (ev) {
+			document.addEventListener(ev, unlock, true);
+		});
+	})();
+	</script>
+</head>
+
+<body>
+	<div id="rotate">
+		<div class="phone"></div>
+		<p>Gire o celular para jogar</p>
+		<small id="fs-hint" hidden>Ou toque aqui para tela cheia</small>
+	</div>
+
+	<div id="fb-root"></div>
+
+	<script>
+	if (window.location.protocol.substr(0, 4) === "file")
+	{
+		alert("Exported games won't work until you upload them. (When running on the file:/// protocol, browsers block many features from working for security reasons.)");
+	}
+	</script>
+
+	<!-- The canvas must be inside a div called c2canvasdiv -->
+	<div id="c2canvasdiv">
+		<canvas id="c2canvas" width="1260" height="720">
+			<h1>Seu navegador nao suporta HTML5.</h1>
+		</canvas>
+	</div>
+
+	<script src="jquery-2.1.1.min.js"></script>
+	<script src="litetween.js"></script>
+	<script src="c2runtime.js"></script>
+
+	<script>
+		jQuery(document).ready(function ()
+		{
+			cr_createRuntime("c2canvas");
+		});
+
+		function onVisibilityChanged() {
+			if (document.hidden || document.mozHidden || document.webkitHidden || document.msHidden)
+				cr_setSuspended(true);
+			else
+				cr_setSuspended(false);
+		};
+
+		document.addEventListener("visibilitychange", onVisibilityChanged, false);
+		document.addEventListener("mozvisibilitychange", onVisibilityChanged, false);
+		document.addEventListener("webkitvisibilitychange", onVisibilityChanged, false);
+		document.addEventListener("msvisibilitychange", onVisibilityChanged, false);
+
+		if (navigator.serviceWorker && navigator.serviceWorker.register)
+		{
+			navigator.serviceWorker.register("sw.js", { scope: "./" });
+		}
+
+		// No celular: primeiro toque abre em tela cheia e trava em paisagem
+		// (Android/Chrome). No iPhone a API nao existe; ai vale "Adicionar a Tela de Inicio".
+		(function () {
+			var isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+			if (!isTouch) return;
+			var root = document.documentElement;
+			var request = root.requestFullscreen || root.webkitRequestFullscreen;
+			if (!request) return;
+			document.getElementById("fs-hint").hidden = false;
+
+			function isFullscreen() {
+				return !!(document.fullscreenElement || document.webkitFullscreenElement);
+			}
+			function goFullscreen() {
+				if (isFullscreen()) return;
+				try {
+					var p = request.call(root, { navigationUI: "hide" });
+					var lock = function () {
+						if (screen.orientation && screen.orientation.lock)
+							screen.orientation.lock("landscape").catch(function () {});
+					};
+					if (p && p.then) p.then(lock, function () {}); else lock();
+				} catch (e) {}
+			}
+			document.addEventListener("touchend", goFullscreen, true);
+		})();
+	</script>
+</body>
+</html>
